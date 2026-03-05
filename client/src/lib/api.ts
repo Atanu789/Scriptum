@@ -157,8 +157,10 @@ export const documentApi = {
 // ─── Analysis ─────────────────────────────────────────────────────────────────
 
 export const analysisApi = {
-  analyze: async (documentId: string): Promise<AnalysisResult> => {
-    const { data } = await api.post<ApiResponse<AnalysisResult>>(`/analyze/${documentId}`);
+  analyze: async (documentId: string, force = false): Promise<AnalysisResult> => {
+    const { data } = await api.post<ApiResponse<AnalysisResult>>(
+      `/analyze/${documentId}${force ? '?force=1' : ''}`
+    );
     return unwrap(data);
   },
 };

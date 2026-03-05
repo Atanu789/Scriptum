@@ -238,6 +238,7 @@ function AnalysisPanel({
   // ── Derived values ──────────────────────────────────────────────────────────
 
   const aiScore       = analysis?.aiScore           ?? -1;
+  const isQuotaError  = analysis?.aiReasoning?.includes('quota') || analysis?.aiReasoning?.includes('Quota');
   const grammarScore  = analysis?.grammarScore       ?? 0;
   const readability   = analysis?.readabilityScore   ?? 0;
   const toneConf      = analysis?.tone?.confidence != null ? Math.round(analysis.tone.confidence * 100) : 0;
@@ -386,14 +387,16 @@ function AnalysisPanel({
           {/* Quick Status Row */}
           <div className="grid grid-cols-3 gap-2">
             <div className={cn('rounded-xl border p-3 text-center',
-              aiScore >= 70 ? (D ? 'border-red-900/40 bg-red-950/20'    : 'border-red-200 bg-red-50')
+              isQuotaError ? (D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')
+              : aiScore >= 70 ? (D ? 'border-red-900/40 bg-red-950/20'    : 'border-red-200 bg-red-50')
               : aiScore >= 40 ? (D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')
               :                  (D ? 'border-green-900/40 bg-green-950/20' : 'border-green-200 bg-green-50'))}>
-              <Bot className={cn('h-4 w-4 mx-auto mb-1', aiScore >= 70 ? 'text-red-400' : aiScore >= 40 ? 'text-amber-400' : 'text-green-400')} />
+              <Bot className={cn('h-4 w-4 mx-auto mb-1', isQuotaError ? 'text-amber-400' : aiScore >= 70 ? 'text-red-400' : aiScore >= 40 ? 'text-amber-400' : 'text-green-400')} />
               <p className="text-[10px] font-bold text-slate-500 mb-0.5">AI Risk</p>
               <p className={cn('text-[11px] font-semibold',
-                aiScore >= 70 ? (D ? 'text-red-300' : 'text-red-700') : aiScore >= 40 ? (D ? 'text-amber-300' : 'text-amber-700') : (D ? 'text-green-300' : 'text-green-700'))}>
-                {aiScore >= 70 ? 'High' : aiScore >= 40 ? 'Medium' : 'Low'}
+                isQuotaError ? (D ? 'text-amber-300' : 'text-amber-700')
+                : aiScore >= 70 ? (D ? 'text-red-300' : 'text-red-700') : aiScore >= 40 ? (D ? 'text-amber-300' : 'text-amber-700') : (D ? 'text-green-300' : 'text-green-700'))}>
+                {isQuotaError ? 'Unavailable' : aiScore >= 70 ? 'High' : aiScore >= 40 ? 'Medium' : 'Low'}
               </p>
             </div>
             <div className={cn('rounded-xl border p-3 text-center',

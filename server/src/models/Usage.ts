@@ -77,54 +77,92 @@ export async function checkAndIncrementUsage(
   const now = new Date();
   const hourAgo = new Date(now.getTime() - HOUR_MS);
 
-  // Atomic: increment only if under limit and within time window
-  const updated = await UsageModel.findOneAndUpdate(
-    {
-      userId,
-      $or: [
-        { lastResetAt: { $lte: hourAgo } }, // Window expired, will reset
-        { geminiCallsThisHour: { $lt: MAX_CALLS_PER_HOUR } }, // Under limit
-      ],
-    },
-    [
+  try {
+    // Atomic: increment only if under limit and within time window
+    const updated = await UsageModel.findOneAndUpdate(
       {
-        $set: {
-          geminiCallsThisHour: {
-            $cond: [
-              { $lte: ['$lastResetAt', hourAgo] },
-              1, // Reset to 1 if window expired
-              { $add: ['$geminiCallsThisHour', 1] }, // Increment if within window
-            ],
-          },
-          lastResetAt: {
-            $cond: [
-              { $lte: ['$lastResetAt', hourAgo] },
-              now, // Reset timestamp if window expired
-              '$lastResetAt', // Keep existing timestamp
-            ],
-          },
-          totalGeminiCalls: { $add: ['$totalGeminiCalls', 1] },
-          totalAnalyses: { $add: ['$totalAnalyses', 1] },
-        },
+        userId,
+        $or: [
+          { lastResetAt: { $lte: hourAgo } }, // Window expired, will reset
+          { geminiCallsThisHour: { $lt: MAX_CALLS_PER_HOUR } }, // Under limit
+        ],
       },
-    ],
-    { new: true, upsert: true }
-  );
+      [
+        {
+          $set: {
+            geminiCallsThisHour: {
+              $cond: [
+                { $lte: ['$lastResetAt', hourAgo] },
+                1, // Reset to 1 if window expired
+                { $add: ['$geminiCallsThisHour', 1] }, // Increment if within window
+              ],
+            },
+            lastResetAt: {
+              $cond: [
+                { $lte: ['$lastResetAt', hourAgo] },
+                now, // Reset timestamp if window expired
+                '$lastResetAt', // Keep existing timestamp
+              ],
+            },
+            totalGeminiCalls: { $add: ['$totalGeminiCalls', 1] },
+            totalAnalyses: { $add: ['$totalAnalyses', 1] },
+          },
+        },
+      ],
+      { new: true, upsert: true, setDefaultsOnInsert: true }
+    );
 
-  if (!updated) {
-    // Rate limit exceeded
-    const usage = await UsageModel.findOne({ userId });
-    const retryAfterMs = usage
-      ? Math.max(0, HOUR_MS - (Date.now() - usage.lastResetAt.getTime()))
-      : 0;
-    return { allowed: false, remaining: 0, retryAfterMs };
+    if (!updated) {
+      // Rate limit exceeded
+      const usage = await UsageModel.findOne({ userId });
+      const retryAfterMs = usage
+        ? Math.max(0, HOUR_MS - (Date.now() - usage.lastResetAt.getTime()))
+        : 0;
+      return { allowed: false, remaining: 0, retryAfterMs };
+    }
+
+    return {
+      allowed: true,
+      remaining: MAX_CALLS_PER_HOUR - updated.geminiCallsThisHour,
+      retryAfterMs: 0,
+    };
+  } catch (err: any) {
+    // Handle duplicate key error on upsert race condition
+    if (err.code === 11000) {
+      // Document was just created by another request, retry the update
+      const usage = await UsageModel.findOne({ userId });
+      if (!usage) {
+        throw new Error('Usage tracking failed');
+      }
+      
+      // Check if under limit
+      const needsReset = Date.now() - usage.lastResetAt.getTime() >= HOUR_MS;
+      const currentCalls = needsReset ? 0 : usage.geminiCallsThisHour;
+      
+      if (currentCalls >= MAX_CALLS_PER_HOUR) {
+        const retryAfterMs = Math.max(0, HOUR_MS - (Date.now() - usage.lastResetAt.getTime()));
+        return { allowed: false, remaining: 0, retryAfterMs };
+      }
+      
+      // Increment
+      if (needsReset) {
+        usage.geminiCallsThisHour = 1;
+        usage.lastResetAt = new Date();
+      } else {
+        usage.geminiCallsThisHour += 1;
+      }
+      usage.totalGeminiCalls += 1;
+      usage.totalAnalyses += 1;
+      await usage.save();
+      
+      return {
+        allowed: true,
+        remaining: MAX_CALLS_PER_HOUR - usage.geminiCallsThisHour,
+        retryAfterMs: 0,
+      };
+    }
+    throw err;
   }
-
-  return {
-    allowed: true,
-    remaining: MAX_CALLS_PER_HOUR - updated.geminiCallsThisHour,
-    retryAfterMs: 0,
-  };
 }
 
 /**

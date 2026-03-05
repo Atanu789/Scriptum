@@ -2,13 +2,11 @@ import { Response } from 'express';
 import { param, validationResult } from 'express-validator';
 import crypto from 'crypto';
 import DocumentModel from '../models/Document';
-import { analyseDocument } from '../services/aiAnalysis';
+import { analyzeDocument as runAnalysis } from '../services/aiAnalysis';
 import { checkAndIncrementUsage } from '../models/Usage';
 import { AuthenticatedRequest } from '../types';
 
-// Cache TTL: return stored results without calling Gemini if the text
-// hasn’t changed and the analysis was run within this window.
-const CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
 function hashText(text: string): string {
   return crypto.createHash('sha256').update(text).digest('hex').slice(0, 16);
@@ -28,23 +26,25 @@ export const analyzeDocument = async (
     return;
   }
 
-  const { id } = req.params;
+  const id = req.params?.id;
+  if (!id) {
+    res.status(400).json({ success: false, error: 'Document ID required' });
+    return;
+  }
 
   try {
-    // ── 1. Per-user Gemini rate limit (MongoDB-backed) ──────────────────────
     const { allowed, remaining, retryAfterMs } = await checkAndIncrementUsage(req.user!.userId);
     if (!allowed) {
       const mins = Math.ceil(retryAfterMs / 60_000);
       res.status(429).json({
         success: false,
-        error: `Gemini analysis limit reached (10/hour per user). Try again in ${mins} min.`,
+        error: `Analysis limit reached (10/hour). Try again in ${mins} min.`,
         retryAfterMs,
         remaining: 0,
       });
       return;
     }
 
-    // ── 2. Load document ───────────────────────────────────────────────
     const doc = await DocumentModel.findOne({
       _id: id,
       userId: req.user!.userId,
@@ -55,75 +55,68 @@ export const analyzeDocument = async (
       return;
     }
 
-    // ── 3. Content hash — serve cached result if text hasn’t changed ────────
-    const newHash     = hashText(doc.cleanedText);
-    const forceRerun  = req.query.force === '1';
-    const isCacheHit  =
+    const newHash = hashText(doc.cleanedText);
+    const forceRerun = req.query.force === '1';
+    const isCacheHit =
       !forceRerun &&
-      doc.contentHash  === newHash &&
+      doc.contentHash === newHash &&
       doc.analysisRunAt !== null &&
       Date.now() - new Date(doc.analysisRunAt).getTime() < CACHE_TTL_MS &&
-      doc.grammarScore  !== null;
+      doc.aiScore !== null;
 
     if (isCacheHit) {
-      // Don't charge user for cached results - return usage quota
       res.json({
         success: true,
         cached: true,
         remaining,
         data: {
-          documentId:          id,
-          aiScore:             doc.aiScore,
-          aiReasoning:         doc.aiReasoning,
-          humanizationTips:    doc.humanizationTips ?? [],
-          claimFlags:          (doc as any).claimFlags ?? [],
-          grammarScore:        doc.grammarScore,
-          grammarIssues:       doc.grammarIssues,
-          readabilityScore:    doc.readabilityScore,
-          wordCount:           doc.wordCount,
-          sentenceCount:       doc.sentenceCount,
-          readingTimeMinutes:  doc.readingTimeMinutes,
-          fleschGradeLevel:    doc.fleschGradeLevel,
-          avgSentenceLength:   doc.avgSentenceLength,
-          longSentences:       (doc as any).longSentences ?? [],
-          tone:                (doc as any).tone ?? null,
-          analyzedAt:          doc.analysisRunAt,
+          documentId: id,
+          aiScore: doc.aiScore,
+          aiReasoning: doc.aiReasoning,
+          humanizationTips: doc.humanizationTips ?? [],
+          claimFlags: (doc as any).claimFlags ?? [],
+          grammarScore: doc.grammarScore,
+          grammarIssues: doc.grammarIssues,
+          readabilityScore: doc.readabilityScore,
+          wordCount: doc.wordCount,
+          sentenceCount: doc.sentenceCount,
+          readingTimeMinutes: doc.readingTimeMinutes,
+          fleschGradeLevel: doc.fleschGradeLevel,
+          avgSentenceLength: doc.avgSentenceLength,
+          longSentences: (doc as any).longSentences ?? [],
+          tone: (doc as any).tone ?? null,
+          analyzedAt: doc.analysisRunAt,
         },
-        message: 'Returned from cache (text unchanged)',
+        message: 'Returned from cache',
       });
       return;
     }
 
-    // ── 4. Mark as processing ──────────────────────────────────────────
-    // Mark as processing (atomic — no save(), no version conflict)
     await DocumentModel.findByIdAndUpdate(id, { status: 'processing' });
 
-    // ── 5. Run analysis ─────────────────────────────────────────────
-    const analysis = await analyseDocument(doc.cleanedText);
+    const analysis = await runAnalysis(doc.cleanedText);
     const analyzedAt = new Date();
 
-    // ── 6. Persist results + hash ─────────────────────────────────────
-    // Save results atomically — no save(), no VersionError possible
     const updated = await DocumentModel.findByIdAndUpdate(
       id,
       {
         $set: {
-          contentHash:         newHash,
-          aiScore:             analysis.aiScore         ?? null,
-          grammarScore:        analysis.grammarScore    ?? null,
-          grammarIssues:       analysis.grammarIssues   ?? [],
-          readabilityScore:    analysis.readabilityScore ?? null,
-          sentenceCount:       analysis.sentenceCount   ?? null,
-          readingTimeMinutes:  analysis.readingTimeMinutes ?? null,
-          fleschGradeLevel:    analysis.fleschGradeLevel  ?? null,
-          avgSentenceLength:   analysis.avgSentenceLength ?? null,
-          longSentences:       analysis.longSentences   ?? [],
-          claimFlags:          analysis.claimFlags      ?? [],
-          tone:                analysis.tone            ?? null,
-          aiReasoning:         analysis.aiReasoning     ?? null,
-          humanizationTips:    analysis.humanizationTips ?? [],
-          analysisRunAt:       analyzedAt,
-          status:              'analyzed',
+          contentHash: newHash,
+          aiScore: analysis.aiScore,
+          grammarScore: analysis.grammarScore,
+          grammarIssues: analysis.grammarIssues,
+          readabilityScore: analysis.readabilityScore,
+          sentenceCount: analysis.sentenceCount,
+          readingTimeMinutes: analysis.readingTimeMinutes,
+          fleschGradeLevel: analysis.fleschGradeLevel,
+          avgSentenceLength: analysis.avgSentenceLength,
+          longSentences: analysis.longSentences,
+          claimFlags: analysis.claimFlags,
+          tone: analysis.tone,
+          aiReasoning: analysis.aiReasoning,
+          humanizationTips: analysis.humanizationTips,
+          analysisRunAt: analyzedAt,
+          status: 'analyzed',
         },
       },
       { new: true }
@@ -134,32 +127,35 @@ export const analyzeDocument = async (
       cached: false,
       remaining,
       data: {
-        documentId:          id,
-        aiScore:             updated?.aiScore,
-        aiReasoning:         analysis.aiReasoning,
-        humanizationTips:    analysis.humanizationTips,
-        claimFlags:          analysis.claimFlags,
-        grammarScore:        updated?.grammarScore,
-        grammarIssues:       updated?.grammarIssues,
-        readabilityScore:    updated?.readabilityScore,
-        wordCount:           doc.wordCount,
-        sentenceCount:       analysis.sentenceCount,
-        readingTimeMinutes:  analysis.readingTimeMinutes,
-        fleschGradeLevel:    analysis.fleschGradeLevel,
-        avgSentenceLength:   analysis.avgSentenceLength,
-        longSentences:       analysis.longSentences,
-        tone:                analysis.tone,
+        documentId: id,
+        aiScore: updated?.aiScore,
+        aiReasoning: analysis.aiReasoning,
+        humanizationTips: analysis.humanizationTips,
+        claimFlags: analysis.claimFlags,
+        grammarScore: updated?.grammarScore,
+        grammarIssues: updated?.grammarIssues,
+        readabilityScore: updated?.readabilityScore,
+        wordCount: doc.wordCount,
+        sentenceCount: analysis.sentenceCount,
+        readingTimeMinutes: analysis.readingTimeMinutes,
+        fleschGradeLevel: analysis.fleschGradeLevel,
+        avgSentenceLength: analysis.avgSentenceLength,
+        longSentences: analysis.longSentences,
+        tone: analysis.tone,
         analyzedAt,
       },
       message: 'Analysis complete',
     });
   } catch (err) {
-    // Reset status and don't save failed analysis
-    await DocumentModel.findByIdAndUpdate(id, { status: 'pending' });
-    console.error('[Analysis] Error:', err instanceof Error ? err.message : err);
-    res.status(500).json({
-      success: false,
-      error: err instanceof Error ? err.message : 'Analysis failed',
-    });
+    if (id) {
+      await DocumentModel.findByIdAndUpdate(id, { status: 'pending' }).catch(() => {});
+    }
+    console.error('[Analysis] Error:', err);
+    if (!res.headersSent) {
+      res.status(500).json({
+        success: false,
+        error: err instanceof Error ? err.message : 'Analysis failed',
+      });
+    }
   }
 };

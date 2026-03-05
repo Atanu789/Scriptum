@@ -102,7 +102,8 @@ export function useDocument(documentId: string): UseDocumentReturn {
     setIsAnalyzing(true);
     const toastId = toast.loading('Running AI analysis…');
     try {
-      const result = await analysisApi.analyze(documentId);
+      const result = await analysisApi.analyze(documentId, true);
+      console.log('[useDocument] Fresh analysis result. aiScore:', result.aiScore);
       setAnalysis(sanitizeAnalysis(result));
       toast.success('Analysis complete', { id: toastId });
       // Refresh doc to get updated status
