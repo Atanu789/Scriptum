@@ -32,3 +32,54 @@ export function sanitizeRichText(dirty: string): string {
 export function sanitizeArray(arr: string[]): string[] {
   return arr.map(sanitizeText).filter(Boolean);
 }
+
+/**
+ * Sanitize rich content that may contain embedded media (img, video, audio).
+ * Allows formatting tags + media elements whose src is restricted to /uploads/ paths.
+ * Use this for editor content that users can write alongside uploaded media.
+ */
+export function sanitizeMediaContent(dirty: string): string {
+  if (!dirty) return '';
+  return sanitizeHtml(dirty, {
+    allowedTags: [
+      'p', 'br', 'div', 'span',
+      'b', 'i', 'em', 'strong', 'u', 's', 'del', 'mark',
+      'ul', 'ol', 'li',
+      'h1', 'h2', 'h3', 'h4',
+      'blockquote', 'pre', 'code',
+      'img', 'video', 'audio', 'source',
+      'figure', 'figcaption',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'hr',
+    ],
+    allowedAttributes: {
+      img:    ['src', 'alt', 'style'],
+      video:  ['src', 'controls', 'style'],
+      audio:  ['src', 'controls', 'style'],
+      source: ['src', 'type'],
+      '*':    ['class', 'style'],
+    },
+    // Restrict media src to server-generated /uploads/ paths only
+    transformTags: {
+      img: (_tag, attribs) => ({
+        tagName: 'img',
+        attribs: (attribs.src ?? '').startsWith('/uploads/')
+          ? attribs
+          : { ...attribs, src: '' },
+      }),
+      video: (_tag, attribs) => ({
+        tagName: 'video',
+        attribs: (attribs.src ?? '').startsWith('/uploads/')
+          ? attribs
+          : { ...attribs, src: '' },
+      }),
+      audio: (_tag, attribs) => ({
+        tagName: 'audio',
+        attribs: (attribs.src ?? '').startsWith('/uploads/')
+          ? attribs
+          : { ...attribs, src: '' },
+      }),
+    },
+    disallowedTagsMode: 'discard',
+  }).trim();
+}

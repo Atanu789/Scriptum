@@ -61,9 +61,10 @@ export interface IDocument extends Document {
   _id: mongoose.Types.ObjectId;
   userId: mongoose.Types.ObjectId;
   originalFileName: string;
-  sourceType: 'docx' | 'pdf' | 'txt' | 'youtube' | 'website';
+  sourceType: 'docx' | 'pdf' | 'txt' | 'youtube' | 'website' | 'pptx' | 'ppt' | 'image' | 'audio' | 'video';
   youtubeUrl?: string;
   websiteUrl?: string;
+  mediaUrl?: string;        // stored URL for uploaded image/audio/video files
   rawText: string;
   cleanedText: string;
   structuredContent: {
@@ -138,7 +139,7 @@ const documentSchema = new Schema<IDocument>(
     },
     sourceType: {
       type: String,
-      enum: ['docx', 'pdf', 'txt', 'youtube', 'website'],
+      enum: ['docx', 'pdf', 'txt', 'youtube', 'website', 'pptx', 'ppt', 'image', 'audio', 'video'],
       required: true,
     },
     youtubeUrl: {
@@ -149,13 +150,17 @@ const documentSchema = new Schema<IDocument>(
       type: String,
       default: null,
     },
+    mediaUrl: {
+      type: String,
+      default: null,
+    },
     rawText: {
       type: String,
-      required: true,
+      default: '',
     },
     cleanedText: {
       type: String,
-      required: true,
+      default: '',
     },
     structuredContent: {
       sections: [documentSectionSchema],

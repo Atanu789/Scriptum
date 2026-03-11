@@ -13,11 +13,12 @@ import {
 } from '@/lib/utils';
 import {
   FileText, Upload, Plus, Trash2,
-  FileType, Youtube, File, Loader2, BookOpen,
+  FileType, File, Loader2, BookOpen,
   Pencil, CheckCircle2, Clock,
   AlertTriangle, TrendingUp, Sparkles,
   Search, SlidersHorizontal, ArrowUpRight,
   Zap, Globe,
+  Image as ImageIcon, Video, Music,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { Footer }        from '@/components/ui/footer';
@@ -25,12 +26,16 @@ import { CardSpotlight }  from '@/components/ui/card-spotlight';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+const MEDIA_TYPES = new Set(['image', 'audio', 'video']);
+
 const sourceIcon = (type: string) => {
   switch (type) {
     case 'docx':    return FileType;
     case 'pdf':     return File;
-    case 'youtube': return Youtube;
     case 'website': return Globe;
+    case 'image':   return ImageIcon;
+    case 'video':   return Video;
+    case 'audio':   return Music;
     default:        return FileText;
   }
 };
@@ -247,6 +252,69 @@ function ScoreToken({ label, value, variant }: {
   );
 }
 
+// ─── Media card ──────────────────────────────────────────────────────────────
+
+interface MediaCardProps {
+  doc: DocumentSummary;
+  deletingId: string | null;
+  onDelete: (e: React.MouseEvent, id: string, name: string) => Promise<void>;
+}
+
+function MediaCard({ doc, deletingId, onDelete }: MediaCardProps) {
+  const router = useRouter();
+
+  return (
+    <div
+      className="group relative rounded-xl border border-slate-200 dark:border-white/[0.1] bg-white dark:bg-white/[0.02] overflow-hidden hover:border-indigo-300 dark:hover:border-indigo-500/40 transition-all hover:-translate-y-0.5 cursor-pointer shadow-sm"
+      onClick={() => router.push(`/editor/${doc._id}`)}
+    >
+      {/* Preview area */}
+      <div className="h-28 bg-slate-100 dark:bg-white/[0.04] flex items-center justify-center overflow-hidden">
+        {doc.sourceType === 'image' && doc.mediaUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={doc.mediaUrl} alt={doc.originalFileName} className="w-full h-full object-cover" />
+        ) : doc.sourceType === 'video' && doc.mediaUrl ? (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <video src={doc.mediaUrl} className="w-full h-full object-cover" muted preload="metadata" />
+        ) : (
+          <Music className="h-10 w-10 text-slate-300 dark:text-white/20" />
+        )}
+      </div>
+
+      {/* Info */}
+      <div className="px-3 py-2">
+        <p className="text-xs font-semibold text-slate-700 dark:text-white/70 truncate">{doc.originalFileName}</p>
+        <p className="mt-0.5 text-[10px] text-slate-400 dark:text-white/30 capitalize">
+          {doc.sourceType} · {formatRelativeTime(doc.createdAt)}
+        </p>
+        {doc.sourceType === 'audio' && doc.mediaUrl && (
+          // eslint-disable-next-line jsx-a11y/media-has-caption
+          <audio
+            src={doc.mediaUrl}
+            controls
+            preload="none"
+            className="w-full mt-1.5"
+            style={{ height: 28 }}
+            onClick={(e) => e.stopPropagation()}
+          />
+        )}
+      </div>
+
+      {/* Delete button */}
+      <button
+        className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 disabled:opacity-40"
+        onClick={(e) => onDelete(e, doc._id, doc.originalFileName)}
+        disabled={deletingId === doc._id}
+        title="Delete"
+      >
+        {deletingId === doc._id
+          ? <Loader2 className="h-3 w-3 animate-spin" />
+          : <Trash2 className="h-3 w-3" />}
+      </button>
+    </div>
+  );
+}
+
 // ─── AI usage ring ──────────────────────────────────────────────────────────
 
 function AIRing({ usage }: { usage: UsageStats }) {
@@ -357,19 +425,22 @@ export default function DashboardPage() {
     }
   };
 
-  const firstName    = user?.name?.split(' ')[0] ?? 'there';
-  const analyzedDocs = documents.filter((d) => d.status === 'analyzed' || d.status === 'ready');
+  const firstName  = user?.name?.split(' ')[0] ?? 'there';
+  const textDocs   = documents.filter((d) => !MEDIA_TYPES.has(d.sourceType));
+  const mediaDocs  = documents.filter((d) => MEDIA_TYPES.has(d.sourceType));
+
+  const analyzedDocs = textDocs.filter((d) => d.status === 'analyzed' || d.status === 'ready');
   const docsWithGram = analyzedDocs.filter((d) => d.grammarScore != null);
   const avgGrammar   = docsWithGram.length
     ? Math.round(docsWithGram.reduce((s, d) => s + (d.grammarScore ?? 0), 0) / docsWithGram.length)
     : null;
-  const totalWords  = documents.reduce((s, d) => s + (d.wordCount || 0), 0);
+  const totalWords  = textDocs.reduce((s, d) => s + (d.wordCount || 0), 0);
   const totalIssues = analyzedDocs.reduce((s, d) => s + (d.grammarIssues?.length ?? 0), 0);
 
   const stats = [
     {
       label:  'Documents',
-      value:  String(total),
+      value:  String(textDocs.length),
       sub:    `${analyzedDocs.length} analysed`,
       icon:   FileText,
       accent: 'text-indigo-500 dark:text-indigo-400',
@@ -401,7 +472,7 @@ export default function DashboardPage() {
     },
   ];
 
-  const sortedFiltered = [...documents]
+  const sortedFiltered = [...textDocs]
     .filter((d) => !query || d.originalFileName.toLowerCase().includes(query.toLowerCase()))
     .sort((a, b) => {
       if (sortBy === 'name')  return a.originalFileName.localeCompare(b.originalFileName);
@@ -487,7 +558,7 @@ export default function DashboardPage() {
           </div>
           <div className="h-px flex-1 bg-slate-200 dark:bg-white/[0.06]" />
           <span className="text-[11px] font-semibold text-slate-400 dark:text-white/30">
-            {!isLoading && `${sortedFiltered.length} of ${total}`}
+            {!isLoading && `${sortedFiltered.length} of ${textDocs.length}`}
           </span>
         </div>
 
@@ -587,6 +658,31 @@ export default function DashboardPage() {
             </div>
           )}
         </div>
+
+        {/* ── Media Library section ─────────────────────────────────── */}
+        {!isLoading && mediaDocs.length > 0 && (
+          <>
+            <div className="mt-10 mb-4 flex items-center gap-3">
+              <div className="flex items-center gap-1.5">
+                <ImageIcon className="h-3.5 w-3.5 text-pink-500" />
+                <span className="text-[11px] font-bold uppercase tracking-widest text-pink-500 dark:text-pink-400">Media Library</span>
+              </div>
+              <div className="h-px flex-1 bg-slate-200 dark:bg-white/[0.06]" />
+              <span className="text-[11px] font-semibold text-slate-400 dark:text-white/30">{mediaDocs.length} item{mediaDocs.length !== 1 ? 's' : ''}</span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+              {mediaDocs.map((doc) => (
+                <MediaCard
+                  key={doc._id}
+                  doc={doc}
+                  deletingId={deletingId}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          </>
+        )}
 
       </main>
 

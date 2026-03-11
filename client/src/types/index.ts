@@ -57,9 +57,10 @@ export interface Document {
   _id: string;
   userId: string;
   originalFileName: string;
-  sourceType: 'docx' | 'pdf' | 'txt' | 'youtube' | 'website';
+  sourceType: 'docx' | 'pdf' | 'txt' | 'youtube' | 'website' | 'pptx' | 'ppt' | 'image' | 'audio' | 'video';
   youtubeUrl?: string;
   websiteUrl?: string;
+  mediaUrl?: string;
   rawText: string;
   cleanedText: string;
   structuredContent: StructuredContent;

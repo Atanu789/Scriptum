@@ -2,6 +2,7 @@ import fs from 'fs';
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import axios from 'axios';
+import JSZip from 'jszip';
 import { ExtractedContent, DocumentSection } from '../types';
 
 // ─── Text Cleaning ─────────────────────────────────────────────────────────────
@@ -307,7 +308,108 @@ export async function extractContent(
       return extractFromPdf(source.filePath);
     case 'txt':
       return extractFromTxt(source.filePath);
+    case 'ppt':
+    case 'pptx':
+      return extractFromPptx(source.filePath);
+    case 'jpg':
+    case 'jpeg':
+    case 'png':
+    case 'gif':
+    case 'webp':
+      return extractFromImage(source.filePath, ext);
+    case 'mp3':
+    case 'm4a':
+      return extractFromAudio(source.filePath, ext);
+    case 'mp4':
+    case 'mov':
+    case 'webm':
+    case 'avi':
+      return extractFromVideo(source.filePath, ext);
     default:
       throw new Error(`Unsupported file extension: .${ext}`);
   }
+}
+
+// ─── PPTX text extraction ─────────────────────────────────────────────────────
+
+export async function extractFromPptx(filePath: string): Promise<ExtractedContent> {
+  const buffer = fs.readFileSync(filePath);
+  const zip = await JSZip.loadAsync(buffer);
+
+  const textParts: string[] = [];
+
+  // pptx stores slides under ppt/slides/slide*.xml
+  const slideFiles = Object.keys(zip.files)
+    .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+    .sort((a, b) => {
+      const numA = parseInt(a.match(/\d+/)?.[0] ?? '0', 10);
+      const numB = parseInt(b.match(/\d+/)?.[0] ?? '0', 10);
+      return numA - numB;
+    });
+
+  for (const slideFile of slideFiles) {
+    const xmlContent = await zip.files[slideFile].async('string');
+    // Extract text from <a:t> tags (DrawingML text runs)
+    const texts: string[] = [];
+    const re = /<a:t(?:\s[^>]*)?>([^<]*)<\/a:t>/g;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(xmlContent)) !== null) {
+      const t = m[1].trim();
+      if (t) texts.push(t);
+    }
+    if (texts.length > 0) {
+      textParts.push(texts.join(' '));
+    }
+  }
+
+  if (textParts.length === 0) {
+    throw new Error('No text could be extracted from the PowerPoint file');
+  }
+
+  const rawText = textParts.join('\n\n');
+  const cleanedText = cleanText(rawText);
+  const structuredSections = structureText(cleanedText);
+
+  return {
+    rawText,
+    cleanedText,
+    structuredSections,
+    wordCount: countWords(cleanedText),
+    sourceType: 'pptx' as any,
+  };
+}
+
+// ─── Media pass-throughs ──────────────────────────────────────────────────────
+// For images, audio, and video we don't extract narration text — they are stored
+// as media assets on the document. We return a minimal stub so the upload
+// controller can create the document record without errors.
+
+function mediaStub(sourceType: string, note: string): ExtractedContent {
+  const cleanedText = note;
+  return {
+    rawText: cleanedText,
+    cleanedText,
+    structuredSections: [{
+      title: 'Media',
+      paragraphs: [cleanedText],
+      narrationSegments: [],
+    }],
+    wordCount: countWords(cleanedText),
+    sourceType: sourceType as any,
+  };
+}
+
+export async function extractFromImage(filePath: string, ext: string): Promise<ExtractedContent> {
+  if (!fs.existsSync(filePath)) throw new Error('Image file not found');
+  return mediaStub('image', `[Image file: .${ext}]`);
+}
+
+export async function extractFromAudio(filePath: string, ext: string): Promise<ExtractedContent> {
+  if (!fs.existsSync(filePath)) throw new Error('Audio file not found');
+  return mediaStub('audio', `[Audio file: .${ext}]`);
+}
+
+export async function extractFromVideo(filePath: string, ext: string): Promise<ExtractedContent> {
+  if (!fs.existsSync(filePath)) throw new Error('Video file not found');
+  return mediaStub('video', `[Video file: .${ext}]`);
 }

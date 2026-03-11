@@ -110,7 +110,7 @@ function Controls({
   const isMicConn    = syncStatus === 'connecting';
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-white/[0.06] bg-[#08080f]/95 px-4 py-3 backdrop-blur-md">
+    <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#0d0d18]/95 px-4 py-3 backdrop-blur-md">
 
       {/* ── TTS Read Aloud ─────────────────────────────────────── */}
       {activeMode !== 'tts' && (
@@ -167,7 +167,7 @@ function Controls({
         </div>
       )}
 
-      <div className="h-5 w-px bg-white/[0.07]" />
+      <div className="h-5 w-px bg-white/20" />
 
       {/* ── Mic Sync ────────────────────────────────────────────── */}
       {!isMicLive && !isMicConn && activeMode !== 'tts' && (
@@ -178,8 +178,9 @@ function Controls({
           className={cn(
             'inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all active:scale-[0.97]',
             activeMode === 'manual'
-              ? 'cursor-not-allowed text-white/20'
-              : 'bg-white/[0.05] text-white/50 hover:bg-white/[0.09] hover:text-white/80',
+              ? 'cursor-not-allowed text-white/30'
+              : 'bg-white/[0.08] text-white/70 hover:bg-white/[0.13] hover:text-white',
+
           )}
         >
           <Mic className="h-3.5 w-3.5" /> Mic Sync
@@ -203,7 +204,7 @@ function Controls({
         </div>
       )}
 
-      <div className="h-5 w-px bg-white/[0.07]" />
+      <div className="h-5 w-px bg-white/20" />
 
       {/* ── Manual Scroll ───────────────────────────────────────── */}
       <button
@@ -214,8 +215,8 @@ function Controls({
           activeMode === 'manual'
             ? 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30 hover:bg-amber-500/20'
             : (activeMode === 'tts' || activeMode === 'mic')
-            ? 'cursor-not-allowed text-white/15'
-            : 'bg-white/[0.04] text-white/40 hover:bg-white/[0.08] hover:text-white/60',
+            ? 'cursor-not-allowed text-white/25'
+            : 'bg-white/[0.08] text-white/70 hover:bg-white/[0.13] hover:text-white',
         )}
       >
         {activeMode === 'manual' && isManualPlaying
@@ -225,28 +226,28 @@ function Controls({
           : <><Volume2 className="h-3.5 w-3.5" /> Manual</>}
       </button>
 
-      <div className="h-5 w-px bg-white/[0.07]" />
+      <div className="h-5 w-px bg-white/20" />
 
       {/* ── Speed (manual only) ─────────────────────────────────── */}
       {activeMode === 'manual' && (
         <div className="flex items-center gap-2">
-          <SlidersHorizontal className="h-3 w-3 flex-shrink-0 text-white/25" />
+          <SlidersHorizontal className="h-3 w-3 flex-shrink-0 text-white/50" />
           <input type="range" min={1} max={10} step={0.5} value={speed}
             onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
-            className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-white/[0.07] accent-amber-500" />
-          <span className="w-5 text-right text-[11px] text-white/25 tabular-nums">{speed}×</span>
+            className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-white/20 accent-amber-400" />
+          <span className="w-5 text-right text-[11px] text-white/70 tabular-nums">{speed}×</span>
         </div>
       )}
 
       {/* ── Font size ───────────────────────────────────────────── */}
       <div className="flex items-center gap-0.5">
         <button onClick={() => onFontSizeChange(Math.max(18, fontSize - 4))}
-          className="rounded-lg px-2 py-1.5 text-white/25 hover:bg-white/[0.05] hover:text-white/50 transition-colors">
+          className="rounded-lg px-2 py-1.5 text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-colors">
           <ChevronDown className="h-3.5 w-3.5" />
         </button>
-        <span className="w-10 text-center text-[11px] text-white/20 tabular-nums">{fontSize}px</span>
+        <span className="w-10 text-center text-[11px] text-white/70 tabular-nums">{fontSize}px</span>
         <button onClick={() => onFontSizeChange(Math.min(72, fontSize + 4))}
-          className="rounded-lg px-2 py-1.5 text-white/25 hover:bg-white/[0.05] hover:text-white/50 transition-colors">
+          className="rounded-lg px-2 py-1.5 text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-colors">
           <ChevronUp className="h-3.5 w-3.5" />
         </button>
       </div>
@@ -254,7 +255,7 @@ function Controls({
       {/* ── Reset ──────────────────────────────────────────────── */}
       <div className="ml-auto">
         <button onClick={onReset} title="Reset to beginning"
-          className="rounded-xl p-2 text-white/25 hover:bg-white/[0.05] hover:text-white/50 transition-all active:scale-[0.97]">
+          className="rounded-xl p-2 text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-all active:scale-[0.97]">
           <RotateCcw className="h-3.5 w-3.5" />
         </button>
       </div>

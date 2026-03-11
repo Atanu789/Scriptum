@@ -78,7 +78,7 @@ export interface ExtractedContent {
   cleanedText: string;
   structuredSections: DocumentSection[];
   wordCount: number;
-  sourceType: 'docx' | 'pdf' | 'txt' | 'youtube' | 'website';
+  sourceType: 'docx' | 'pdf' | 'txt' | 'youtube' | 'website' | 'pptx' | 'ppt' | 'image' | 'audio' | 'video';
   pageTitle?: string;   // populated for website scrapes
   pageUrl?:   string;   // populated for website scrapes
 }

@@ -8,38 +8,61 @@ import { AceFileUpload } from '@/components/ui/ace-file-upload';
 import { ShimmerButton } from '@/components/ui/ace-input';
 import { MeteorCard } from '@/components/ui/meteor-card';
 import { BackgroundDots } from '@/components/ui/background-dots';
-import { ArrowLeft,
-  Youtube, ArrowRight, Loader2, AlertCircle, FileType, File as FileIcon, FileText, Globe,
+import {
+  ArrowLeft, ArrowRight, Loader2, AlertCircle,
+  FileType, File as FileIcon, FileText, Globe,
+  Image as ImageIcon, Music, Video,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
 
-type UploadMode = 'file' | 'youtube' | 'website';
+type UploadMode = 'document' | 'media' | 'website';
 
-const ACCEPTED_TYPES = {
+// ─── Accepted MIME → extension maps ──────────────────────────────────────────
+
+const DOCUMENT_ACCEPT = {
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['.docx'],
   'application/pdf': ['.pdf'],
   'text/plain': ['.txt'],
+  'application/vnd.ms-powerpoint': ['.ppt'],
+  'application/vnd.openxmlformats-officedocument.presentationml.presentation': ['.pptx'],
 };
-const MAX_SIZE = 5 * 1024 * 1024;
 
-const FORMAT_PILLS = [
+const MEDIA_ACCEPT = {
+  'image/jpeg':  ['.jpg', '.jpeg'],
+  'image/png':   ['.png'],
+  'image/gif':   ['.gif'],
+  'image/webp':  ['.webp'],
+  'audio/mpeg':  ['.mp3'],
+  'audio/mp4':   ['.m4a'],
+  'audio/x-m4a': ['.m4a'],
+  'video/mp4':   ['.mp4'],
+  'video/quicktime': ['.mov'],
+  'video/webm':  ['.webm'],
+  'video/x-msvideo': ['.avi'],
+};
+
+const DOC_MAX   = 25 * 1024 * 1024;   // 25 MB
+const MEDIA_MAX = 100 * 1024 * 1024;  // 100 MB
+
+const DOCUMENT_PILLS = [
   { icon: FileType,  label: '.docx', color: 'text-blue-500' },
   { icon: FileIcon,  label: '.pdf',  color: 'text-red-500'  },
   { icon: FileText,  label: '.txt',  color: 'text-slate-400' },
+  { icon: FileIcon,  label: '.pptx', color: 'text-orange-500' },
 ];
 
-const WEBSITE_EXAMPLES = [
-  'medium.com/…',
-  'substack.com/…',
-  'dev.to/…',
-  'any blog URL',
+const MEDIA_PILLS = [
+  { icon: ImageIcon, label: '.jpg / .jpeg / .png', color: 'text-pink-500' },
+  { icon: Music,     label: '.mp3 / .m4a',         color: 'text-green-500' },
+  { icon: Video,     label: '.mp4 / .mov / .webm', color: 'text-purple-500' },
 ];
+
+const WEBSITE_EXAMPLES = ['medium.com/…', 'substack.com/…', 'dev.to/…', 'any blog URL'];
 
 export default function UploadPage() {
   const router = useRouter();
-  const [mode, setMode]               = useState<UploadMode>('file');
-  const [youtubeUrl, setYoutubeUrl]   = useState('');
+  const [mode, setMode]               = useState<UploadMode>('document');
   const [websiteUrl, setWebsiteUrl]   = useState('');
   const [file, setFile]               = useState<File | null>(null);
   const [progress, setProgress]       = useState(0);
@@ -52,19 +75,17 @@ export default function UploadPage() {
     setProgress(0);
     try {
       let result;
-      if (mode === 'youtube') {
-        if (!youtubeUrl.trim()) { setError('Please enter a YouTube URL'); return; }
-        toast.loading('Fetching YouTube transcript…', { id: 'upload' });
-        result = await uploadApi.uploadYouTube(youtubeUrl.trim());
-      } else if (mode === 'website') {
+      if (mode === 'website') {
         if (!websiteUrl.trim()) { setError('Please enter a website URL'); return; }
         toast.loading('Scraping website content…', { id: 'upload' });
         result = await uploadApi.uploadWebsite(websiteUrl.trim());
       } else {
         if (!file) { setError('Please select a file'); return; }
+        const isMedia = mode === 'media';
+        toast.loading(isMedia ? 'Importing media…' : 'Processing…', { id: 'upload' });
         result = await uploadApi.uploadFile(file, (p) => setProgress(p));
       }
-      toast.success('Document processed!', { id: 'upload' });
+      toast.success(mode === 'media' ? 'Media imported!' : 'Processed successfully!', { id: 'upload' });
       router.push(`/editor/${result.documentId}`);
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Upload failed';
@@ -76,15 +97,13 @@ export default function UploadPage() {
   };
 
   const canSubmit = !isUploading && (
-    mode === 'file'    ? !!file :
-    mode === 'youtube' ? !!youtubeUrl.trim() :
-    !!websiteUrl.trim()
+    mode === 'website' ? !!websiteUrl.trim() : !!file
   );
 
   const tabs: { id: UploadMode; label: string; icon: React.ReactNode }[] = [
-    { id: 'file',    label: 'Upload File',   icon: <FileText className="h-4 w-4" /> },
-    { id: 'youtube', label: 'YouTube',        icon: <Youtube className="h-4 w-4" /> },
-    { id: 'website', label: 'Website / Blog', icon: <Globe className="h-4 w-4" /> },
+    { id: 'document', label: 'Document',      icon: <FileText className="h-4 w-4" /> },
+    { id: 'media',    label: 'Image / Video',  icon: <ImageIcon className="h-4 w-4" /> },
+    { id: 'website',  label: 'Website / Blog', icon: <Globe className="h-4 w-4" /> },
   ];
 
   return (
@@ -113,25 +132,26 @@ export default function UploadPage() {
             Dashboard
           </a>
         </div>
+
         {/* Heading */}
         <div className="mb-8 text-center">
           <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
             Upload Content
           </h1>
           <p className="mt-2 text-sm text-slate-500">
-            Upload a document, paste a YouTube link, or scrape any blog or article
+            Upload a document, image, audio / video, or scrape any blog or article
           </p>
         </div>
 
         <MeteorCard meteors={6} className="w-full">
           <div className="space-y-6 p-2">
 
-            {/* Mode tabs — now 3 */}
+            {/* Mode tabs */}
             <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5">
               {tabs.map((t) => (
                 <button
                   key={t.id}
-                  onClick={() => { setMode(t.id); setError(null); }}
+                  onClick={() => { setMode(t.id); setFile(null); setError(null); }}
                   className={cn(
                     'flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] font-medium transition-all',
                     mode === t.id
@@ -142,25 +162,25 @@ export default function UploadPage() {
                   {t.icon}
                   <span className="hidden sm:inline">{t.label}</span>
                   <span className="sm:hidden">
-                    {t.id === 'file' ? 'File' : t.id === 'youtube' ? 'YouTube' : 'Web'}
+                    {t.id === 'document' ? 'Doc' : t.id === 'media' ? 'Media' : 'Web'}
                   </span>
                 </button>
               ))}
             </div>
 
-            {/* ── File mode ── */}
-            {mode === 'file' && (
+            {/* ── Document mode ── */}
+            {mode === 'document' && (
               <div className="space-y-4">
                 <AceFileUpload
-                  accept={ACCEPTED_TYPES}
-                  maxSize={MAX_SIZE}
+                  accept={DOCUMENT_ACCEPT}
+                  maxSize={DOC_MAX}
                   onFile={setFile}
                   onClear={() => setFile(null)}
                   file={file}
                   disabled={isUploading}
                 />
-                <div className="flex items-center justify-center gap-5">
-                  {FORMAT_PILLS.map((f) => (
+                <div className="flex flex-wrap items-center justify-center gap-4">
+                  {DOCUMENT_PILLS.map((f) => (
                     <div key={f.label} className="flex items-center gap-1.5 text-xs text-slate-400">
                       <f.icon className={cn('h-3.5 w-3.5', f.color)} />
                       {f.label}
@@ -170,29 +190,30 @@ export default function UploadPage() {
               </div>
             )}
 
-            {/* ── YouTube mode ── */}
-            {mode === 'youtube' && (
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-slate-600 dark:text-slate-400">
-                  YouTube Video URL
-                </label>
-                <div className="relative">
-                  <Youtube className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-                  <input
-                    type="url"
-                    className={cn(
-                      'w-full rounded-xl border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm text-slate-900',
-                      'placeholder:text-slate-400 outline-none transition-all',
-                      'focus:border-indigo-400 focus:ring-2 focus:ring-indigo-400/20',
-                      'dark:border-white/10 dark:bg-white/5 dark:text-white dark:placeholder:text-white/30',
-                    )}
-                    placeholder="https://www.youtube.com/watch?v=..."
-                    value={youtubeUrl}
-                    onChange={(e) => setYoutubeUrl(e.target.value)}
-                    disabled={isUploading}
-                  />
+            {/* ── Media mode (image / audio / video) ── */}
+            {mode === 'media' && (
+              <div className="space-y-4">
+                <AceFileUpload
+                  accept={MEDIA_ACCEPT}
+                  maxSize={MEDIA_MAX}
+                  onFile={setFile}
+                  onClear={() => setFile(null)}
+                  file={file}
+                  disabled={isUploading}
+                />
+                <div className="flex flex-wrap items-center justify-center gap-4">
+                  {MEDIA_PILLS.map((f) => (
+                    <div key={f.label} className="flex items-center gap-1.5 text-xs text-slate-400">
+                      <f.icon className={cn('h-3.5 w-3.5', f.color)} />
+                      {f.label}
+                    </div>
+                  ))}
                 </div>
-                <p className="text-xs text-slate-400">Video must have captions/subtitles enabled</p>
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 dark:border-indigo-500/15 dark:bg-indigo-950/15">
+                  <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
+                    <span className="font-semibold">Tip:</span> Images and videos are stored as media attachments. You can embed them anywhere in the document editor.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -222,7 +243,6 @@ export default function UploadPage() {
                     value={websiteUrl}
                     onChange={(e) => setWebsiteUrl(e.target.value)}
                     onPaste={(e) => {
-                      // Auto-trim pasted URLs
                       const pasted = e.clipboardData.getData('text').trim();
                       if (pasted.startsWith('http')) {
                         e.preventDefault();
@@ -233,7 +253,6 @@ export default function UploadPage() {
                   />
                 </div>
 
-                {/* Example domains */}
                 <div className="flex flex-wrap items-center gap-1.5">
                   <span className="text-[11px] text-slate-400">Works with:</span>
                   {WEBSITE_EXAMPLES.map((ex) => (
@@ -246,7 +265,6 @@ export default function UploadPage() {
                   ))}
                 </div>
 
-                {/* Caveat */}
                 <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/15 dark:bg-amber-950/15">
                   <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
                     <span className="font-semibold">Note:</span> Pages behind a login, paywall, or that require JavaScript may not extract correctly.
@@ -255,8 +273,8 @@ export default function UploadPage() {
               </div>
             )}
 
-            {/* Progress bar (file mode only) */}
-            {isUploading && mode === 'file' && progress > 0 && (
+            {/* Upload progress bar */}
+            {isUploading && mode !== 'website' && progress > 0 && (
               <motion.div
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
@@ -304,8 +322,10 @@ export default function UploadPage() {
             {/* Submit */}
             <ShimmerButton onClick={handleUpload} disabled={!canSubmit}>
               {isUploading
-                ? <><Loader2 className="h-4 w-4 animate-spin" /> Processing…</>
-                : <>Process Document <ArrowRight className="h-4 w-4" /></>
+                ? <><Loader2 className="h-4 w-4 animate-spin" /> {mode === 'media' ? 'Importing…' : 'Processing…'}</>
+                : mode === 'media'
+                  ? <>Import <ArrowRight className="h-4 w-4" /></>
+                  : <>Process <ArrowRight className="h-4 w-4" /></>
               }
             </ShimmerButton>
           </div>

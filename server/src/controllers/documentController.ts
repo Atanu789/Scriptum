@@ -2,7 +2,7 @@ import { Response } from 'express';
 import { param, body, validationResult } from 'express-validator';
 import DocumentModel from '../models/Document';
 import { structureDocument } from '../services/documentStructure';
-import { sanitizeText } from '../utils/sanitize';
+import { sanitizeText, sanitizeMediaContent } from '../utils/sanitize';
 import { AuthenticatedRequest } from '../types';
 
 // ─── Get single document ──────────────────────────────────────────────────────
@@ -108,8 +108,9 @@ export const updateDocument = async (
     };
 
     if (cleanedText) {
-      doc.cleanedText = sanitizeText(cleanedText);
-      // Re-structure when text changes
+      // Use sanitizeMediaContent so embedded media (img/video/audio) from /uploads/ is preserved
+      doc.cleanedText = sanitizeMediaContent(cleanedText);
+      // Re-structure when text changes (use plain text for structure analysis)
       const newStructure = structureDocument(doc.cleanedText);
       doc.structuredContent = newStructure;
     }

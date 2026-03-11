@@ -256,11 +256,11 @@
 /* Applied directly via DOM class manipulation — no React re-render required.   */
 
 .tp-token {
-  color: rgba(255,255,255,0.22);
+  color: rgba(255,255,255,0.82);
 }
 
 .tp-token.tp-spoken {
-  color: rgba(255,255,255,0.45);
+  color: rgba(255,255,255,0.52);
 }
 
 .tp-token.tp-active {

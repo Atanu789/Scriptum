@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Document, AnalysisResult } from '@/types';
 import { documentApi, analysisApi } from '@/lib/api';
-import { sanitize } from '@/lib/sanitize';
+import { sanitize, sanitizeContent } from '@/lib/sanitize';
 import toast from 'react-hot-toast';
 
 /** Strip HTML from text fields coming from the API (defense-in-depth). */
@@ -11,7 +11,7 @@ function sanitizeDoc(doc: Document): Document {
   return {
     ...doc,
     rawText:          sanitize(doc.rawText),
-    cleanedText:      sanitize(doc.cleanedText),
+    cleanedText:      sanitizeContent(doc.cleanedText),   // preserves media HTML from /uploads/
     originalFileName: sanitize(doc.originalFileName),
     humanizationTips: doc.humanizationTips?.map(sanitize) ?? [],
     claimFlags:       doc.claimFlags ?? [],

@@ -19,3 +19,27 @@ export function sanitizeHtml(dirty: string): string {
     ALLOWED_ATTR: [],
   });
 }
+
+/**
+ * Sanitize editor content that may contain embedded media.
+ * Allows formatting + img/video/audio whose src is restricted to /uploads/ paths only.
+ */
+export function sanitizeContent(dirty: string): string {
+  if (typeof window === 'undefined') return dirty;
+  return DOMPurify.sanitize(dirty, {
+    ALLOWED_TAGS: [
+      'p', 'br', 'div', 'span',
+      'b', 'i', 'em', 'strong', 'u', 's', 'del', 'mark',
+      'ul', 'ol', 'li',
+      'h1', 'h2', 'h3', 'h4',
+      'blockquote', 'pre', 'code',
+      'img', 'video', 'audio', 'source',
+      'figure', 'figcaption',
+      'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      'hr',
+    ],
+    ALLOWED_ATTR: ['src', 'alt', 'controls', 'style', 'type', 'class'],
+    // Only permit server-generated /uploads/ paths — blocks external URLs / injections
+    ALLOWED_URI_REGEXP: /^\/uploads\//i,
+  });
+}
