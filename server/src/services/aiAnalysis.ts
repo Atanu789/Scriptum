@@ -33,6 +33,7 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
     aiScore: aiResult.aiScore,
     aiReasoning: aiResult.aiReasoning,
     humanizationTips: aiResult.humanizationTips,
+    humanizationSuggestions: aiResult.humanizationSuggestions,
     claimFlags,
     grammarIssues,
     grammarScore,

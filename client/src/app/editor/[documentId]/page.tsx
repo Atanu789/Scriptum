@@ -182,6 +182,23 @@ export default function EditorPage() {
     }
   }, [doc]);
 
+  // Apply a humanization suggestion by replacing the original text in the editor
+  const handleApplySuggestion = useCallback((original: string, replacement: string) => {
+    if (!editorRef.current) return;
+    const html = editorRef.current.innerHTML;
+    const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const updated = html.replace(new RegExp(escaped, 'i'), replacement);
+    if (updated !== html) {
+      editorRef.current.innerHTML = updated;
+      setIsDirty(true);
+      toast.success('Suggestion applied!');
+    } else {
+      navigator.clipboard.writeText(replacement).then(() =>
+        toast.success('Could not locate text — suggestion copied to clipboard'),
+      );
+    }
+  }, []);
+
   /* ── Loading ── */
   if (isLoading) {
     return (
@@ -356,6 +373,7 @@ export default function EditorPage() {
             onAnalyze={analyze}
             onSave={isDirty ? handleSave : undefined}
             documentStatus={doc.status}
+            onApplySuggestion={handleApplySuggestion}
           />
         </div>
       </div>

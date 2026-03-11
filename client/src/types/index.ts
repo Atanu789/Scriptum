@@ -72,6 +72,7 @@ export interface Document {
   claimFlags: string[];
   longSentences: string[];
   humanizationTips: string[];
+  humanizationSuggestions: HumanizationSuggestion[];
   aiReasoning: string | null;
   tone: ToneResult | null;
   sentenceCount: number | null;
@@ -95,6 +96,12 @@ export interface ToneResult {
   biasFlags:    string[];
 }
 
+export interface HumanizationSuggestion {
+  original:   string;
+  suggestion: string;
+  reason:     string;
+}
+
 export interface AnalysisProgress {
   step:  number;
   total: number;
@@ -105,8 +112,9 @@ export interface AnalysisResult {
   documentId:          string;
   aiScore:             number | null;
   aiReasoning?:        string;
-  humanizationTips?:   string[];
-  claimFlags?:         string[];
+  humanizationTips?:           string[];
+  humanizationSuggestions?:    HumanizationSuggestion[];
+  claimFlags?:                 string[];
   grammarScore:        number;
   grammarIssues:       GrammarIssue[];
   readabilityScore:    number;

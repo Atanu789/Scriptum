@@ -55,22 +55,29 @@ export interface ToneResult {
   biasFlags: string[];
 }
 
+export interface HumanizationSuggestion {
+  original:   string;
+  suggestion: string;
+  reason:     string;
+}
+
 export interface AnalysisResult {
-  aiScore:             number | null;
-  aiReasoning:         string;
-  humanizationTips:    string[];
-  claimFlags:          string[];
-  grammarIssues:       GrammarIssue[];
-  grammarScore:        number;
-  readabilityScore:    number;
-  fleschGradeLevel:    string;
-  avgSentenceLength:   number;
-  readingTimeMinutes:  number;
-  longSentences:       string[];
-  wordCount:           number;
-  sentenceCount:       number;
-  tone:                ToneResult | null;
-  analyzedAt:          Date;
+  aiScore:                   number | null;
+  aiReasoning:               string;
+  humanizationTips:          string[];
+  humanizationSuggestions:   HumanizationSuggestion[];
+  claimFlags:                string[];
+  grammarIssues:             GrammarIssue[];
+  grammarScore:              number;
+  readabilityScore:          number;
+  fleschGradeLevel:          string;
+  avgSentenceLength:         number;
+  readingTimeMinutes:        number;
+  longSentences:             string[];
+  wordCount:                 number;
+  sentenceCount:             number;
+  tone:                      ToneResult | null;
+  analyzedAt:                Date;
 }
 
 export interface ExtractedContent {

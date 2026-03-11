@@ -116,6 +116,7 @@ export interface IDocument extends Document {
   } | null;
   aiReasoning:        string | null;
   humanizationTips:   string[];
+  humanizationSuggestions: Array<{ original: string; suggestion: string; reason: string }>;
   analysisRunAt:      Date | null;
   status: 'pending' | 'processing' | 'analyzed' | 'ready';
   createdAt: Date;
@@ -208,6 +209,19 @@ const documentSchema = new Schema<IDocument>(
     },
     aiReasoning: { type: String, default: null },
     humanizationTips: { type: [String], default: [] },
+    humanizationSuggestions: {
+      type: [
+        new Schema(
+          {
+            original:   { type: String },
+            suggestion: { type: String },
+            reason:     { type: String },
+          },
+          { _id: false }
+        ),
+      ],
+      default: [],
+    },
     analysisRunAt: { type: Date, default: null },
     status: {
       type: String,

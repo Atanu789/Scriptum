@@ -7,7 +7,7 @@ import {
   ChevronDown, ChevronRight, XCircle, AlertCircle, Info,
   RefreshCw, Brain, Gauge, Sparkles, X, Bot, Shield,
   ScanSearch, Save, FileCheck2, Hash, Clock, BarChart3, Mic2,
-  AlertOctagon, Eye, Activity,
+  AlertOctagon, Eye, Activity, Wand2, Copy, Check, ArrowRight,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '@/components/providers/ThemeProvider';
@@ -15,14 +15,15 @@ import { useTheme } from '@/components/providers/ThemeProvider';
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
-  analysis:          AnalysisResult | null;
-  isAnalyzing:       boolean;
-  analysisProgress?: AnalysisProgress | null;
-  onAnalyze:         () => void;
-  onCancelAnalyze?:  () => void;
-  onSave?:           () => void;
-  documentStatus:    string;
-  expanded?:         boolean;
+  analysis:              AnalysisResult | null;
+  isAnalyzing:           boolean;
+  analysisProgress?:     AnalysisProgress | null;
+  onAnalyze:             () => void;
+  onCancelAnalyze?:      () => void;
+  onSave?:               () => void;
+  onApplySuggestion?:    (original: string, replacement: string) => void;
+  documentStatus:        string;
+  expanded?:             boolean;
 }
 
 // ─── Score Ring ────────────────────────────────────────────────────────────────
@@ -141,6 +142,93 @@ function ProgressScreen({ progress, onCancel, isDark }: { progress: AnalysisProg
   );
 }
 
+// ─── Humanization Suggestion Card ────────────────────────────────────────────
+
+function HumanizationCard({
+  original, suggestion, reason, index, isDark, onApply,
+}: {
+  original:   string;
+  suggestion: string;
+  reason:     string;
+  index:      number;
+  isDark:     boolean;
+  onApply?:   (original: string, suggestion: string) => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(suggestion).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className={cn(
+      'rounded-xl border overflow-hidden',
+      isDark ? 'border-indigo-900/40 bg-[#0d0d1a]' : 'border-indigo-200 bg-white',
+    )}>
+      {/* Header */}
+      <div className={cn('px-3 py-2 flex items-center gap-2 border-b',
+        isDark ? 'bg-indigo-950/40 border-indigo-900/30' : 'bg-indigo-50 border-indigo-100')}>
+        <span className={cn('flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-bold',
+          isDark ? 'bg-indigo-700 text-white' : 'bg-indigo-600 text-white')}>{index + 1}</span>
+        <span className={cn('text-[10px] font-bold uppercase tracking-widest', isDark ? 'text-indigo-300' : 'text-indigo-600')}>AI-sounding passage</span>
+      </div>
+
+      <div className="space-y-0">
+        {/* Original */}
+        <div className={cn('px-3 py-2.5 border-b', isDark ? 'border-slate-800' : 'border-slate-100')}>
+          <p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-red-500">Original</p>
+          <p className={cn('text-xs leading-relaxed italic', isDark ? 'text-slate-300' : 'text-slate-600')}>
+            &ldquo;{original}&rdquo;
+          </p>
+        </div>
+
+        {/* Arrow */}
+        <div className="flex items-center justify-center py-1">
+          <ArrowRight className="h-3.5 w-3.5 text-indigo-400" />
+        </div>
+
+        {/* Suggestion */}
+        <div className={cn('px-3 py-2.5 border-t', isDark ? 'border-slate-800' : 'border-slate-100')}>
+          <p className="mb-1 text-[9px] font-bold uppercase tracking-wider text-emerald-500">Suggested (Human)</p>
+          <p className={cn('text-xs leading-relaxed font-medium', isDark ? 'text-emerald-200' : 'text-emerald-800')}>
+            &ldquo;{suggestion}&rdquo;
+          </p>
+        </div>
+
+        {/* Reason */}
+        {reason && (
+          <div className={cn('px-3 pb-2 pt-1', isDark ? 'text-slate-500' : 'text-slate-400')}>
+            <p className="text-[10px] leading-relaxed">{reason}</p>
+          </div>
+        )}
+      </div>
+
+      {/* Actions */}
+      <div className={cn('px-3 py-2 flex gap-2 border-t', isDark ? 'border-slate-800' : 'border-slate-100')}>
+        <button
+          onClick={handleCopy}
+          className={cn('flex flex-1 items-center justify-center gap-1.5 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors',
+            isDark ? 'bg-slate-800 text-slate-300 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200')}
+        >
+          {copied ? <Check className="h-3.5 w-3.5 text-green-500" /> : <Copy className="h-3.5 w-3.5" />}
+          {copied ? 'Copied!' : 'Copy'}
+        </button>
+        {onApply && (
+          <button
+            onClick={() => onApply(original, suggestion)}
+            className="flex flex-1 items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-indigo-600 to-violet-600 px-2.5 py-1.5 text-xs font-semibold text-white hover:from-indigo-500 hover:to-violet-500 transition-all"
+          >
+            <Wand2 className="h-3.5 w-3.5" /> Apply in Editor
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Grammar Issue Card ───────────────────────────────────────────────────────
 
 const sevCfg = {
@@ -225,6 +313,7 @@ type TabId = 'overview' | 'integrity' | 'language' | 'tone';
 
 function AnalysisPanel({
   analysis, isAnalyzing, analysisProgress, onAnalyze, onCancelAnalyze, onSave, documentStatus, expanded = false,
+  onApplySuggestion,
 }: Props) {
   const { theme } = useTheme();
   const D = theme === 'dark';
@@ -244,8 +333,9 @@ function AnalysisPanel({
   const toneConf      = analysis?.tone?.confidence != null ? Math.round(analysis.tone.confidence * 100) : 0;
   const dominantTone  = analysis?.tone?.dominantTone ?? '—';
   const issueCount    = analysis?.grammarIssues?.length ?? 0;
-  const claimFlags    = analysis?.claimFlags    ?? [];
-  const longSentences = analysis?.longSentences ?? [];
+  const claimFlags            = analysis?.claimFlags            ?? [];
+  const longSentences         = analysis?.longSentences         ?? [];
+  const humanizationSuggestions = analysis?.humanizationSuggestions ?? [];
   const biasFlags     = analysis?.tone?.biasFlags ?? [];
   const lastAnalyzed  = analysis?.analyzedAt ? new Date(analysis.analyzedAt).toLocaleString() : null;
 
@@ -505,19 +595,35 @@ function AnalysisPanel({
 
           <Hr isDark={D} />
 
-          {/* Humanization tips */}
-          {(analysis.humanizationTips ?? []).length > 0 && (
+          {/* Humanization suggestions */}
+          {(humanizationSuggestions.length > 0 || (analysis.humanizationTips ?? []).length > 0) && (
             <div>
-              <SectionLabel icon={Lightbulb} label="Humanization Suggestions" isDark={D} />
-              <div className="space-y-2">
-                {(analysis.humanizationTips ?? []).map((tip, i) => (
-                  <div key={i} className={cn('flex items-start gap-3 rounded-xl border p-3', D ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-100')}>
-                    <span className={cn('flex-shrink-0 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5',
-                      D ? 'bg-indigo-900/60 text-indigo-300' : 'bg-indigo-100 text-indigo-600')}>{i + 1}</span>
-                    <p className={cn('text-xs leading-relaxed', D ? 'text-slate-300' : 'text-slate-700')}>{tip}</p>
-                  </div>
-                ))}
-              </div>
+              <SectionLabel icon={Wand2} label="Humanization Suggestions" isDark={D} />
+              {humanizationSuggestions.length > 0 ? (
+                <div className="space-y-3">
+                  {humanizationSuggestions.map((item, i) => (
+                    <HumanizationCard
+                      key={i}
+                      index={i}
+                      original={item.original}
+                      suggestion={item.suggestion}
+                      reason={item.reason}
+                      isDark={D}
+                      onApply={onApplySuggestion}
+                    />
+                  ))}
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {(analysis.humanizationTips ?? []).map((tip, i) => (
+                    <div key={i} className={cn('flex items-start gap-3 rounded-xl border p-3', D ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-100')}>
+                      <span className={cn('flex-shrink-0 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5',
+                        D ? 'bg-indigo-900/60 text-indigo-300' : 'bg-indigo-100 text-indigo-600')}>{i + 1}</span>
+                      <p className={cn('text-xs leading-relaxed', D ? 'text-slate-300' : 'text-slate-700')}>{tip}</p>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 

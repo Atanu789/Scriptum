@@ -4,6 +4,7 @@ interface AIScoreResult {
   aiScore: number | null;
   aiReasoning: string;
   humanizationTips: string[];
+  humanizationSuggestions: Array<{ original: string; suggestion: string; reason: string }>;
 }
 
 function extractJSON(text: string): any {
@@ -15,21 +16,31 @@ function extractJSON(text: string): any {
 export async function analyzeAIScore(text: string): Promise<AIScoreResult> {
   const sample = text.slice(0, 3000);
   
-  const prompt = `You are an AI detection expert. Analyze this text and determine if it's AI-generated.
+  const prompt = `You are an expert editorial assistant and AI-detection specialist.
+Analyze the text below for AI-generated patterns.
 
-Provide your response as JSON with this exact structure:
+Return ONLY a valid JSON object matching this exact schema — no markdown, no explanation, just JSON:
 {
-  "aiScore": <number between 0-100>,
-  "aiReasoning": "<brief explanation>",
-  "humanizationTips": ["<tip1>", "<tip2>", "<tip3>"]
+  "aiScore": <integer 0–100>,
+  "aiReasoning": "<2-3 sentence explanation of the score>",
+  "humanizationTips": ["<general tip 1>", "<general tip 2>", "<general tip 3>"],
+  "humanizationSuggestions": [
+    {
+      "original": "<exact verbatim sentence or short phrase from the text that sounds AI-generated>",
+      "suggestion": "<a rewritten, naturally human version of that sentence/phrase>",
+      "reason": "<one-sentence explanation of what makes the original sound AI-generated and how the suggestion fixes it>"
+    }
+  ]
 }
 
-Where aiScore: 0 = definitely human-written, 100 = definitely AI-generated
+Rules for humanizationSuggestions:
+- Include 3 to 6 items, chosen from the passages that scored highest for AI-patterns.
+- "original" MUST be a verbatim excerpt from the provided text (max 80 words).
+- "suggestion" should sound natural, specific and conversational — not generic.
+- If aiScore < 20, you may return an empty array for humanizationSuggestions.
 
 Text to analyze:
-${sample}
-
-Respond with ONLY the JSON object, no other text.`;
+${sample}`;
 
   try {
     const response = await callGemini(prompt);
@@ -37,17 +48,30 @@ Respond with ONLY the JSON object, no other text.`;
     
     const score = typeof data.aiScore === 'number' ? Math.round(Math.max(0, Math.min(100, data.aiScore))) : null;
     
+    const suggestions: AIScoreResult['humanizationSuggestions'] = Array.isArray(data.humanizationSuggestions)
+      ? data.humanizationSuggestions
+          .filter((s: any) => s && typeof s.original === 'string' && typeof s.suggestion === 'string')
+          .slice(0, 6)
+          .map((s: any) => ({
+            original:   String(s.original).trim(),
+            suggestion: String(s.suggestion).trim(),
+            reason:     String(s.reason ?? '').trim(),
+          }))
+      : [];
+
     return {
       aiScore: score,
       aiReasoning: data.aiReasoning || 'Analysis complete',
-      humanizationTips: Array.isArray(data.humanizationTips) ? data.humanizationTips.slice(0, 5) : []
+      humanizationTips: Array.isArray(data.humanizationTips) ? data.humanizationTips.slice(0, 5) : [],
+      humanizationSuggestions: suggestions,
     };
   } catch (err) {
     console.error('[AI Score] Error:', err);
     return {
       aiScore: null,
       aiReasoning: 'AI analysis failed',
-      humanizationTips: []
+      humanizationTips: [],
+      humanizationSuggestions: [],
     };
   }
 }
