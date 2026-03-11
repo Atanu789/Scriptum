@@ -25,9 +25,11 @@ app.use(
 );
 
 const allowedOrigins = [
-  process.env.CLIENT_URL,
-  process.env.NODE_ENV !== 'production' ? 'http://localhost:3000' : null,
-].filter(Boolean) as string[];
+  "https://ultimoversio.com",
+  "https://www.ultimoversio.com",
+  "https://ultimoversio.vercel.app",
+  "http://localhost:3000"
+];
 
 app.use(
   cors({
