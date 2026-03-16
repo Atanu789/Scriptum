@@ -13,7 +13,8 @@ import {
 import { cn } from '@/lib/utils';
 import { BorderBeam } from '@/components/ui/border-beam';
 import { BackgroundDots, BackgroundGrid } from '@/components/ui/background-dots';
-import { MeteorCard } from '@/components/ui/meteor-card';
+import { CometCard } from '@/components/ui/comet-card';
+import { CanvasRevealCard } from '@/components/ui/canvas-reveal-card';
 
 declare global {
   interface Window {
@@ -373,44 +374,25 @@ export default function PricingPage() {
           )}
         </header>
 
-        <section className="mx-auto w-full max-w-xl rounded-2xl border border-slate-200/80 bg-white/70 p-4 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
-          <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/35">Have a premium redeem code?</p>
-          <div className="flex flex-col gap-2 sm:flex-row">
-            <input
-              value={redeemCode}
-              onChange={(e) => setRedeemCode(e.target.value)}
-              placeholder="Enter code (e.g. FREEPRO2026)"
-              className="h-10 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-indigo-400 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/80 dark:focus:border-indigo-500/50"
-            />
-            <button
-              onClick={handleRedeem}
-              disabled={redeeming || !redeemCode.trim()}
-              className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition-all hover:bg-indigo-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {redeeming ? 'Applying...' : 'Redeem'}
-            </button>
-          </div>
-        </section>
-
         <section className="grid gap-3 sm:grid-cols-3">
-          <div className="rounded-2xl border border-slate-200/80 bg-white/65 p-4 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
+          <CanvasRevealCard className="p-4 backdrop-blur-xl">
             <p className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-500 dark:text-indigo-400">
               <Sparkles className="h-3.5 w-3.5" /> AI Stack
             </p>
             <p className="text-sm text-slate-600 dark:text-white/60">Humanize, grammar fixes, and analysis scoring in one flow.</p>
-          </div>
-          <div className="rounded-2xl border border-slate-200/80 bg-white/65 p-4 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
+          </CanvasRevealCard>
+          <CanvasRevealCard className="p-4 backdrop-blur-xl">
             <p className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-500 dark:text-indigo-400">
               <FileOutput className="h-3.5 w-3.5" /> Export Ready
             </p>
             <p className="text-sm text-slate-600 dark:text-white/60">PDF and DOCX for all, PPTX unlocked on Pro and above.</p>
-          </div>
-          <div className="rounded-2xl border border-slate-200/80 bg-white/65 p-4 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
+          </CanvasRevealCard>
+          <CanvasRevealCard className="p-4 backdrop-blur-xl">
             <p className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-500 dark:text-indigo-400">
               <ShieldCheck className="h-3.5 w-3.5" /> Secure Billing
             </p>
             <p className="text-sm text-slate-600 dark:text-white/60">Razorpay-protected payments with easy cancellation anytime.</p>
-          </div>
+          </CanvasRevealCard>
         </section>
 
         {/* Active-plan banner */}
@@ -524,26 +506,52 @@ export default function PricingPage() {
 
             return (
               isPro ? (
-                <MeteorCard
+                <CometCard
                   key={plan.id}
-                  meteors={16}
+                  cometCount={16}
+                  highlight
                   className="h-full scale-100 border-indigo-400/60 bg-white/80 shadow-xl shadow-indigo-500/20 backdrop-blur-xl sm:scale-[1.04] sm:-translate-y-2 dark:border-indigo-500/50 dark:bg-[#0d0d1a]/90"
                 >
                   <div className="relative flex h-full flex-col">
                     {cardBody}
                   </div>
-                </MeteorCard>
+                </CometCard>
               ) : (
-                <div
+                <CometCard
                   key={plan.id}
+                  cometCount={8}
                   className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/65 p-5 backdrop-blur-xl dark:border-white/[0.08] dark:bg-[#0e0e16]/80"
                 >
                   {cardBody}
-                </div>
+                </CometCard>
               )
             );
           })}
         </div>
+
+        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200/80 bg-white/70 p-4 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
+          <div className="mb-3 flex items-center justify-between gap-3">
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/35">Have a premium redeem code?</p>
+            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-semibold text-indigo-600 dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-300">
+              Instant activation
+            </span>
+          </div>
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <input
+              value={redeemCode}
+              onChange={(e) => setRedeemCode(e.target.value)}
+              placeholder="Enter code (e.g. FREEPRO2026)"
+              className="h-10 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-indigo-400 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/80 dark:focus:border-indigo-500/50"
+            />
+            <button
+              onClick={handleRedeem}
+              disabled={redeeming || !redeemCode.trim()}
+              className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition-all hover:bg-indigo-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {redeeming ? 'Applying...' : 'Redeem'}
+            </button>
+          </div>
+        </section>
 
         <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/70 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
           <div className="border-b border-slate-200/80 px-5 py-4 dark:border-white/[0.08]">

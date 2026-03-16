@@ -5,6 +5,7 @@ import { AuthProvider } from '@/context/AuthContext';
 import { ToasterProvider } from '@/components/providers/ToasterProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import FloatingDockNav from '@/components/FloatingDockNav';
+import { VortexBackground } from '@/components/ui/vortex-background';
 
 const inter = Inter({
   subsets: ['latin'],
@@ -54,21 +55,24 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
-          {/* Global static grid — fixed to viewport, never scrolls */}
+          {/* Global background stack applied to every page */}
+          <VortexBackground className="pointer-events-none fixed inset-0 z-0 opacity-75 dark:opacity-90" compact />
           <div
             aria-hidden
-            className="pointer-events-none fixed inset-0 -z-10"
+            className="pointer-events-none fixed inset-0 z-[1]"
             style={{
               backgroundImage:
                 'linear-gradient(to right, var(--grid-color) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px)',
               backgroundSize: '40px 40px',
             }}
           />
-          <AuthProvider>
-            <ToasterProvider />
-            <FloatingDockNav />
-            {children}
-          </AuthProvider>
+          <div className="relative z-10">
+            <AuthProvider>
+              <ToasterProvider />
+              <FloatingDockNav />
+              {children}
+            </AuthProvider>
+          </div>
         </ThemeProvider>
       </body>
     </html>

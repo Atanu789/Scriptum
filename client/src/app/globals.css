@@ -4,7 +4,7 @@
 
 @layer base {
   :root {
-    --background: 248 250 252;
+    --background: 247 249 252;
     --foreground: 15 23 42;
     --card: 255 255 255;
     --card-foreground: 15 23 42;
@@ -20,13 +20,13 @@
     --destructive-foreground: 255 255 255;
     --ring: 79 70 229;
     --radius: 0.5rem;
-    --grid-color: rgba(99,102,241,0.15);
+    --grid-color: rgba(99, 102, 241, 0.12);
   }
 
   .dark {
-    --background: 15 23 42;
-    --foreground: 248 250 252;
-    --card: 30 41 59;
+    --background: 9 9 15;
+    --foreground: 241 245 249;
+    --card: 15 23 42;
     --card-foreground: 248 250 252;
     --border: 51 65 85;
     --input: 51 65 85;
@@ -39,7 +39,7 @@
     --destructive: 239 68 68;
     --destructive-foreground: 255 255 255;
     --ring: 129 140 248;
-    --grid-color: rgba(99,102,241,0.15);
+    --grid-color: rgba(129, 140, 248, 0.12);
   }
 
   *,
@@ -53,11 +53,20 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    color-scheme: light;
+    background-color: rgb(var(--background));
+  }
+
+  .dark html {
+    color-scheme: dark;
   }
 
   body {
-    @apply bg-white text-slate-900 antialiased dark:bg-[#09090f] dark:text-slate-50;
+    @apply antialiased;
+    background-color: rgb(var(--background));
+    color: rgb(var(--foreground));
     font-feature-settings: 'rlig' 1, 'calt' 1, 'ss01' 1;
+    transition: background-color 180ms ease, color 180ms ease;
   }
 
   /* Prevent layout shift from scrollbar */
@@ -250,6 +259,16 @@
 @keyframes pageIn {
   from { opacity: 0; transform: translateY(6px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes vortexSpin {
+  from { transform: translate(-50%, -50%) rotate(0deg); }
+  to   { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
+@keyframes vortexSpinReverse {
+  from { transform: translate(-50%, -50%) rotate(360deg); }
+  to   { transform: translate(-50%, -50%) rotate(0deg); }
 }
 
 /* ─── Teleprompter token highlight ─────────────────────────────────────────── */

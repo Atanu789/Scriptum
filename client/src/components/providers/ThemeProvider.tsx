@@ -27,12 +27,7 @@ function getInitialTheme(): Theme {
 }
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
-  const [theme, setThemeState] = useState<Theme>('dark');
-
-  // Read real initial value on mount (after hydration)
-  useEffect(() => {
-    setThemeState(getInitialTheme());
-  }, []);
+  const [theme, setThemeState] = useState<Theme>(getInitialTheme);
 
   // Apply/remove the 'dark' class and persist to localStorage whenever theme changes
   useEffect(() => {

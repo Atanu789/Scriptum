@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   motion,
   AnimatePresence,
@@ -45,27 +45,30 @@ function DockIcon({
   const yTransform = useTransform(distance, [-120, 0, 120], [0, -10, 0]);
   const y = useSpring(yTransform, { mass: 0.1, stiffness: 180, damping: 16 });
 
+  const iconSize = magnify ? undefined : 42;
+  const iconLift = magnify ? y : 0;
+
   const [hovered, setHovered] = useState(false);
 
   const inner = (
     <motion.div
       ref={ref}
-      style={{ width, height, y }}
+      style={{ width: iconSize ?? width, height: iconSize ?? height, y: iconLift }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       className={cn(
         'relative flex items-center justify-center rounded-xl cursor-pointer transition-colors',
         // light mode
-        'bg-slate-100 border border-slate-200/80 shadow-sm',
+        'bg-slate-100/90 border border-slate-200 shadow-sm',
         'hover:bg-slate-200',
-        item.active && 'bg-indigo-50 border-indigo-200',
+        item.active && 'bg-indigo-50 border-indigo-300',
         // dark mode
-        'dark:bg-white/[0.08] dark:border-white/[0.12] dark:hover:bg-white/[0.14]',
-        item.active && 'dark:bg-white/[0.18] dark:border-white/[0.28]',
+        'dark:bg-slate-800/80 dark:border-slate-700/80 dark:hover:bg-slate-700/90',
+        item.active && 'dark:bg-indigo-500/20 dark:border-indigo-400/45',
       )}
     >
       {item.active && (
-        <span className="absolute -bottom-1.5 h-1 w-1 rounded-full bg-indigo-500 dark:bg-white/70" />
+        <span className="absolute -bottom-1.5 h-1 w-1 rounded-full bg-indigo-500 dark:bg-indigo-300" />
       )}
       <AnimatePresence>
         {hovered && (
@@ -80,7 +83,7 @@ function DockIcon({
           </motion.div>
         )}
       </AnimatePresence>
-      <div className="h-5 w-5 text-slate-600 dark:text-white/80">{item.icon}</div>
+      <div className="h-5 w-5 text-slate-700 dark:text-slate-100">{item.icon}</div>
     </motion.div>
   );
 
@@ -92,6 +95,15 @@ function DockIcon({
 
 export function FloatingDock({ items }: { items: DockItem[] }) {
   const mouseX = useMotionValue(Infinity);
+  const [magnify, setMagnify] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia('(hover: hover) and (pointer: fine) and (min-width: 768px)');
+    const sync = () => setMagnify(media.matches);
+    sync();
+    media.addEventListener('change', sync);
+    return () => media.removeEventListener('change', sync);
+  }, []);
 
   return (
     <motion.nav
@@ -99,15 +111,15 @@ export function FloatingDock({ items }: { items: DockItem[] }) {
       onMouseLeave={() => mouseX.set(Infinity)}
       className={cn(
         'fixed bottom-6 left-1/2 z-50 -translate-x-1/2',
-        'flex items-end gap-2 rounded-2xl px-4 py-3',
+        'flex items-end gap-1.5 rounded-2xl px-3 py-2 md:gap-2 md:px-4 md:py-3',
         // light mode – visible white card with subtle border and shadow
-        'bg-white/90 backdrop-blur-xl border border-slate-200/80 shadow-[0_8px_32px_rgba(0,0,0,0.12)]',
+        'bg-white/88 backdrop-blur-xl border border-slate-200/90 shadow-[0_8px_30px_rgba(2,8,23,0.15)]',
         // dark mode
-        'dark:bg-black/30 dark:border-white/10 dark:shadow-[0_8px_32px_rgba(0,0,0,0.5)]',
+        'dark:bg-slate-950/68 dark:border-slate-800/85 dark:shadow-[0_10px_34px_rgba(2,8,23,0.55)]',
       )}
     >
       {items.map((item) => (
-        <DockIcon key={item.title} item={item} mouseX={mouseX} magnify={true} />
+        <DockIcon key={item.title} item={item} mouseX={mouseX} magnify={magnify} />
       ))}
     </motion.nav>
   );

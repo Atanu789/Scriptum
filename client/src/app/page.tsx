@@ -18,6 +18,9 @@ import { BackgroundDots, BackgroundGrid } from '@/components/ui/background-dots'
 import { MeteorCard, GlowCard } from '@/components/ui/meteor-card';
 import { BorderBeam } from '@/components/ui/border-beam';
 import { NumberTicker } from '@/components/ui/number-ticker';
+import { CometCard } from '@/components/ui/comet-card';
+import { CanvasRevealCard } from '@/components/ui/canvas-reveal-card';
+import { VortexBackground } from '@/components/ui/vortex-background';
 
 /* â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
    LANDING NAVBAR
@@ -300,16 +303,18 @@ function StepsStrip() {
       <div className="rounded-2xl border border-slate-200 bg-white/60 dark:border-white/[0.07] dark:bg-white/[0.02] backdrop-blur-sm overflow-hidden">
         <div className="grid grid-cols-2 divide-x divide-y divide-slate-200 dark:divide-white/[0.06] sm:grid-cols-4 sm:divide-y-0">
           {STEPS.map(({ n, icon: Icon, title, desc }) => (
-            <div key={n} className="flex flex-col gap-2 p-4">
-              <div className="flex items-center gap-2.5">
-                <span className="text-[10px] font-black tabular-nums text-indigo-400 dark:text-indigo-500">{n}</span>
-                <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-500/10">
-                  <Icon className="h-3.5 w-3.5 text-indigo-500" />
+            <CanvasRevealCard key={n} className="rounded-none border-0 bg-transparent p-0">
+              <div className="flex flex-col gap-2 p-4">
+                <div className="flex items-center gap-2.5">
+                  <span className="text-[10px] font-black tabular-nums text-indigo-400 dark:text-indigo-500">{n}</span>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-indigo-50 dark:bg-indigo-500/10">
+                    <Icon className="h-3.5 w-3.5 text-indigo-500" />
+                  </div>
+                  <span className="text-[13px] font-semibold text-slate-900 dark:text-white">{title}</span>
                 </div>
-                <span className="text-[13px] font-semibold text-slate-900 dark:text-white">{title}</span>
+                <p className="text-[12px] leading-relaxed text-slate-400 dark:text-white/25">{desc}</p>
               </div>
-              <p className="text-[12px] leading-relaxed text-slate-400 dark:text-white/25">{desc}</p>
-            </div>
+            </CanvasRevealCard>
           ))}
         </div>
       </div>
@@ -385,8 +390,10 @@ function PricingSection() {
 
         <div className="grid items-stretch gap-3 sm:grid-cols-3">
           {PRICING.map(({ icon: Icon, name, price, period, description, features, cta, href, highlight, badge }) => (
-            <div
+            <CometCard
               key={name}
+              cometCount={highlight ? 15 : 8}
+              highlight={highlight}
               className={cn(
                 'relative flex flex-col overflow-hidden rounded-2xl border p-5',
                 highlight
@@ -441,7 +448,7 @@ function PricingSection() {
               >
                 {cta}
               </Link>
-            </div>
+            </CometCard>
           ))}
         </div>
 
@@ -459,28 +466,30 @@ function PricingSection() {
 function CtaSection() {
   return (
     <div className="mx-auto max-w-4xl px-5 pb-14 sm:px-8">
-      <MeteorCard meteors={18} className="overflow-hidden">
-        <div className="flex flex-col items-center gap-4 px-6 py-10 text-center sm:flex-row sm:text-left sm:gap-8 sm:px-10 sm:py-8">
-          <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-500/30">
-            <BookOpen className="h-6 w-6 text-white" />
+      <VortexBackground compact className="rounded-2xl">
+        <MeteorCard meteors={18} className="overflow-hidden bg-white/75 dark:bg-slate-950/55">
+          <div className="flex flex-col items-center gap-4 px-6 py-10 text-center sm:flex-row sm:text-left sm:gap-8 sm:px-10 sm:py-8">
+            <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-2xl bg-indigo-600 shadow-lg shadow-indigo-500/30">
+              <BookOpen className="h-6 w-6 text-white" />
+            </div>
+            <div className="flex-1">
+              <h2 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl dark:text-white">
+                Ready to write smarter?
+              </h2>
+              <p className="mt-1 text-sm text-slate-500 dark:text-white/40">
+                Join thousands of professionals who use Ultimoversio to produce polished, impactful documents.
+              </p>
+            </div>
+            <Link
+              href="/register"
+              className="group flex-shrink-0 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/25 transition-all hover:bg-indigo-500 hover:-translate-y-0.5 active:scale-[0.97]"
+            >
+              Create free account
+              <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
+            </Link>
           </div>
-          <div className="flex-1">
-            <h2 className="text-xl font-extrabold tracking-tight text-slate-900 sm:text-2xl dark:text-white">
-              Ready to write smarter?
-            </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-white/40">
-              Join thousands of professionals who use Ultimoversio to produce polished, impactful documents.
-            </p>
-          </div>
-          <Link
-            href="/register"
-            className="group flex-shrink-0 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/25 transition-all hover:bg-indigo-500 hover:-translate-y-0.5 active:scale-[0.97]"
-          >
-            Create free account
-            <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
-          </Link>
-        </div>
-      </MeteorCard>
+        </MeteorCard>
+      </VortexBackground>
     </div>
   );
 }

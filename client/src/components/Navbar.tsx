@@ -38,7 +38,7 @@ export default function Navbar() {
   };
 
   return (
-    <header className="sticky top-0 z-20 border-b border-slate-200/60 bg-white/80 backdrop-blur-xl dark:border-white/[0.06] dark:bg-[#09090f]/80">
+    <header className="sticky top-0 z-20 border-b border-slate-200/70 bg-white/85 backdrop-blur-xl dark:border-slate-800/70 dark:bg-slate-950/80">
       {/* Gradient top-line accent */}
       <div
         aria-hidden
@@ -79,7 +79,7 @@ export default function Navbar() {
         {/* User area */}
         <div className="hidden items-center gap-1.5 md:flex">
           {user && (
-            <div className="flex items-center gap-2 rounded-lg border border-slate-200/60 bg-slate-50/60 px-2.5 py-1 dark:border-white/[0.06] dark:bg-white/[0.03]">
+            <div className="flex items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/70 px-2.5 py-1 dark:border-slate-700/70 dark:bg-slate-900/60">
               <UserAvatar name={user.name} />
               <span className="text-xs font-medium text-slate-600 dark:text-slate-300">{user.name}</span>
             </div>
@@ -117,7 +117,7 @@ export default function Navbar() {
 
       {/* Mobile drawer */}
       {mobileOpen && (
-        <div className="border-t border-slate-100 bg-white px-4 pb-4 dark:border-slate-700/50 dark:bg-slate-900 md:hidden">
+        <div className="border-t border-slate-200/70 bg-white/95 px-4 pb-4 dark:border-slate-800/70 dark:bg-slate-950/95 md:hidden">
           <nav className="mt-3 space-y-1">
             {NAV_ITEMS.map((item) => (
               <Link

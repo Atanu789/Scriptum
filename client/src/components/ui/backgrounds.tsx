@@ -6,7 +6,10 @@ import { cn } from '@/lib/utils';
 /** Full-page dot-pattern background */
 export function DotBackground({ className, children }: { className?: string; children?: React.ReactNode }) {
   return (
-    <div className={cn('relative min-h-screen w-full bg-white dark:bg-[#0d0d0f]', className)}>
+    <div
+      className={cn('relative min-h-screen w-full', className)}
+      style={{ backgroundColor: 'rgb(var(--background))' }}
+    >
       <div
         className="pointer-events-none absolute inset-0"
         style={{
@@ -15,7 +18,7 @@ export function DotBackground({ className, children }: { className?: string; chi
         }}
       />
       {/* Radial fade to prevent dots from being too loud at centre */}
-      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,transparent_50%,rgba(255,255,255,0.85))] dark:bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,transparent_50%,rgba(13,13,15,0.85))]" />
+      <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,transparent_50%,rgba(255,255,255,0.82))] dark:bg-[radial-gradient(ellipse_80%_60%_at_50%_-10%,transparent_50%,rgba(2,6,23,0.82))]" />
       <div className="relative z-10">{children}</div>
     </div>
   );
@@ -24,7 +27,10 @@ export function DotBackground({ className, children }: { className?: string; chi
 /** Full-page grid-line background */
 export function GridBackground({ className, children }: { className?: string; children?: React.ReactNode }) {
   return (
-    <div className={cn('relative min-h-screen w-full bg-white dark:bg-[#0d0d0f]', className)}>
+    <div
+      className={cn('relative min-h-screen w-full', className)}
+      style={{ backgroundColor: 'rgb(var(--background))' }}
+    >
       <div
         className="pointer-events-none absolute inset-0"
         style={{
