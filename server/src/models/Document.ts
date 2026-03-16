@@ -112,6 +112,7 @@ export interface IDocument extends Document {
       media: Array<{
         relationshipId: string;
         target: string;
+        url?: string;
         type: 'image' | 'audio' | 'video' | 'other';
       }>;
     }>;

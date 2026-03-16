@@ -195,6 +195,28 @@ function renderInlineWordDiff(left: string, right: string, side: 'left' | 'right
   return out.length > 0 ? out : ' ';
 }
 
+function getDropRangeFromPoint(x: number, y: number): Range | null {
+  const doc = window.document as Document & {
+    caretPositionFromPoint?: (xPos: number, yPos: number) => { offsetNode: Node; offset: number } | null;
+    caretRangeFromPoint?: (xPos: number, yPos: number) => Range | null;
+  };
+
+  if (typeof doc.caretPositionFromPoint === 'function') {
+    const caret = doc.caretPositionFromPoint(x, y);
+    if (!caret) return null;
+    const range = window.document.createRange();
+    range.setStart(caret.offsetNode, caret.offset);
+    range.collapse(true);
+    return range;
+  }
+
+  if (typeof doc.caretRangeFromPoint === 'function') {
+    return doc.caretRangeFromPoint(x, y);
+  }
+
+  return null;
+}
+
 export default function EditorPage() {
   const params = useParams<{ documentId: string }>();
   const documentId = params.documentId;
@@ -227,9 +249,37 @@ export default function EditorPage() {
   const [imageWrap, setImageWrap] = useState(false);
   const [imageWidthPct, setImageWidthPct] = useState(70);
   const [imagePaddingPx, setImagePaddingPx] = useState(8);
+  const draggedImageRef = useRef<HTMLImageElement | null>(null);
+  const resizeStateRef = useRef<{
+    img: HTMLImageElement;
+    startX: number;
+    startY: number;
+    startWidth: number;
+    startHeight: number;
+    aspectRatio: number;
+    maxWidth: number;
+    maxHeight: number;
+  } | null>(null);
   const compareRows = compareSnapshot
     ? buildSideBySideRows(compareSnapshot.before, compareSnapshot.after)
     : [];
+
+  const prepareEditorImages = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+    editor.querySelectorAll('img').forEach((img) => {
+      img.setAttribute('draggable', 'true');
+      img.classList.add('editor-image-draggable');
+      if (!img.style.maxWidth) img.style.maxWidth = '100%';
+      if (!img.style.height) img.style.height = 'auto';
+    });
+  }, []);
+
+  const parsePxStyle = useCallback((value: string | undefined, fallback = 0): number => {
+    if (!value || !value.endsWith('px')) return fallback;
+    const parsed = Number.parseFloat(value);
+    return Number.isFinite(parsed) ? parsed : fallback;
+  }, []);
 
   const clearImageSelection = useCallback(() => {
     if (selectedImageEl) selectedImageEl.classList.remove('editor-image-selected');
@@ -238,7 +288,14 @@ export default function EditorPage() {
 
   const syncImageControlsFromElement = useCallback((img: HTMLImageElement) => {
     const widthRaw = img.style.width;
-    const widthPct = widthRaw.endsWith('%') ? Number.parseInt(widthRaw, 10) : 70;
+    let widthPct = 70;
+    if (widthRaw.endsWith('%')) {
+      widthPct = Number.parseInt(widthRaw, 10);
+    } else if (widthRaw.endsWith('px') && editorRef.current) {
+      const px = Number.parseFloat(widthRaw);
+      const parentWidth = editorRef.current.clientWidth || 1;
+      widthPct = Math.round((px / parentWidth) * 100);
+    }
     setImageWidthPct(Number.isFinite(widthPct) ? Math.max(20, Math.min(100, widthPct)) : 70);
 
     const isWrapped = img.style.float === 'left' || img.style.float === 'right';
@@ -342,10 +399,11 @@ export default function EditorPage() {
       editorRef.current.focus();
       // eslint-disable-next-line deprecation/deprecation
       window.document.execCommand('insertHTML', false, html);
+      prepareEditorImages();
       setIsDirty(true);
       setShowMediaLib(false);
     }
-  }, []);
+  }, [prepareEditorImages]);
 
   const insertImageByUrl = useCallback(() => {
     if (!editorRef.current) return;
@@ -363,8 +421,9 @@ export default function EditorPage() {
       false,
       `<img src="${safe.replace(/"/g, '%22')}" alt="Inserted image" style="max-width:100%;width:70%;border-radius:8px;display:block;margin:8px auto;" />`
     );
+    prepareEditorImages();
     setIsDirty(true);
-  }, []);
+  }, [prepareEditorImages]);
 
   // Hydrate editor when a new/updated document arrives; do not overwrite active edits.
   const recalcEditorMetrics = useCallback(() => {
@@ -412,13 +471,14 @@ export default function EditorPage() {
     if (!canHydrate) return;
 
     editorRef.current.innerHTML = doc.editorHtml || toEditorHtml(doc.cleanedText || '');
+    prepareEditorImages();
     recalcEditorMetrics();
     editorRef.current.scrollTop = 0;
     setEditorScrollTop(0);
     setActiveVisualLine(1);
     if (gutterRef.current) gutterRef.current.scrollTop = 0;
     lastLoadedSignatureRef.current = signature;
-  }, [doc, isDirty, recalcEditorMetrics]);
+  }, [doc, isDirty, prepareEditorImages, recalcEditorMetrics]);
 
   useEffect(() => {
     return () => {
@@ -452,6 +512,144 @@ export default function EditorPage() {
     updateActiveLineFromSelection();
   }, [clearImageSelection, selectedImageEl, syncImageControlsFromElement, updateActiveLineFromSelection]);
 
+  const stopImageResize = useCallback(() => {
+    resizeStateRef.current = null;
+    window.document.body.style.userSelect = '';
+  }, []);
+
+  const handleImageResizeMove = useCallback((event: MouseEvent) => {
+    const state = resizeStateRef.current;
+    if (!state) return;
+    const deltaX = event.clientX - state.startX;
+    const deltaY = event.clientY - state.startY;
+
+    let nextWidth = Math.max(80, Math.min(state.maxWidth, state.startWidth + deltaX));
+    let nextHeight = Math.max(48, Math.min(state.maxHeight, state.startHeight + deltaY));
+
+    if (event.shiftKey && state.aspectRatio > 0) {
+      if (Math.abs(deltaX) >= Math.abs(deltaY)) {
+        nextHeight = nextWidth / state.aspectRatio;
+      } else {
+        nextWidth = nextHeight * state.aspectRatio;
+      }
+      nextWidth = Math.max(80, Math.min(state.maxWidth, nextWidth));
+      nextHeight = Math.max(48, Math.min(state.maxHeight, nextHeight));
+    }
+
+    state.img.style.width = `${Math.round(nextWidth)}px`;
+    state.img.style.height = `${Math.round(nextHeight)}px`;
+    state.img.style.maxWidth = '100%';
+    syncImageControlsFromElement(state.img);
+    setIsDirty(true);
+  }, [syncImageControlsFromElement]);
+
+  const handleImageResizeEnd = useCallback(() => {
+    window.removeEventListener('mousemove', handleImageResizeMove);
+    window.removeEventListener('mouseup', handleImageResizeEnd);
+    stopImageResize();
+  }, [handleImageResizeMove, stopImageResize]);
+
+  const handleEditorMouseDown = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (!target || target.tagName !== 'IMG') return;
+
+    const img = target as HTMLImageElement;
+    const rect = img.getBoundingClientRect();
+    const handleSize = 16;
+    const overResizeHandle = e.clientX >= rect.right - handleSize && e.clientY >= rect.bottom - handleSize;
+    if (!overResizeHandle) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const editorWidth = editorRef.current?.clientWidth ?? rect.width;
+    const editorHeight = editorRef.current?.clientHeight ?? rect.height;
+    resizeStateRef.current = {
+      img,
+      startX: e.clientX,
+      startY: e.clientY,
+      startWidth: rect.width,
+      startHeight: rect.height,
+      aspectRatio: rect.height > 0 ? rect.width / rect.height : 1,
+      maxWidth: Math.max(80, editorWidth - 12),
+      maxHeight: Math.max(80, editorHeight * 2),
+    };
+
+    window.document.body.style.userSelect = 'none';
+    window.addEventListener('mousemove', handleImageResizeMove);
+    window.addEventListener('mouseup', handleImageResizeEnd);
+  }, [handleImageResizeEnd, handleImageResizeMove]);
+
+  const handleEditorDragStart = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    const target = e.target as HTMLElement;
+    if (!target || target.tagName !== 'IMG') return;
+
+    const img = target as HTMLImageElement;
+    draggedImageRef.current = img;
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', img.src || 'image');
+  }, []);
+
+  const handleEditorDragOver = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    if (!draggedImageRef.current) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleEditorDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    const dragged = draggedImageRef.current;
+    if (!dragged || !editorRef.current) return;
+    e.preventDefault();
+
+    const range = getDropRangeFromPoint(e.clientX, e.clientY);
+    if (!range || !editorRef.current.contains(range.startContainer)) {
+      draggedImageRef.current = null;
+      return;
+    }
+
+    range.insertNode(dragged);
+    const selection = window.getSelection();
+    if (selection) {
+      selection.removeAllRanges();
+      const after = window.document.createRange();
+      after.setStartAfter(dragged);
+      after.collapse(true);
+      selection.addRange(after);
+    }
+    draggedImageRef.current = null;
+    setIsDirty(true);
+  }, []);
+
+  const handleEditorKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    const img = selectedImageEl;
+    if (!img) return;
+
+    const isArrow = e.key === 'ArrowLeft' || e.key === 'ArrowRight' || e.key === 'ArrowUp' || e.key === 'ArrowDown';
+    if (!isArrow) return;
+
+    e.preventDefault();
+    e.stopPropagation();
+
+    const step = e.shiftKey ? 5 : 1;
+    const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
+    const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
+
+    img.style.position = 'relative';
+    const currentLeft = parsePxStyle(img.style.left, 0);
+    const currentTop = parsePxStyle(img.style.top, 0);
+    img.style.left = `${Math.round(currentLeft + dx)}px`;
+    img.style.top = `${Math.round(currentTop + dy)}px`;
+    setIsDirty(true);
+  }, [parsePxStyle, selectedImageEl]);
+
+  useEffect(() => {
+    return () => {
+      window.removeEventListener('mousemove', handleImageResizeMove);
+      window.removeEventListener('mouseup', handleImageResizeEnd);
+      stopImageResize();
+    };
+  }, [handleImageResizeEnd, handleImageResizeMove, stopImageResize]);
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -482,9 +680,10 @@ export default function EditorPage() {
       editorRef.current.focus();
       // eslint-disable-next-line deprecation/deprecation
       window.document.execCommand('insertHTML', false, html);
+      prepareEditorImages();
       setIsDirty(true);
     }
-  }, [doc]);
+  }, [doc, prepareEditorImages]);
 
   // Apply a humanization suggestion by replacing the original text in the editor
   const handleApplySuggestion = useCallback((original: string, replacement: string) => {
@@ -714,6 +913,7 @@ export default function EditorPage() {
                 {selectedImageEl && (
                   <div className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 bg-slate-50 px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800">
                     <span className="text-[10px] font-semibold text-slate-500">Image</span>
+                    <span className="text-[10px] text-slate-500/90 dark:text-zinc-400">Drag to move, corner-drag to resize, Shift+drag locks ratio, arrow keys nudge</span>
                     <button
                       onClick={() => applyImageFormatting({ align: 'left' })}
                       className={cn('rounded p-1', imageAlign === 'left' ? 'bg-brand-600 text-white' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-zinc-700')}
@@ -816,7 +1016,12 @@ export default function EditorPage() {
                   suppressContentEditableWarning
                   onInput={handleInput}
                   onClick={handleEditorClick}
+                  onMouseDown={handleEditorMouseDown}
                   onScroll={handleEditorScroll}
+                  onDragStart={handleEditorDragStart}
+                  onDragOver={handleEditorDragOver}
+                  onDrop={handleEditorDrop}
+                  onKeyDown={handleEditorKeyDown}
                   onMouseUp={updateActiveLineFromSelection}
                   onKeyUp={updateActiveLineFromSelection}
                   onFocus={updateActiveLineFromSelection}

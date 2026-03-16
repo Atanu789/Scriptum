@@ -53,6 +53,7 @@ export interface PptParagraph {
 export interface PptMediaReference {
   relationshipId: string;
   target: string;
+  url?: string;
   type: 'image' | 'audio' | 'video' | 'other';
 }
 

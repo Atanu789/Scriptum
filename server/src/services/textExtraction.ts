@@ -4,6 +4,7 @@ import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import axios from 'axios';
 import JSZip from 'jszip';
+import { createCanvas, createImageData } from '@napi-rs/canvas/node-canvas';
 import { htmlToStructuredModel, plainTextToEditorHtml } from './documentStructure';
 import {
   ExtractedContent,
@@ -42,10 +43,23 @@ function normalizeHtml(html: string): string {
     .trim();
 }
 
-async function saveDocxImageToUploads(element: { contentType: string; read: (format: string) => Promise<Buffer> }): Promise<string> {
+function getUploadDir(): string {
   const uploadDir = path.join(process.cwd(), process.env.UPLOAD_DIR || 'uploads');
   if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+  return uploadDir;
+}
 
+function saveBufferToUploads(buffer: Buffer, prefix: string, ext: string): string {
+  const uploadDir = getUploadDir();
+  const filename = `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const absolutePath = path.join(uploadDir, filename);
+  fs.writeFileSync(absolutePath, buffer);
+  return `/uploads/${filename}`;
+}
+
+const importEsmModule = new Function('specifier', 'return import(specifier)') as <T>(specifier: string) => Promise<T>;
+
+async function saveDocxImageToUploads(element: { contentType: string; read: (format: string) => Promise<Buffer> }): Promise<string> {
   const extMap: Record<string, string> = {
     'image/png': 'png',
     'image/jpeg': 'jpg',
@@ -57,11 +71,229 @@ async function saveDocxImageToUploads(element: { contentType: string; read: (for
   };
 
   const ext = extMap[element.contentType] || 'png';
-  const filename = `docx-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
-  const absolutePath = path.join(uploadDir, filename);
   const buffer = await element.read('buffer');
-  fs.writeFileSync(absolutePath, buffer);
-  return `/uploads/${filename}`;
+  return saveBufferToUploads(buffer, 'docx', ext);
+}
+
+function guessMediaExtension(target: string, type: PptMediaReference['type']): string {
+  const cleanTarget = target.split('?')[0].split('#')[0];
+  const ext = path.posix.extname(cleanTarget).replace(/^\./, '').toLowerCase();
+  if (ext) return ext;
+  if (type === 'image') return 'png';
+  if (type === 'audio') return 'mp3';
+  if (type === 'video') return 'mp4';
+  return 'bin';
+}
+
+async function materializePptMediaReferences(
+  zip: JSZip,
+  slidePath: string,
+  media: PptMediaReference[],
+): Promise<PptMediaReference[]> {
+  const resolved: PptMediaReference[] = [];
+
+  for (const ref of media) {
+    const zipPath = path.posix.normalize(path.posix.join(path.posix.dirname(slidePath), ref.target));
+    const file = zip.file(zipPath);
+
+    if (!file || !['image', 'audio', 'video'].includes(ref.type)) {
+      resolved.push(ref);
+      continue;
+    }
+
+    try {
+      const buffer = await file.async('nodebuffer');
+      const ext = guessMediaExtension(ref.target, ref.type);
+      const url = saveBufferToUploads(buffer, `pptx-${ref.type}`, ext);
+      resolved.push({ ...ref, url });
+    } catch {
+      resolved.push(ref);
+    }
+  }
+
+  return resolved;
+}
+
+type PdfJsModule = {
+  getDocument: (source: Record<string, unknown>) => { promise: Promise<any> };
+  OPS: {
+    paintImageXObject: number;
+    paintInlineImageXObject: number;
+    paintInlineImageXObjectGroup: number;
+    paintImageXObjectRepeat: number;
+  };
+  ImageKind: {
+    GRAYSCALE_1BPP: number;
+    RGB_24BPP: number;
+    RGBA_32BPP: number;
+  };
+};
+
+type PdfImageLike = {
+  width: number;
+  height: number;
+  kind?: number;
+  data?: Uint8Array | Uint8ClampedArray;
+  bitmap?: unknown;
+};
+
+async function loadPdfJs(): Promise<PdfJsModule> {
+  return importEsmModule<PdfJsModule>('pdfjs-dist/legacy/build/pdf.mjs');
+}
+
+function getPdfStandardFontsDir(): string {
+  const standardFontsDir = path.join(process.cwd(), 'node_modules', 'pdfjs-dist', 'standard_fonts');
+  return standardFontsDir;
+}
+
+function convertPdfImageToRgba(image: PdfImageLike, imageKind: PdfJsModule['ImageKind']): Uint8ClampedArray | null {
+  if (!image.data || image.width <= 0 || image.height <= 0) return null;
+
+  if (image.kind === imageKind.RGBA_32BPP) {
+    return image.data instanceof Uint8ClampedArray
+      ? new Uint8ClampedArray(image.data)
+      : new Uint8ClampedArray(image.data.buffer.slice(image.data.byteOffset, image.data.byteOffset + image.data.byteLength));
+  }
+
+  const pixelCount = image.width * image.height;
+  const rgba = new Uint8ClampedArray(pixelCount * 4);
+
+  if (image.kind === imageKind.RGB_24BPP) {
+    let srcPos = 0;
+    let destPos = 0;
+    while (srcPos + 2 < image.data.length && destPos + 3 < rgba.length) {
+      rgba[destPos++] = image.data[srcPos++];
+      rgba[destPos++] = image.data[srcPos++];
+      rgba[destPos++] = image.data[srcPos++];
+      rgba[destPos++] = 255;
+    }
+    return rgba;
+  }
+
+  if (image.kind === imageKind.GRAYSCALE_1BPP) {
+    let destPixel = 0;
+    for (let row = 0; row < image.height; row++) {
+      const rowOffset = row * Math.ceil(image.width / 8);
+      for (let col = 0; col < image.width; col++) {
+        const byte = image.data[rowOffset + (col >> 3)] ?? 0;
+        const isWhite = (byte & (0x80 >> (col % 8))) !== 0;
+        const value = isWhite ? 255 : 0;
+        const dest = destPixel * 4;
+        rgba[dest] = value;
+        rgba[dest + 1] = value;
+        rgba[dest + 2] = value;
+        rgba[dest + 3] = 255;
+        destPixel += 1;
+      }
+    }
+    return rgba;
+  }
+
+  return null;
+}
+
+function pdfImageToPngBuffer(image: PdfImageLike, imageKind: PdfJsModule['ImageKind']): Buffer | null {
+  if (!image || image.width < 24 || image.height < 24) return null;
+
+  const canvas = createCanvas(image.width, image.height);
+  const context = canvas.getContext('2d');
+
+  if (image.bitmap) {
+    try {
+      context.drawImage(image.bitmap as never, 0, 0, image.width, image.height);
+      return canvas.toBuffer('image/png');
+    } catch {
+      return null;
+    }
+  }
+
+  const rgba = convertPdfImageToRgba(image, imageKind);
+  if (!rgba) return null;
+
+  const imageData = createImageData(rgba, image.width, image.height);
+  context.putImageData(imageData, 0, 0);
+  return canvas.toBuffer('image/png');
+}
+
+async function resolvePdfPageObject(page: { objs: { get: (id: string, callback?: (data: unknown) => void) => unknown }; commonObjs: { get: (id: string, callback?: (data: unknown) => void) => unknown } }, objectId: string): Promise<unknown> {
+  const store = objectId.startsWith('g_') ? page.commonObjs : page.objs;
+
+  try {
+    return store.get(objectId);
+  } catch {
+    return new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error(`Timed out resolving PDF object ${objectId}`)), 5000);
+      try {
+        store.get(objectId, (data: unknown) => {
+          clearTimeout(timeout);
+          resolve(data);
+        });
+      } catch (error) {
+        clearTimeout(timeout);
+        reject(error);
+      }
+    });
+  }
+}
+
+async function extractPdfEmbeddedImages(filePath: string): Promise<string[]> {
+  try {
+    const pdfjs = await loadPdfJs();
+    const bytes = new Uint8Array(fs.readFileSync(filePath));
+    const loadingTask = pdfjs.getDocument({
+      data: bytes,
+      useWorkerFetch: false,
+      isImageDecoderSupported: false,
+      disableFontFace: true,
+      useSystemFonts: false,
+      StandardFontDataFactory: class LocalStandardFontDataFactory {
+        async fetch({ filename }: { filename: string }): Promise<Uint8Array> {
+          return new Uint8Array(fs.readFileSync(path.join(getPdfStandardFontsDir(), filename)));
+        }
+      },
+    });
+    const pdfDocument = await loadingTask.promise;
+    const urls: string[] = [];
+
+    for (let pageNumber = 1; pageNumber <= pdfDocument.numPages; pageNumber++) {
+      const page = await pdfDocument.getPage(pageNumber);
+      const operatorList = await page.getOperatorList();
+      const seen = new Set<string>();
+
+      for (let index = 0; index < operatorList.fnArray.length; index++) {
+        const fn = operatorList.fnArray[index];
+        const args = operatorList.argsArray[index];
+        let image: PdfImageLike | null = null;
+        let dedupeKey = '';
+
+        if ((fn === pdfjs.OPS.paintImageXObject || fn === pdfjs.OPS.paintImageXObjectRepeat) && typeof args?.[0] === 'string') {
+          dedupeKey = `obj:${args[0]}`;
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+          image = await resolvePdfPageObject(page, args[0]).catch(() => null) as PdfImageLike | null;
+        } else if (fn === pdfjs.OPS.paintInlineImageXObject || fn === pdfjs.OPS.paintInlineImageXObjectGroup) {
+          image = (args?.[0] ?? null) as PdfImageLike | null;
+          dedupeKey = `inline:${pageNumber}:${index}:${image?.width ?? 0}x${image?.height ?? 0}:${image?.data?.length ?? 0}`;
+          if (seen.has(dedupeKey)) continue;
+          seen.add(dedupeKey);
+        } else {
+          continue;
+        }
+
+        const buffer = image ? pdfImageToPngBuffer(image, pdfjs.ImageKind) : null;
+        if (!buffer) continue;
+        urls.push(saveBufferToUploads(buffer, `pdf-image-p${pageNumber}`, 'png'));
+      }
+
+      page.cleanup();
+    }
+
+    await pdfDocument.destroy();
+    return urls;
+  } catch (error) {
+    console.error('PDF image extraction failed:', error);
+    return [];
+  }
 }
 
 // ─── Structuring ──────────────────────────────────────────────────────────────
@@ -169,7 +401,10 @@ export async function extractFromDocx(filePath: string): Promise<ExtractedConten
 
 export async function extractFromPdf(filePath: string): Promise<ExtractedContent> {
   const buffer = fs.readFileSync(filePath);
-  const result = await pdfParse(buffer);
+  const [result, embeddedImageUrls] = await Promise.all([
+    pdfParse(buffer),
+    extractPdfEmbeddedImages(filePath),
+  ]);
   const rawText = result.text;
 
   if (!rawText || rawText.trim().length === 0) {
@@ -178,12 +413,16 @@ export async function extractFromPdf(filePath: string): Promise<ExtractedContent
 
   const cleanedText = cleanText(rawText);
   const structuredSections = structureText(cleanedText);
+  const embeddedImagesHtml = embeddedImageUrls
+    .map((url, index) => `<figure data-pdf-image="${index + 1}"><img src="${url}" alt="Extracted PDF image ${index + 1}" style="max-width:100%;border-radius:8px;display:block;margin:16px auto;" /></figure>`)
+    .join('');
+  const editorHtml = normalizeHtml(`${embeddedImagesHtml}${plainTextToEditorHtml(cleanedText)}`);
 
   return {
     rawText,
     cleanedText,
-    editorHtml: plainTextToEditorHtml(cleanedText),
-    editorModel: htmlToStructuredModel(plainTextToEditorHtml(cleanedText)),
+    editorHtml,
+    editorModel: htmlToStructuredModel(editorHtml),
     structuredSections,
     wordCount: countWords(cleanedText),
     sourceType: 'pdf',
@@ -602,6 +841,17 @@ function presentationToEditorHtml(presentation: PptPresentationContent): string 
       parts.push(`<p>${slide.text}</p>`);
     }
 
+    for (const media of slide.media) {
+      if (!media.url) continue;
+      if (media.type === 'image') {
+        parts.push(`<figure><img src="${media.url}" alt="${slide.title || `Slide ${slide.slideNumber}`} image" style="max-width:100%;border-radius:8px;display:block;margin:16px auto;" /></figure>`);
+      } else if (media.type === 'video') {
+        parts.push(`<figure><video src="${media.url}" controls style="max-width:100%;border-radius:8px;display:block;margin:16px auto;"></video></figure>`);
+      } else if (media.type === 'audio') {
+        parts.push(`<figure><audio src="${media.url}" controls style="width:100%;display:block;margin:16px auto;"></audio></figure>`);
+      }
+    }
+
     parts.push('</section>');
     return parts.join('');
   }).join('');
@@ -630,7 +880,8 @@ export async function extractFromPptx(filePath: string): Promise<ExtractedConten
     const slidePath = slideFiles[i];
     const slideXml = await zip.files[slidePath].async('string');
     const rels = await parseSlideRelationships(zip, slidePath);
-    const media = parseSlideMediaReferences(slideXml, rels);
+    const mediaRefs = parseSlideMediaReferences(slideXml, rels);
+    const media = await materializePptMediaReferences(zip, slidePath, mediaRefs);
     if (media.length > 0) hasMedia = true;
     if (media.some((m) => m.type === 'audio')) hasAudio = true;
 

@@ -20,6 +20,45 @@ import {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
+function normalizeAssetUrl(url?: string | null): string | undefined {
+  if (!url) return undefined;
+  if (/^(?:[a-z]+:)?\/\//i.test(url) || url.startsWith('data:') || url.startsWith('blob:')) {
+    return url;
+  }
+  if (url.startsWith('/uploads/')) return `${BASE_URL}${url}`;
+  if (url.startsWith('uploads/')) return `${BASE_URL}/${url}`;
+  return url;
+}
+
+function normalizeHtmlAssetUrls(html?: string | null): string {
+  if (!html) return '';
+  return html.replace(/\b(src|href|poster)=(['"])([^'"]+)\2/gi, (match, attr, quote, value) => {
+    const normalized = normalizeAssetUrl(value);
+    return normalized ? `${attr}=${quote}${normalized}${quote}` : match;
+  });
+}
+
+function normalizeDocument(doc: Document): Document {
+  return {
+    ...doc,
+    mediaUrl: normalizeAssetUrl(doc.mediaUrl),
+    cleanedText: normalizeHtmlAssetUrls(doc.cleanedText),
+    editorHtml: normalizeHtmlAssetUrls(doc.editorHtml),
+    presentationContent: doc.presentationContent
+      ? {
+          ...doc.presentationContent,
+          slides: doc.presentationContent.slides.map((slide) => ({
+            ...slide,
+            media: slide.media.map((media) => ({
+              ...media,
+              url: normalizeAssetUrl(media.url),
+            })),
+          })),
+        }
+      : doc.presentationContent,
+  };
+}
+
 // ─── Axios instance ───────────────────────────────────────────────────────────
 
 const api: AxiosInstance = axios.create({
@@ -124,7 +163,7 @@ export const documentApi = {
       params: { page, limit },
     });
     return {
-      documents: data.data || [],
+      documents: (data.data || []).map((doc) => normalizeDocument(doc as Document) as DocumentSummary),
       total: data.total || 0,
       totalPages: data.totalPages || 1,
     };
@@ -132,7 +171,7 @@ export const documentApi = {
 
   get: async (id: string): Promise<Document> => {
     const { data } = await api.get<ApiResponse<Document>>(`/document/${id}`);
-    return unwrap(data);
+    return normalizeDocument(unwrap(data));
   },
 
   update: async (

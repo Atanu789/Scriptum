@@ -127,6 +127,7 @@ export interface PptMediaReference {
   relationshipId: string;
   target: string;
   type: 'image' | 'audio' | 'video' | 'other';
+  url?: string;
 }
 
 export interface PptSlideContent {

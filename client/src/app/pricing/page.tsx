@@ -6,15 +6,8 @@ import Link from 'next/link';
 import { paymentApi } from '@/lib/api';
 import { useAuth } from '@/context/AuthContext';
 import type { PlanConfig, SubscriptionInfo, PaymentRecord } from '@/types';
-import {
-  Check, X, ChevronDown, Zap, GraduationCap, Building2,
-  Sparkles, ShieldCheck, FileOutput,
-} from 'lucide-react';
+import { Check, X, ChevronDown, Zap, GraduationCap, Building2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { BorderBeam } from '@/components/ui/border-beam';
-import { BackgroundDots, BackgroundGrid } from '@/components/ui/background-dots';
-import { CometCard } from '@/components/ui/comet-card';
-import { CanvasRevealCard } from '@/components/ui/canvas-reveal-card';
 
 declare global {
   interface Window {
@@ -41,112 +34,41 @@ type DisplayPlan = PlanEntry & {
   description: string;
   ctaLabel: string;
   bestFor: string;
-  isPremium?: boolean;
 };
 
 const PLAN_COMPARE_ROWS = [
-  {
-    label: 'Uploads / month',
-    values: {
-      free: '5',
-      pro: '50',
-      custom: 'Custom',
-    },
-  },
-  {
-    label: 'AI analyses / month',
-    values: {
-      free: '5',
-      pro: '50',
-      custom: 'Custom',
-    },
-  },
-  {
-    label: 'Grammar fix',
-    values: {
-      free: false,
-      pro: true,
-      custom: true,
-    },
-  },
-  {
-    label: 'Humanize text',
-    values: {
-      free: false,
-      pro: true,
-      custom: true,
-    },
-  },
-  {
-    label: 'AI teleprompter',
-    values: {
-      free: false,
-      pro: true,
-      custom: true,
-    },
-  },
-  {
-    label: 'TTS narration',
-    values: {
-      free: false,
-      pro: true,
-      custom: true,
-    },
-  },
-  {
-    label: 'PDF + DOCX export',
-    values: {
-      free: true,
-      pro: true,
-      custom: true,
-    },
-  },
-  {
-    label: 'PPTX export',
-    values: {
-      free: false,
-      pro: true,
-      custom: true,
-    },
-  },
-  {
-    label: 'Support',
-    values: {
-      free: 'Standard',
-      pro: 'Priority',
-      custom: 'Priority+',
-    },
-  },
-  {
-    label: 'Teams / onboarding',
-    values: {
-      free: false,
-      pro: false,
-      custom: true,
-    },
-  },
+  { label: 'Uploads / month', values: { free: '5', pro: '50', custom: 'Custom' } },
+  { label: 'AI analyses / month', values: { free: '5', pro: '50', custom: 'Custom' } },
+  { label: 'Grammar fix', values: { free: false, pro: true, custom: true } },
+  { label: 'Humanize text', values: { free: false, pro: true, custom: true } },
+  { label: 'AI teleprompter', values: { free: false, pro: true, custom: true } },
+  { label: 'TTS narration', values: { free: false, pro: true, custom: true } },
+  { label: 'PDF + DOCX export', values: { free: true, pro: true, custom: true } },
+  { label: 'PPTX export', values: { free: false, pro: true, custom: true } },
+  { label: 'Support', values: { free: 'Standard', pro: 'Priority', custom: 'Priority+' } },
+  { label: 'Teams / onboarding', values: { free: false, pro: false, custom: true } },
 ] as const;
 
 function loadRazorpayScript(): Promise<boolean> {
   return new Promise((resolve) => {
-    if (document.getElementById('razorpay-sdk')) { resolve(true); return; }
-    const s = document.createElement('script');
-    s.id = 'razorpay-sdk';
-    s.src = 'https://checkout.razorpay.com/v1/checkout.js';
-    s.onload = () => resolve(true);
-    s.onerror = () => resolve(false);
-    document.body.appendChild(s);
+    if (document.getElementById('razorpay-sdk')) {
+      resolve(true);
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.id = 'razorpay-sdk';
+    script.src = 'https://checkout.razorpay.com/v1/checkout.js';
+    script.onload = () => resolve(true);
+    script.onerror = () => resolve(false);
+    document.body.appendChild(script);
   });
 }
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
 function PlanFeature({ included, label }: { included: boolean; label: string }) {
   return (
-    <li className="flex items-center gap-2 text-sm">
-      {included
-        ? <Check className="h-4 w-4 shrink-0 text-emerald-500" />
-        : <X className="h-4 w-4 shrink-0 text-slate-400 dark:text-white/30" />}
+    <li className="flex items-center gap-1.5 text-xs leading-tight">
+      {included ? <Check className="h-3.5 w-3.5 shrink-0 text-emerald-500" /> : <X className="h-3.5 w-3.5 shrink-0 text-slate-400 dark:text-white/30" />}
       <span className={included ? 'text-slate-700 dark:text-white/75' : 'text-slate-400 dark:text-white/35'}>{label}</span>
     </li>
   );
@@ -155,6 +77,7 @@ function PlanFeature({ included, label }: { included: boolean; label: string }) 
 function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
   const pct = limit === -1 ? 0 : Math.min(100, Math.round((used / limit) * 100));
   const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+
   return (
     <div className="space-y-1">
       <div className="flex justify-between text-xs text-slate-500 dark:text-white/40">
@@ -163,7 +86,7 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
       </div>
       {limit !== -1 && (
         <div className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-white/[0.12]">
-          <div className={`h-full rounded-full transition-all ${barColor}`} style={{ width: `${pct}%` }} />
+          <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
         </div>
       )}
     </div>
@@ -172,15 +95,10 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
 
 function PlanCompareCell({ value }: { value: boolean | string }) {
   if (typeof value === 'boolean') {
-    return value
-      ? <Check className="mx-auto h-4 w-4 text-emerald-500" />
-      : <X className="mx-auto h-4 w-4 text-slate-300 dark:text-white/20" />;
+    return value ? <Check className="mx-auto h-4 w-4 text-emerald-500" /> : <X className="mx-auto h-4 w-4 text-slate-300 dark:text-white/20" />;
   }
-
   return <span className="text-xs font-semibold text-slate-700 dark:text-white/75">{value}</span>;
 }
-
-// ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PricingPage() {
   const { user } = useAuth();
@@ -197,8 +115,6 @@ export default function PricingPage() {
   const [successMsg, setSuccessMsg] = useState('');
   const [error, setError] = useState('');
 
-  // ── Fetch data ──────────────────────────────────────────────────────────────
-
   const fetchData = useCallback(async () => {
     try {
       setLoading(true);
@@ -206,9 +122,13 @@ export default function PricingPage() {
         paymentApi.getPlans(),
         user ? paymentApi.getSubscription() : Promise.resolve(null),
       ]);
+
       setPlans(Object.entries(plansData).map(([id, cfg]) => ({ ...cfg, id })));
       setSub(subData);
-      if (user) setHistory(await paymentApi.getHistory());
+
+      if (user) {
+        setHistory(await paymentApi.getHistory());
+      }
     } catch {
       setError('Failed to load plan data. Please refresh.');
     } finally {
@@ -216,12 +136,16 @@ export default function PricingPage() {
     }
   }, [user]);
 
-  useEffect(() => { fetchData(); }, [fetchData]);
-
-  // ── Checkout flow ───────────────────────────────────────────────────────────
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
   const handleUpgrade = async () => {
-    if (!user) { router.push('/login?redirect=/pricing'); return; }
+    if (!user) {
+      router.push('/login?redirect=/pricing');
+      return;
+    }
+
     try {
       setPaying(true);
       setError('');
@@ -237,10 +161,10 @@ export default function PricingPage() {
           amount: order.amount,
           currency: order.currency,
           name: 'Intern Narrator',
-          description: 'Pro Plan — monthly subscription',
+          description: 'Pro Plan - monthly subscription',
           order_id: order.orderId,
           prefill: { name: user.name, email: user.email },
-          theme: { color: '#6d28d9' },
+          theme: { color: '#4f46e5' },
           handler: async (resp) => {
             try {
               await paymentApi.verify({
@@ -256,6 +180,7 @@ export default function PricingPage() {
           },
           modal: { ondismiss: () => resolve() },
         });
+
         rz.open();
       });
     } catch (err) {
@@ -270,6 +195,7 @@ export default function PricingPage() {
       router.push('/login?redirect=/pricing');
       return;
     }
+
     try {
       setRedeeming(true);
       setError('');
@@ -285,12 +211,10 @@ export default function PricingPage() {
     }
   };
 
-  // ── Render ──────────────────────────────────────────────────────────────────
-
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-white dark:bg-[#09090f]">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-violet-500 border-t-transparent" />
+      <main className="flex min-h-screen items-center justify-center">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
       </main>
     );
   }
@@ -314,9 +238,9 @@ export default function PricingPage() {
       grammarFix: true,
       humanizeText: true,
     },
-    description: 'Tailored plan for institutes and teams.',
+    description: 'Unlimited usage with custom onboarding and billing.',
     ctaLabel: 'Contact sales',
-    bestFor: 'Best for teams and institutes',
+    bestFor: 'For teams and institutes',
   };
 
   const displayPlans: DisplayPlan[] = plans
@@ -324,49 +248,39 @@ export default function PricingPage() {
       if (plan.id === 'free') {
         return {
           ...plan,
-          description: 'For individuals exploring AI tools.',
+          description: 'Essential tools for getting started.',
           ctaLabel: 'Start free',
-          bestFor: 'Best for getting started',
+          bestFor: 'For individual creators',
         };
       }
+
       return {
         ...plan,
-          description: 'Power plan with 50 uploads + 50 AI analyses every month.',
-        ctaLabel: `Go premium - Rs.${plan.priceINR}/month`,
-        bestFor: 'Best for power users',
-        isPremium: true,
+        description: '50 uploads, 50 AI analyses, plus full premium toolkit.',
+        ctaLabel: 'Upgrade to Pro',
+        bestFor: 'For regular publishing',
       };
     })
     .concat(customPlan);
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-white px-4 py-16 text-slate-900 dark:bg-[#09090f] dark:text-white">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-72 opacity-40 dark:opacity-20"
-        style={{ background: 'radial-gradient(ellipse 60% 50% at 50% -10%, rgba(99,102,241,0.32) 0%, transparent 80%)' }}
-      />
-      <BackgroundDots gap={22} dotSize={1} className="opacity-60 dark:opacity-100" />
-      <BackgroundGrid isDark className="hidden dark:block" />
-      <div aria-hidden className="pointer-events-none absolute -left-24 top-20 h-72 w-72 rounded-full bg-indigo-500/15 blur-3xl" />
-      <div aria-hidden className="pointer-events-none absolute -right-24 top-72 h-72 w-72 rounded-full bg-violet-500/15 blur-3xl" />
-      <div className="mx-auto max-w-6xl space-y-12">
-
-        {/* Header */}
-        <header className="text-center space-y-3">
-          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-indigo-200 bg-indigo-50 px-3 py-0.5 text-[11px] font-semibold text-indigo-600 dark:border-indigo-500/20 dark:bg-indigo-500/10 dark:text-indigo-400">
+    <main className="min-h-screen px-4 py-8 text-slate-900 dark:text-white">
+      <div className="mx-auto max-w-5xl space-y-6">
+        <header className="space-y-2 text-center">
+          <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-0.5 text-[11px] font-semibold text-slate-600 dark:border-white/[0.12] dark:bg-white/[0.04] dark:text-white/70">
             <Zap className="h-3.5 w-3.5" /> Pricing
           </div>
-          <h1 className="text-4xl font-extrabold tracking-tight">Choose your plan</h1>
-          <p className="mx-auto max-w-2xl text-slate-500 dark:text-white/35">
-            Transparent plans for creators, learners, and teams. Upgrade anytime to unlock premium narration,
-            PowerPoint export, and advanced AI workflows with 50 uploads and 50 analyses per month on Pro.
+          <h1 className="text-3xl font-bold tracking-tight">Choose your plan</h1>
+          <p className="mx-auto max-w-2xl text-sm text-slate-500 dark:text-white/40">
+            Simple, transparent pricing for individuals and teams.
           </p>
+
           {error && (
             <div className="mx-auto max-w-md rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-700 dark:bg-red-950/60 dark:text-red-300">
               {error}
             </div>
           )}
+
           {successMsg && (
             <div className="mx-auto max-w-md rounded-lg border border-emerald-300 bg-emerald-50 px-4 py-2 text-sm text-emerald-700 dark:border-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
               {successMsg}
@@ -374,169 +288,122 @@ export default function PricingPage() {
           )}
         </header>
 
-        <section className="grid gap-3 sm:grid-cols-3">
-          <CanvasRevealCard className="p-4 backdrop-blur-xl">
-            <p className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-500 dark:text-indigo-400">
-              <Sparkles className="h-3.5 w-3.5" /> AI Stack
-            </p>
-            <p className="text-sm text-slate-600 dark:text-white/60">Humanize, grammar fixes, and analysis scoring in one flow.</p>
-          </CanvasRevealCard>
-          <CanvasRevealCard className="p-4 backdrop-blur-xl">
-            <p className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-500 dark:text-indigo-400">
-              <FileOutput className="h-3.5 w-3.5" /> Export Ready
-            </p>
-            <p className="text-sm text-slate-600 dark:text-white/60">PDF and DOCX for all, PPTX unlocked on Pro and above.</p>
-          </CanvasRevealCard>
-          <CanvasRevealCard className="p-4 backdrop-blur-xl">
-            <p className="mb-1 inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-500 dark:text-indigo-400">
-              <ShieldCheck className="h-3.5 w-3.5" /> Secure Billing
-            </p>
-            <p className="text-sm text-slate-600 dark:text-white/60">Razorpay-protected payments with easy cancellation anytime.</p>
-          </CanvasRevealCard>
-        </section>
-
-        {/* Active-plan banner */}
         {sub && (
-          <div className={`rounded-xl border px-5 py-4 text-sm flex flex-wrap items-center justify-between gap-3
-            ${effectivePlan === 'pro'
-              ? 'border-indigo-300/80 bg-indigo-50/70 text-indigo-700 backdrop-blur-xl dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300'
-              : 'border-slate-200/80 bg-white/65 text-slate-700 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/70'}`}>
+          <div
+            className={cn(
+              'flex flex-wrap items-center justify-between gap-3 rounded-xl border px-4 py-3 text-sm',
+              effectivePlan === 'pro'
+                ? 'border-indigo-300/80 bg-indigo-50/90 text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300'
+                : 'border-slate-200/80 bg-white/90 text-slate-700 dark:border-white/[0.08] dark:bg-white/[0.05] dark:text-white/70',
+            )}
+          >
             <div className="space-y-0.5">
-              <p className="font-semibold capitalize">{effectivePlan} Plan {expired && activePlan !== 'free' && '(expired)'}</p>
-              {expiry && !expired && (
-                <p className="text-slate-500 text-xs dark:text-white/35">Renews {expiry.toLocaleDateString()}</p>
-              )}
-              {expired && activePlan !== 'free' && (
-                <p className="text-amber-400 text-xs">Your Pro plan expired — you have been moved to Free.</p>
-              )}
+              <p className="font-semibold capitalize">{effectivePlan} plan {expired && activePlan !== 'free' && '(expired)'}</p>
+              {expiry && !expired && <p className="text-xs text-slate-500 dark:text-white/35">Renews {expiry.toLocaleDateString()}</p>}
+              {expired && activePlan !== 'free' && <p className="text-xs text-amber-500">Your Pro plan expired and moved to Free.</p>}
             </div>
-            <div className="flex gap-6">
+
+            <div className="flex gap-3">
               <UsageMeter label="AI analyses" used={sub.aiUsageThisMonth} limit={sub.limits.aiUsagePerMonth} />
               <UsageMeter label="Uploads" used={sub.uploadUsageThisMonth} limit={sub.limits.uploadsPerMonth} />
             </div>
           </div>
         )}
 
-        {/* Plan cards */}
-        <div className="grid items-stretch gap-4 sm:grid-cols-3">
+        <div className="grid items-stretch gap-3 sm:grid-cols-3">
           {displayPlans.map((plan) => {
             const isCurrent = effectivePlan === plan.id;
             const isPro = plan.id === 'pro';
             const isCustom = plan.id === 'custom';
-
-            const cardBody = (
-              <>
-                {isPro && <BorderBeam duration={8} colorFrom="#6366f1" colorTo="#a855f7" />}
-                {isPro && (
-                  <span className="absolute left-1/2 -top-px -translate-x-1/2 rounded-b-full bg-indigo-600 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
-                    Most popular
-                  </span>
-                )}
-
-                <div>
-                  <div className={cn(
-                    'mb-3 mt-3 inline-flex h-8 w-8 items-center justify-center rounded-xl',
-                    isPro ? 'bg-indigo-600 shadow-md shadow-indigo-500/30' : 'bg-slate-100 dark:bg-white/[0.06]',
-                  )}>
-                    {isCustom ? <Building2 className={cn('h-4 w-4', isPro ? 'text-white' : 'text-slate-500 dark:text-white/40')} />
-                      : plan.id === 'free' ? <GraduationCap className={cn('h-4 w-4', isPro ? 'text-white' : 'text-slate-500 dark:text-white/40')} />
-                      : <Zap className={cn('h-4 w-4', isPro ? 'text-white' : 'text-slate-500 dark:text-white/40')} />}
-                  </div>
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-white/25">{plan.name}</p>
-                  <p className="mt-1 text-[11px] font-medium text-slate-500 dark:text-white/35">{plan.bestFor}</p>
-                  <div className="mt-2 flex items-end gap-1">
-                    {isCustom ? (
-                      <span className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">Custom</span>
-                    ) : plan.priceINR === 0 ? (
-                      <span className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">₹0</span>
-                    ) : (
-                      <>
-                        <span className="text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white">₹{plan.priceINR}</span>
-                        <span className="mb-0.5 text-xs text-slate-400 dark:text-white/25">/month</span>
-                      </>
-                    )}
-                  </div>
-                  <p className="mt-1 text-xs text-slate-500 dark:text-white/30">{plan.description}</p>
-                </div>
-
-                <div className={cn('my-4 h-px', isPro ? 'bg-indigo-100 dark:bg-indigo-500/15' : 'bg-slate-100 dark:bg-white/[0.05]')} />
-
-                <ul className="flex flex-1 flex-col gap-2">
-                  <PlanFeature included label={`${plan.limits.uploadsPerMonth === -1 ? 'Custom' : plan.limits.uploadsPerMonth} uploads / month`} />
-                  <PlanFeature included label={`${plan.limits.aiUsagePerMonth === -1 ? 'Custom' : plan.limits.aiUsagePerMonth} AI analyses / month`} />
-                  <PlanFeature included label="PDF and DOCX export" />
-                  <PlanFeature included={plan.limits.grammarFix} label="Grammar fix" />
-                  <PlanFeature included={plan.limits.humanizeText} label="Humanize text" />
-                  <PlanFeature included={plan.limits.teleprompterAI} label="AI teleprompter" />
-                  <PlanFeature included={plan.limits.ttsNarration} label="TTS narration" />
-                  <PlanFeature included={plan.limits.exportPPT} label="PPTX export" />
-                  <PlanFeature included={isPro || isCustom} label="Priority support" />
-                  <PlanFeature included={isCustom} label="Team onboarding" />
-                </ul>
-
-                <div>
-                  {isCurrent ? (
-                    <div className="mt-5 block rounded-xl border border-slate-200 px-4 py-2 text-center text-xs font-semibold text-slate-700 dark:border-white/[0.08] dark:text-white/55">
-                      Current plan
-                    </div>
-                  ) : isCustom ? (
-                    <Link
-                      href="mailto:sales@ultimoversio.com?subject=Custom%20Plan%20Inquiry"
-                      className="mt-5 block rounded-xl border border-slate-200 px-4 py-2 text-center text-xs font-semibold text-slate-700 transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:bg-slate-50 dark:border-white/[0.08] dark:text-white/55 dark:hover:bg-white/[0.05]"
-                    >
-                      Contact sales
-                    </Link>
-                  ) : isPro ? (
-                    <button
-                      onClick={handleUpgrade}
-                      disabled={paying}
-                      className="mt-5 block w-full rounded-xl bg-indigo-600 px-4 py-2 text-center text-xs font-semibold text-white transition-all hover:-translate-y-0.5 hover:bg-indigo-500 active:scale-[0.97]
-                        disabled:opacity-60 disabled:cursor-not-allowed"
-                    >
-                      {paying ? 'Processing...' : plan.ctaLabel}
-                    </button>
-                  ) : (
-                    <div className="mt-5 block rounded-xl border border-slate-200 px-4 py-2 text-center text-xs font-semibold text-slate-700 dark:border-white/[0.08] dark:text-white/55">
-                      Always free
-                    </div>
-                  )}
-                </div>
-              </>
-            );
+            const icon = isCustom ? <Building2 className="h-4 w-4" /> : plan.id === 'free' ? <GraduationCap className="h-4 w-4" /> : <Zap className="h-4 w-4" />;
 
             return (
-              isPro ? (
-                <CometCard
-                  key={plan.id}
-                  cometCount={16}
-                  highlight
-                  className="h-full scale-100 border-indigo-400/60 bg-white/80 shadow-xl shadow-indigo-500/20 backdrop-blur-xl sm:scale-[1.04] sm:-translate-y-2 dark:border-indigo-500/50 dark:bg-[#0d0d1a]/90"
-                >
-                  <div className="relative flex h-full flex-col">
-                    {cardBody}
+              <article
+                key={plan.id}
+                className={cn(
+                  'flex h-full flex-col rounded-2xl border bg-white p-4 dark:bg-[#0f1018]',
+                  isPro ? 'border-indigo-300 shadow-md dark:border-indigo-500/40' : 'border-slate-200 dark:border-white/[0.08]',
+                )}
+              >
+                <div className="mb-3 flex items-start justify-between gap-3">
+                  <div>
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/40">{plan.name}</p>
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-white/35">{plan.bestFor}</p>
                   </div>
-                </CometCard>
-              ) : (
-                <CometCard
-                  key={plan.id}
-                  cometCount={8}
-                  className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/65 p-5 backdrop-blur-xl dark:border-white/[0.08] dark:bg-[#0e0e16]/80"
-                >
-                  {cardBody}
-                </CometCard>
-              )
+                  <div
+                    className={cn(
+                      'inline-flex h-7 w-7 items-center justify-center rounded-lg',
+                      isPro ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-white/50',
+                    )}
+                  >
+                    {icon}
+                  </div>
+                </div>
+
+                <div className="mb-2 flex items-end gap-1">
+                  {isCustom ? (
+                    <span className="text-2xl font-bold text-slate-900 dark:text-white">Custom</span>
+                  ) : plan.priceINR === 0 ? (
+                    <span className="text-2xl font-bold text-slate-900 dark:text-white">₹0</span>
+                  ) : (
+                    <>
+                      <span className="text-2xl font-bold text-slate-900 dark:text-white">₹{plan.priceINR}</span>
+                      <span className="mb-0.5 text-xs text-slate-500 dark:text-white/35">/month</span>
+                    </>
+                  )}
+                </div>
+
+                <p className="mb-3 text-xs text-slate-500 dark:text-white/35">{plan.description}</p>
+
+                <ul className="mb-4 flex flex-1 flex-col gap-1.5">
+                  <PlanFeature included label={`Uploads: ${plan.limits.uploadsPerMonth === -1 ? 'Unlimited' : `${plan.limits.uploadsPerMonth}/month`}`} />
+                  <PlanFeature included label={`AI analyses: ${plan.limits.aiUsagePerMonth === -1 ? 'Unlimited' : `${plan.limits.aiUsagePerMonth}/month`}`} />
+                  <PlanFeature included label="PDF + DOCX export" />
+                  <PlanFeature included={plan.limits.grammarFix} label="Grammar correction" />
+                  <PlanFeature included={plan.limits.humanizeText} label="Humanize rewrite" />
+                  <PlanFeature included={plan.limits.teleprompterAI} label="AI teleprompter" />
+                  <PlanFeature included={plan.limits.ttsNarration} label="Text-to-speech" />
+                  <PlanFeature included={plan.limits.exportPPT} label="PPTX export" />
+                </ul>
+
+                {isCurrent ? (
+                  <div className="rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 dark:border-white/[0.08] dark:text-white/65">
+                    Current plan
+                  </div>
+                ) : isCustom ? (
+                  <Link
+                    href="mailto:sales@ultimoversio.com?subject=Custom%20Plan%20Inquiry"
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.08] dark:text-white/70 dark:hover:bg-white/[0.05]"
+                  >
+                    Contact sales
+                  </Link>
+                ) : isPro ? (
+                  <button
+                    onClick={handleUpgrade}
+                    disabled={paying}
+                    className="rounded-lg bg-indigo-600 px-3 py-2 text-center text-xs font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {paying ? 'Processing...' : `${plan.ctaLabel} • ₹${plan.priceINR}/mo`}
+                  </button>
+                ) : (
+                  <div className="rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 dark:border-white/[0.08] dark:text-white/65">
+                    Always free
+                  </div>
+                )}
+              </article>
             );
           })}
         </div>
 
-        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200/80 bg-white/70 p-4 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
-          <div className="mb-3 flex items-center justify-between gap-3">
+        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200/80 bg-white/90 p-3 dark:border-white/[0.08] dark:bg-white/[0.05]">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
             <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/35">Have a premium redeem code?</p>
-            <span className="rounded-full border border-indigo-200 bg-indigo-50 px-2.5 py-0.5 text-[10px] font-semibold text-indigo-600 dark:border-indigo-500/25 dark:bg-indigo-500/10 dark:text-indigo-300">
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70">
               Instant activation
             </span>
           </div>
-          <div className="flex flex-col gap-2 sm:flex-row">
+
+          <div className="flex flex-col gap-1.5 sm:flex-row">
             <input
               value={redeemCode}
               onChange={(e) => setRedeemCode(e.target.value)}
@@ -546,17 +413,17 @@ export default function PricingPage() {
             <button
               onClick={handleRedeem}
               disabled={redeeming || !redeemCode.trim()}
-              className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition-all hover:bg-indigo-500 active:scale-[0.98] disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {redeeming ? 'Applying...' : 'Redeem'}
             </button>
           </div>
         </section>
 
-        <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/70 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
+        <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/90 dark:border-white/[0.08] dark:bg-white/[0.05]">
           <div className="border-b border-slate-200/80 px-5 py-4 dark:border-white/[0.08]">
-            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Compare plans at a glance</h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-white/40">Quick scan of what changes between Free, Pro, and Custom.</p>
+            <h2 className="text-base font-semibold text-slate-900 dark:text-white">Compare plans at a glance</h2>
+            <p className="mt-1 text-xs text-slate-500 dark:text-white/40">Quick scan of what changes between Free, Pro, and Custom.</p>
           </div>
 
           <div className="overflow-x-auto">
@@ -573,7 +440,7 @@ export default function PricingPage() {
                   key={row.label}
                   className={cn(
                     'grid grid-cols-[1.4fr_1fr_1fr_1fr] border-b border-slate-100 dark:border-white/[0.06]',
-                    index % 2 === 0 ? 'bg-white/60 dark:bg-transparent' : 'bg-slate-50/50 dark:bg-white/[0.015]',
+                    index % 2 === 0 ? 'bg-white dark:bg-transparent' : 'bg-slate-50/60 dark:bg-white/[0.015]',
                   )}
                 >
                   <div className="px-5 py-3 text-sm font-medium text-slate-700 dark:text-white/80">{row.label}</div>
@@ -586,39 +453,45 @@ export default function PricingPage() {
           </div>
         </section>
 
-        {/* Trust strip */}
-        <div className="flex flex-wrap justify-center gap-8 text-slate-500 text-xs dark:text-white/30">
+        <div className="flex flex-wrap justify-center gap-3 text-xs text-slate-500 dark:text-white/30">
           <span>256-bit encrypted payments via Razorpay</span>
           <span>Cancel anytime</span>
           <span>Supports UPI, cards, net banking and wallets</span>
           <span>Made for Indian learners</span>
         </div>
 
-        {/* Payment history accordion */}
         {history.length > 0 && (
-          <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white/65 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
+          <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white/90 dark:border-white/[0.08] dark:bg-white/[0.05]">
             <button
               onClick={() => setHistoryOpen((o) => !o)}
-              className="flex w-full items-center justify-between px-6 py-4 text-sm font-medium transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+              className="flex w-full items-center justify-between px-5 py-3 text-sm font-medium transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.04]"
             >
               <span>Payment history ({history.length})</span>
               <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${historyOpen ? 'rotate-180' : ''}`} />
             </button>
+
             {historyOpen && (
               <div className="divide-y divide-slate-100 dark:divide-white/[0.05]">
                 {history.map((rec) => (
-                  <div key={rec._id} className="flex flex-wrap items-center justify-between px-6 py-3 text-sm gap-2">
+                  <div key={rec._id} className="flex flex-wrap items-center justify-between gap-2 px-6 py-3 text-sm">
                     <div className="space-y-0.5">
-                      <p className="font-medium capitalize">{rec.plan} Plan</p>
-                      <p className="text-slate-500 text-xs dark:text-white/35">{new Date(rec.createdAt).toLocaleString()}</p>
+                      <p className="font-medium capitalize">{rec.plan} plan</p>
+                      <p className="text-xs text-slate-500 dark:text-white/35">{new Date(rec.createdAt).toLocaleString()}</p>
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-slate-700 dark:text-white/70">₹{(rec.amount / 100).toFixed(2)}</span>
-                      <span className={`rounded-full px-2 py-0.5 text-xs font-medium
-                        ${rec.status === 'captured' ? 'bg-emerald-900 text-emerald-300'
-                          : rec.status === 'failed' ? 'bg-red-900 text-red-300'
-                          : rec.status === 'refunded' ? 'bg-amber-900 text-amber-300'
-                          : 'bg-slate-100 text-slate-500 dark:bg-white/[0.08] dark:text-white/40'}`}>
+                      <span
+                        className={cn(
+                          'rounded-full px-2 py-0.5 text-xs font-medium',
+                          rec.status === 'captured'
+                            ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900 dark:text-emerald-300'
+                            : rec.status === 'failed'
+                            ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-300'
+                            : rec.status === 'refunded'
+                            ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-300'
+                            : 'bg-slate-100 text-slate-500 dark:bg-white/[0.08] dark:text-white/40',
+                        )}
+                      >
                         {rec.status}
                       </span>
                     </div>
@@ -632,7 +505,6 @@ export default function PricingPage() {
         <p className="text-center text-[11px] text-slate-400 dark:text-white/25">
           Need procurement support, GST invoice, or bulk onboarding? Use Custom plan and we will help you set up.
         </p>
-
       </div>
     </main>
   );

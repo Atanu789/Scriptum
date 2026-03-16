@@ -291,5 +291,28 @@
 .editor-image-selected {
   outline: 2px solid rgb(79 70 229);
   outline-offset: 3px;
+  position: relative;
+}
+
+.editor-image-draggable {
+  cursor: move;
+}
+
+.editor-image-selected.editor-image-draggable {
+  cursor: move;
+}
+
+.editor-image-selected::after {
+  content: '';
+  position: absolute;
+  right: -8px;
+  bottom: -8px;
+  width: 12px;
+  height: 12px;
+  border-radius: 9999px;
+  border: 2px solid rgb(255 255 255);
+  background: rgb(79 70 229);
+  box-shadow: 0 1px 3px rgb(15 23 42 / 0.35);
+  cursor: nwse-resize;
 }
 
