@@ -10,6 +10,8 @@ import {
   PLAN_PRICES_PAISE,
 } from '../services/razorpayService';
 
+const PREMIUM_REDEEM_CODE = 'GOFREEULTI';
+
 // ─── GET /api/payment/plans ───────────────────────────────────────────────────
 
 export async function getPlans(_req: Request, res: Response): Promise<void> {
@@ -144,6 +146,77 @@ export async function verifyPayment(req: AuthenticatedRequest, res: Response): P
   } catch (err) {
     console.error('verifyPayment error:', err);
     res.status(500).json({ success: false, error: 'Payment verification failed' });
+  }
+}
+
+// ─── POST /api/payment/redeem ───────────────────────────────────────────────
+
+export async function redeemCode(req: AuthenticatedRequest, res: Response): Promise<void> {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
+
+    const { code } = req.body as { code?: string };
+    const normalized = (code || '').trim().toUpperCase();
+
+    if (!normalized) {
+      res.status(400).json({ success: false, error: 'Please enter a redeem code' });
+      return;
+    }
+
+    if (normalized !== PREMIUM_REDEEM_CODE) {
+      res.status(400).json({ success: false, error: 'Invalid redeem code' });
+      return;
+    }
+
+    const user = await User.findById(userId);
+    if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
+
+    if (user.plan === 'pro' && user.planExpiryDate && user.planExpiryDate > new Date()) {
+      res.status(200).json({
+        success: true,
+        data: {
+          plan: 'pro',
+          planExpiryDate: user.planExpiryDate,
+          message: `Pro already active until ${user.planExpiryDate.toLocaleDateString()}`,
+        },
+      });
+      return;
+    }
+
+    const now = new Date();
+    const expiry = new Date(now);
+    expiry.setDate(expiry.getDate() + 30);
+
+    user.plan = 'pro';
+    user.planStartDate = now;
+    user.planExpiryDate = expiry;
+    user.aiUsageThisMonth = 0;
+    user.uploadUsageThisMonth = 0;
+    user.aiUsageResetAt = now;
+    await user.save();
+
+    await Payment.create({
+      userId,
+      plan: 'pro',
+      amount: 0,
+      currency: 'INR',
+      razorpayOrderId: `redeem_${userId.slice(-8)}_${Date.now()}`,
+      razorpayPaymentId: `coupon_${PREMIUM_REDEEM_CODE}`,
+      status: 'captured',
+    });
+
+    res.json({
+      success: true,
+      data: {
+        plan: 'pro',
+        planExpiryDate: expiry,
+        message: `Redeem successful. Pro activated until ${expiry.toLocaleDateString()}`,
+      },
+    });
+  } catch (err) {
+    console.error('redeemCode error:', err);
+    res.status(500).json({ success: false, error: 'Could not redeem code' });
   }
 }
 

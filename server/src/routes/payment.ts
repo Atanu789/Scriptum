@@ -4,6 +4,7 @@ import {
   getPlans,
   createOrder,
   verifyPayment,
+  redeemCode,
   getSubscription,
   getPaymentHistory,
   handleWebhook,
@@ -33,5 +34,6 @@ router.get('/subscription',  getSubscription);
 router.get('/history',       getPaymentHistory);
 router.post('/create-order', createOrder);
 router.post('/verify',       verifyPayment);
+router.post('/redeem',       redeemCode);
 
 export default router;

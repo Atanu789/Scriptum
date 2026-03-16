@@ -273,6 +273,11 @@ export const paymentApi = {
     const { data } = await api.post<ApiResponse<{ plan: string; planExpiryDate: string; message: string }>>('/payment/verify', payload);
     return unwrap(data);
   },
+
+  redeem: async (code: string): Promise<{ plan: string; planExpiryDate: string; message: string }> => {
+    const { data } = await api.post<ApiResponse<{ plan: string; planExpiryDate: string; message: string }>>('/payment/redeem', { code });
+    return unwrap(data);
+  },
 };
 
 export default api;
