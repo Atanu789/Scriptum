@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import { useDocument } from '@/hooks/useDocument';
+import { useSubscription } from '@/hooks/useSubscription';
 import {
   ChevronLeft, Loader2, AlertCircle, Edit3,
   Download, Tv2, Brain, Sparkles, ArrowRight, FileText,
@@ -18,6 +19,7 @@ export default function AnalysisPage() {
   const params = useParams<{ documentId: string }>();
   const { document, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize } =
     useDocument(params.documentId);
+  const { canUseHumanizeText } = useSubscription();
 
   const getIssueLineNumber = useCallback((issue: { offset?: number }) => {
     if (!document?.cleanedText || !Number.isInteger(issue.offset)) return null;
@@ -168,7 +170,7 @@ export default function AnalysisPage() {
           isAnalyzing={isAnalyzing}
           isHumanizing={isHumanizing}
           onAnalyze={analyze}
-          onHumanize={humanize}
+          onHumanize={canUseHumanizeText ? humanize : undefined}
           documentStatus={document.status}
           getGrammarIssueLine={getIssueLineNumber}
           expanded

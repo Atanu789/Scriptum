@@ -565,12 +565,14 @@ export default function DashboardPage() {
               <p className="text-sm text-slate-600 dark:text-white/45">
                 {isPremium
                   ? 'All premium features are active, including AI narration and PPT export.'
-                  : 'Free plan excludes AI narration, TTS narration, and PowerPoint export.'}
+                  : 'Free plan excludes AI narration, TTS narration, grammar fix, humanize, and PowerPoint export.'}
               </p>
               <div className="flex flex-wrap gap-2 text-xs">
                 <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">AI Teleprompter</span>
                 <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">TTS Narration</span>
                 <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">Export PPT</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">Grammar Fix</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">Humanize</span>
               </div>
             </div>
             <Link

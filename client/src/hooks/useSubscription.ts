@@ -51,5 +51,7 @@ export function useSubscription() {
     canUseTeleprompterAI: Boolean(isPremium && limits?.teleprompterAI),
     canUseExportPPT: Boolean(isPremium && limits?.exportPPT),
     canUseTTSNarration: Boolean(isPremium && limits?.ttsNarration),
+    canUseGrammarFix: Boolean(isPremium && limits?.grammarFix),
+    canUseHumanizeText: Boolean(isPremium && limits?.humanizeText),
   };
 }

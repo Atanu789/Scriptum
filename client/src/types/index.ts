@@ -8,6 +8,8 @@ export interface PlanLimits {
   teleprompterAI:   boolean;
   exportPPT:        boolean;
   ttsNarration:     boolean;
+  grammarFix:       boolean;
+  humanizeText:     boolean;
 }
 
 export interface PlanConfig {

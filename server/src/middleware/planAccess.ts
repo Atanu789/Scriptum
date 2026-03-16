@@ -3,7 +3,10 @@ import { AuthenticatedRequest } from '../types';
 import User, { Plan } from '../models/User';
 import { PLAN_LIMITS } from '../services/razorpayService';
 
-type FeatureKey = keyof typeof PLAN_LIMITS['free'];
+type PlanLimitShape = typeof PLAN_LIMITS['free'];
+type FeatureKey = {
+  [K in keyof PlanLimitShape]: PlanLimitShape[K] extends boolean ? K : never;
+}[keyof PlanLimitShape];
 
 /**
  * Middleware factory — ensures the authenticated user's plan has access to

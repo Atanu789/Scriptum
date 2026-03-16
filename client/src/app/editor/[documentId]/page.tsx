@@ -6,6 +6,7 @@ import Link from 'next/link';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import ShareMenu from '@/components/ShareMenu';
 import { useDocument } from '@/hooks/useDocument';
+import { useSubscription } from '@/hooks/useSubscription';
 import {
   Save, BarChart2, Loader2, Tv2, ExternalLink,
   ChevronLeft, FileText, AlertCircle,
@@ -194,6 +195,7 @@ export default function EditorPage() {
 
   const { document: doc, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize, updateContent } =
     useDocument(documentId);
+  const { canUseGrammarFix, canUseHumanizeText } = useSubscription();
 
   // ── contentEditable ref & init ───────────────────────────────────────────
   const editorRef      = useRef<HTMLDivElement>(null);
@@ -803,11 +805,11 @@ export default function EditorPage() {
             isAnalyzing={isAnalyzing}
             isHumanizing={isHumanizing}
             onAnalyze={analyze}
-            onHumanize={handleHumanizeAction}
+            onHumanize={canUseHumanizeText ? handleHumanizeAction : undefined}
             onSave={isDirty ? handleSave : undefined}
             documentStatus={doc.status}
             onApplySuggestion={handleApplySuggestion}
-            onApplyGrammarFix={handleApplyGrammarFix}
+            onApplyGrammarFix={canUseGrammarFix ? handleApplyGrammarFix : undefined}
             getGrammarIssueLine={getIssueLineNumber}
           />
         </div>

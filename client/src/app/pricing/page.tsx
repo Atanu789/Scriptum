@@ -216,6 +216,8 @@ export default function PricingPage() {
       teleprompterAI: true,
       exportPPT: true,
       ttsNarration: true,
+      grammarFix: true,
+      humanizeText: true,
     },
     description: 'Tailored plan for institutes and teams.',
     ctaLabel: 'Contact sales',
@@ -398,6 +400,8 @@ export default function PricingPage() {
                   <PlanFeature included={plan.limits.teleprompterAI} label="AI-powered teleprompter" />
                   <PlanFeature included={plan.limits.exportPPT} label="Export to PowerPoint" />
                   <PlanFeature included={plan.limits.ttsNarration} label="Text-to-speech narration" />
+                  <PlanFeature included={plan.limits.grammarFix} label="One-click grammar fix" />
+                  <PlanFeature included={plan.limits.humanizeText} label="Humanize AI-style text" />
                   <PlanFeature included={isPro} label="Priority support" />
                 </ul>
 

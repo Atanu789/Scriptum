@@ -19,6 +19,8 @@ export const PLAN_LIMITS: { [P in Plan]: {
   teleprompterAI:    boolean;
   exportPPT:         boolean;
   ttsNarration:      boolean;
+  grammarFix:        boolean;
+  humanizeText:      boolean;
 } } = {
   free: {
     aiUsagePerMonth:  5,
@@ -26,6 +28,8 @@ export const PLAN_LIMITS: { [P in Plan]: {
     teleprompterAI:   false,
     exportPPT:        false,
     ttsNarration:     false,
+    grammarFix:       false,
+    humanizeText:     false,
   },
   pro: {
     aiUsagePerMonth:  50,
@@ -33,6 +37,8 @@ export const PLAN_LIMITS: { [P in Plan]: {
     teleprompterAI:   true,
     exportPPT:        true,
     ttsNarration:     true,
+    grammarFix:       true,
+    humanizeText:     true,
   },
 };
 
