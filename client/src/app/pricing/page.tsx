@@ -77,6 +77,7 @@ function PlanFeature({ included, label }: { included: boolean; label: string }) 
 function UsageMeter({ label, used, limit }: { label: string; used: number; limit: number }) {
   const pct = limit === -1 ? 0 : Math.min(100, Math.round((used / limit) * 100));
   const barColor = pct >= 90 ? 'bg-red-500' : pct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
+  const remaining = limit === -1 ? 'Unlimited' : `${Math.max(0, limit - used)} left`;
 
   return (
     <div className="space-y-1">
@@ -84,6 +85,7 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
         <span>{label}</span>
         <span>{limit === -1 ? `${used} / ∞` : `${used} / ${limit}`}</span>
       </div>
+      <p className="text-[11px] text-slate-400 dark:text-white/30">{remaining}</p>
       {limit !== -1 && (
         <div className="h-1.5 overflow-hidden rounded-full bg-slate-200 dark:bg-white/[0.12]">
           <div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} />
@@ -223,6 +225,8 @@ export default function PricingPage() {
   const expiry = sub?.planExpiryDate ? new Date(sub.planExpiryDate) : null;
   const expired = expiry ? expiry < new Date() : false;
   const effectivePlan = expired ? 'free' : activePlan;
+  const aiLimitReached = !!sub && sub.limits.aiUsagePerMonth !== -1 && sub.aiUsageThisMonth >= sub.limits.aiUsagePerMonth;
+  const uploadLimitReached = !!sub && sub.limits.uploadsPerMonth !== -1 && sub.uploadUsageThisMonth >= sub.limits.uploadsPerMonth;
 
   const customPlan: DisplayPlan = {
     id: 'custom',
@@ -301,6 +305,15 @@ export default function PricingPage() {
               <p className="font-semibold capitalize">{effectivePlan} plan {expired && activePlan !== 'free' && '(expired)'}</p>
               {expiry && !expired && <p className="text-xs text-slate-500 dark:text-white/35">Renews {expiry.toLocaleDateString()}</p>}
               {expired && activePlan !== 'free' && <p className="text-xs text-amber-500">Your Pro plan expired and moved to Free.</p>}
+              {(aiLimitReached || uploadLimitReached) && (
+                <p className="text-xs font-medium text-red-600 dark:text-red-300">
+                  {aiLimitReached && uploadLimitReached
+                    ? 'Monthly AI and upload limits reached. Upgrade to continue.'
+                    : aiLimitReached
+                    ? 'Monthly AI analysis limit reached. Upgrade to continue.'
+                    : 'Monthly upload limit reached. Upgrade to continue.'}
+                </p>
+              )}
             </div>
 
             <div className="flex gap-3">

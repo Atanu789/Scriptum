@@ -5,7 +5,6 @@ import DocumentModel from '../models/Document';
 import { analyzeDocument as runAnalysis } from '../services/aiAnalysis';
 import { analyzeAIScore, humanizeTextContent } from '../services/ai/aiScoreAnalyzer';
 import { htmlToStructuredModel, plainTextToEditorHtml, structureDocument } from '../services/documentStructure';
-import { checkAndIncrementUsage } from '../models/Usage';
 import { AuthenticatedRequest } from '../types';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
@@ -73,18 +72,6 @@ export const analyzeDocument = async (
   }
 
   try {
-    const { allowed, remaining, retryAfterMs } = await checkAndIncrementUsage(req.user!.userId);
-    if (!allowed) {
-      const mins = Math.ceil(retryAfterMs / 60_000);
-      res.status(429).json({
-        success: false,
-        error: `Analysis limit reached (10/hour). Try again in ${mins} min.`,
-        retryAfterMs,
-        remaining: 0,
-      });
-      return;
-    }
-
     const doc = await DocumentModel.findOne({
       _id: id,
       userId: req.user!.userId,
@@ -108,7 +95,6 @@ export const analyzeDocument = async (
       res.json({
         success: true,
         cached: true,
-        remaining,
         data: {
           documentId: id,
           aiScore: doc.aiScore,
@@ -167,7 +153,6 @@ export const analyzeDocument = async (
     res.json({
       success: true,
       cached: false,
-      remaining,
       data: {
         documentId: id,
         aiScore: updated?.aiScore,

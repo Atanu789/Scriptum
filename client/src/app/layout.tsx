@@ -20,7 +20,7 @@ const jetbrainsMono = JetBrains_Mono({
 });
 
 export const metadata: Metadata = {
-  metadataBase: new URL('http://ultimoversio.com'),
+  metadataBase: new URL('https://ultimoversio.com'),
   title: {
     default: 'Ultimoversio',
     template: '%s | Ultimoversio',
@@ -29,7 +29,20 @@ export const metadata: Metadata = {
     'AI-powered content processing and publishing studio. Upload, analyse, edit, and export documents — with teleprompter mode, text-to-speech, and PowerPoint export.',
   keywords: ['AI writing', 'content studio', 'teleprompter', 'grammar check', 'document editor'],
   authors: [{ name: 'Ultimoversio' }],
-  robots: 'noindex',
+  alternates: {
+    canonical: '/',
+  },
+  robots: {
+    index: true,
+    follow: true,
+    googleBot: {
+      index: true,
+      follow: true,
+      'max-image-preview': 'large',
+      'max-snippet': -1,
+      'max-video-preview': -1,
+    },
+  },
 };
 
 export const viewport: Viewport = {

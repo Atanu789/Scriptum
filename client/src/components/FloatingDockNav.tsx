@@ -89,7 +89,7 @@ export default function FloatingDockNav() {
     {
       title: 'Sign out',
       icon: <LogOut className="h-full w-full" />,
-      onClick: () => { logout(); router.push('/login'); },
+      onClick: () => { logout(); router.push('/'); },
     },
   ];
 

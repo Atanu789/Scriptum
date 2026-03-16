@@ -5,9 +5,8 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { documentApi } from '@/lib/api';
-import { useUsage } from '@/hooks/useUsage';
 import { useSubscription } from '@/hooks/useSubscription';
-import { DocumentSummary, UsageStats } from '@/types';
+import { DocumentSummary } from '@/types';
 import {
   formatRelativeTime, formatWordCount, sourceTypeLabel,
   cn, grammarScoreLabel,
@@ -18,7 +17,7 @@ import {
   Pencil, CheckCircle2, Clock,
   AlertTriangle, TrendingUp, Sparkles,
   Search, SlidersHorizontal, ArrowUpRight,
-  Zap, Globe, Crown,
+  Zap, Globe, Crown, LogOut,
   Image as ImageIcon, Video, Music,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -316,78 +315,12 @@ function MediaCard({ doc, deletingId, onDelete }: MediaCardProps) {
   );
 }
 
-// ─── AI usage ring ──────────────────────────────────────────────────────────
-
-function AIRing({ usage }: { usage: UsageStats }) {
-  const R     = 16;
-  const circ  = 2 * Math.PI * R;
-  const frac  = Math.min(usage.geminiCallsThisHour / Math.max(usage.maxCallsPerHour, 1), 1);
-  const offset = circ * (1 - frac);
-  const color  = usage.remaining === 0 ? '#ef4444' : usage.remaining <= 3 ? '#f59e0b' : '#6366f1';
-
-  return (
-    <div className="group relative flex-shrink-0">
-      {/* Ring */}
-      <svg width="40" height="40" viewBox="0 0 40 40" className="-rotate-90">
-        <circle cx="20" cy="20" r={R} fill="none" strokeWidth="3"
-          stroke="currentColor" className="text-slate-200 dark:text-white/[0.08]" />
-        <circle cx="20" cy="20" r={R} fill="none" strokeWidth="3"
-          stroke={color} strokeLinecap="round"
-          strokeDasharray={circ} strokeDashoffset={offset}
-          className="transition-all duration-700" />
-      </svg>
-
-      {/* Centre count */}
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-[9px] font-bold tabular-nums leading-none" style={{ color }}>
-          {usage.geminiCallsThisHour}<span className="opacity-40">/{usage.maxCallsPerHour}</span>
-        </span>
-      </div>
-
-      {/* Hover tooltip */}
-      <div className="pointer-events-none absolute right-0 top-full mt-2.5 z-50 w-52
-        rounded-xl border border-slate-200 dark:border-white/[0.08]
-        bg-white dark:bg-[#0d0d1a]
-        shadow-[0_8px_24px_rgba(0,0,0,0.1)] dark:shadow-[0_8px_24px_rgba(0,0,0,0.6)]
-        p-3 text-left
-        opacity-0 group-hover:opacity-100
-        translate-y-1 group-hover:translate-y-0
-        transition-all duration-200">
-        <p className="text-[11px] font-bold text-slate-700 dark:text-white/80 mb-2 flex items-center gap-1.5">
-          <Zap className="h-3 w-3 text-indigo-500" /> AI Analyses
-        </p>
-        <p className="text-[11px] text-slate-500 dark:text-white/40">
-          <span className="font-semibold" style={{ color }}>{usage.geminiCallsThisHour}</span>
-          &nbsp;of {usage.maxCallsPerHour} used this hour
-        </p>
-        {usage.remaining > 0 ? (
-          <p className="mt-1 text-[10px] text-slate-400 dark:text-white/25">
-            {usage.remaining} remaining&nbsp;·&nbsp;
-            resets {new Date(usage.resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </p>
-        ) : (
-          <p className="mt-1 text-[10px] text-red-500 dark:text-red-400 font-semibold">
-            Limit reached&nbsp;·&nbsp;
-            resets {new Date(usage.resetsAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-          </p>
-        )}
-        {usage.totalAnalyses > 0 && (
-          <p className="mt-2 pt-2 border-t border-slate-100 dark:border-white/[0.05] text-[10px] text-slate-400 dark:text-white/25">
-            {usage.totalAnalyses} total analyses lifetime
-          </p>
-        )}
-      </div>
-    </div>
-  );
-}
-
 // ─── Dashboard ────────────────────────────────────────────────────────────────
 
 export default function DashboardPage() {
-  const { user }   = useAuth();
+  const { user, logout } = useAuth();
   const router     = useRouter();
-  const { usage }  = useUsage();
-  const { isPremium } = useSubscription();
+  const { subscription, isPremium } = useSubscription();
 
   const [documents, setDocuments]   = useState<DocumentSummary[]>([]);
   const [isLoading, setIsLoading]   = useState(true);
@@ -433,11 +366,15 @@ export default function DashboardPage() {
 
   const analyzedDocs = textDocs.filter((d) => d.status === 'analyzed' || d.status === 'ready');
   const docsWithGram = analyzedDocs.filter((d) => d.grammarScore != null);
-  const avgGrammar   = docsWithGram.length
-    ? Math.round(docsWithGram.reduce((s, d) => s + (d.grammarScore ?? 0), 0) / docsWithGram.length)
-    : null;
   const totalWords  = textDocs.reduce((s, d) => s + (d.wordCount || 0), 0);
-  const totalIssues = analyzedDocs.reduce((s, d) => s + (d.grammarIssues?.length ?? 0), 0);
+  const monthlyUploadLimit = subscription?.limits.uploadsPerMonth ?? 5;
+  const monthlyAiLimit = subscription?.limits.aiUsagePerMonth ?? 5;
+  const uploadUsed = subscription?.uploadUsageThisMonth ?? 0;
+  const aiUsed = subscription?.aiUsageThisMonth ?? 0;
+  const uploadRemaining = monthlyUploadLimit === -1 ? Infinity : Math.max(0, monthlyUploadLimit - uploadUsed);
+  const aiRemaining = monthlyAiLimit === -1 ? Infinity : Math.max(0, monthlyAiLimit - aiUsed);
+  const uploadBlocked = monthlyUploadLimit !== -1 && uploadUsed >= monthlyUploadLimit;
+  const aiBlocked = monthlyAiLimit !== -1 && aiUsed >= monthlyAiLimit;
 
   const stats = [
     {
@@ -448,22 +385,18 @@ export default function DashboardPage() {
       accent: 'text-indigo-500 dark:text-indigo-400',
     },
     {
-      label:  'Avg Grammar',
-      value:  avgGrammar != null ? String(avgGrammar) : '—',
-      sub:    avgGrammar != null ? grammarScoreLabel(avgGrammar) : 'Run analysis',
-      icon:   TrendingUp,
-      accent: avgGrammar == null
-        ? 'text-slate-300 dark:text-white/20'
-        : avgGrammar >= 80 ? 'text-emerald-500 dark:text-emerald-400'
-        : avgGrammar >= 55 ? 'text-amber-500 dark:text-amber-400'
-        : 'text-red-500 dark:text-red-400',
+      label:  'Uploads (Month)',
+      value:  monthlyUploadLimit === -1 ? `${uploadUsed}` : `${uploadUsed}/${monthlyUploadLimit}`,
+      sub:    monthlyUploadLimit === -1 ? 'Unlimited plan' : `${uploadRemaining} remaining`,
+      icon:   Upload,
+      accent: uploadBlocked ? 'text-red-500 dark:text-red-400' : 'text-emerald-500 dark:text-emerald-400',
     },
     {
-      label:  'Grammar Issues',
-      value:  analyzedDocs.length ? String(totalIssues) : '—',
-      sub:    analyzedDocs.length ? `across ${docsWithGram.length} doc${docsWithGram.length !== 1 ? 's' : ''}` : 'No analysis yet',
-      icon:   AlertTriangle,
-      accent: 'text-amber-500 dark:text-amber-400',
+      label:  'AI Analyses (Month)',
+      value:  monthlyAiLimit === -1 ? `${aiUsed}` : `${aiUsed}/${monthlyAiLimit}`,
+      sub:    monthlyAiLimit === -1 ? 'Unlimited plan' : `${aiRemaining} remaining`,
+      icon:   Zap,
+      accent: aiBlocked ? 'text-red-500 dark:text-red-400' : 'text-emerald-500 dark:text-emerald-400',
     },
     {
       label:  'Total Words',
@@ -515,14 +448,43 @@ export default function DashboardPage() {
             </p>
           </div>
           <div className="flex items-center gap-3 flex-shrink-0">
-            {usage && <AIRing usage={usage} />}
+            <div className="hidden items-center gap-2 md:flex">
+              <div className={cn(
+                'rounded-lg border px-2.5 py-1.5 text-[11px] font-medium',
+                uploadBlocked
+                  ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
+                  : 'border-slate-200 bg-white text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70',
+              )}>
+                Uploads {monthlyUploadLimit === -1 ? `${uploadUsed}/∞` : `${uploadUsed}/${monthlyUploadLimit}`}
+              </div>
+              <div className={cn(
+                'rounded-lg border px-2.5 py-1.5 text-[11px] font-medium',
+                aiBlocked
+                  ? 'border-red-300 bg-red-50 text-red-700 dark:border-red-500/30 dark:bg-red-500/10 dark:text-red-300'
+                  : 'border-slate-200 bg-white text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70',
+              )}>
+                AI {monthlyAiLimit === -1 ? `${aiUsed}/∞` : `${aiUsed}/${monthlyAiLimit}`}
+              </div>
+              <button
+                onClick={() => { logout(); router.push('/'); }}
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70 dark:hover:bg-white/[0.07]"
+              >
+                <LogOut className="h-3.5 w-3.5" />
+                Logout
+              </button>
+            </div>
             <Link
-              href="/upload"
-              className="group inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2.5 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-500 hover:-translate-y-0.5 transition-all active:scale-[0.97]"
+              href={uploadBlocked ? '/pricing' : '/upload'}
+              className={cn(
+                'group inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.97]',
+                uploadBlocked
+                  ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/25 hover:bg-amber-400'
+                  : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-500 hover:-translate-y-0.5',
+              )}
             >
               <Plus className="h-4 w-4" />
-              <span className="hidden sm:inline">New Document</span>
-              <span className="sm:hidden">New</span>
+              <span className="hidden sm:inline">{uploadBlocked ? 'Upload Limit Reached' : 'New Document'}</span>
+              <span className="sm:hidden">{uploadBlocked ? 'Limit' : 'New'}</span>
             </Link>
           </div>
         </div>
