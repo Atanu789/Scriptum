@@ -1,7 +1,7 @@
 import { Response } from 'express';
 import { param, body, validationResult } from 'express-validator';
 import DocumentModel from '../models/Document';
-import { structureDocument } from '../services/documentStructure';
+import { extractPlainTextFromHtml, htmlToStructuredModel, plainTextToEditorHtml, structureDocument } from '../services/documentStructure';
 import { sanitizeText, sanitizeMediaContent } from '../utils/sanitize';
 import { AuthenticatedRequest } from '../types';
 
@@ -78,6 +78,7 @@ export const listDocuments = async (
 export const updateDocumentValidation = [
   param('id').isMongoId().withMessage('Invalid document ID'),
   body('cleanedText').optional().isString(),
+  body('editorHtml').optional().isString(),
   body('structuredContent').optional().isObject(),
 ];
 
@@ -102,14 +103,22 @@ export const updateDocument = async (
       return;
     }
 
-    const { cleanedText, structuredContent } = req.body as {
+    const { cleanedText, editorHtml, structuredContent } = req.body as {
       cleanedText?: string;
+      editorHtml?: string;
       structuredContent?: { sections: unknown[] };
     };
 
-    if (cleanedText) {
+    if (typeof editorHtml === 'string') {
+      doc.editorHtml = sanitizeMediaContent(editorHtml);
+      doc.cleanedText = sanitizeText(extractPlainTextFromHtml(doc.editorHtml));
+      doc.editorModel = htmlToStructuredModel(doc.editorHtml);
+      doc.structuredContent = structureDocument(doc.cleanedText);
+    } else if (cleanedText) {
       // Use sanitizeMediaContent so embedded media (img/video/audio) from /uploads/ is preserved
-      doc.cleanedText = sanitizeMediaContent(cleanedText);
+      doc.cleanedText = sanitizeText(cleanedText);
+      doc.editorHtml = plainTextToEditorHtml(doc.cleanedText);
+      doc.editorModel = htmlToStructuredModel(doc.editorHtml);
       // Re-structure when text changes (use plain text for structure analysis)
       const newStructure = structureDocument(doc.cleanedText);
       doc.structuredContent = newStructure;
@@ -126,6 +135,8 @@ export const updateDocument = async (
       data: {
         _id: doc._id,
         cleanedText: doc.cleanedText,
+        editorHtml: doc.editorHtml,
+        editorModel: doc.editorModel,
         structuredContent: doc.structuredContent,
         updatedAt: doc.updatedAt,
       },

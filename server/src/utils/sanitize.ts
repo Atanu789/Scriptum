@@ -44,6 +44,7 @@ export function sanitizeMediaContent(dirty: string): string {
     allowedTags: [
       'p', 'br', 'div', 'span',
       'b', 'i', 'em', 'strong', 'u', 's', 'del', 'mark',
+      'a',
       'ul', 'ol', 'li',
       'h1', 'h2', 'h3', 'h4',
       'blockquote', 'pre', 'code',
@@ -53,29 +54,45 @@ export function sanitizeMediaContent(dirty: string): string {
       'hr',
     ],
     allowedAttributes: {
+      a:      ['href', 'target', 'rel'],
       img:    ['src', 'alt', 'style'],
       video:  ['src', 'controls', 'style'],
       audio:  ['src', 'controls', 'style'],
       source: ['src', 'type'],
       '*':    ['class', 'style'],
     },
-    // Restrict media src to server-generated /uploads/ paths only
+    allowedSchemes: ['http', 'https', 'data', 'mailto', 'tel'],
+    allowedSchemesByTag: {
+      img: ['http', 'https', 'data'],
+      video: ['http', 'https'],
+      audio: ['http', 'https'],
+      source: ['http', 'https'],
+      a: ['http', 'https', 'mailto', 'tel'],
+    },
     transformTags: {
+      a: (_tag, attribs) => ({
+        tagName: 'a',
+        attribs: {
+          ...attribs,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        },
+      }),
       img: (_tag, attribs) => ({
         tagName: 'img',
-        attribs: (attribs.src ?? '').startsWith('/uploads/')
+        attribs: /^(\/uploads\/|https?:\/\/|data:image\/)/i.test(attribs.src ?? '')
           ? attribs
           : { ...attribs, src: '' },
       }),
       video: (_tag, attribs) => ({
         tagName: 'video',
-        attribs: (attribs.src ?? '').startsWith('/uploads/')
+        attribs: /^(\/uploads\/|https?:\/\/)/i.test(attribs.src ?? '')
           ? attribs
           : { ...attribs, src: '' },
       }),
       audio: (_tag, attribs) => ({
         tagName: 'audio',
-        attribs: (attribs.src ?? '').startsWith('/uploads/')
+        attribs: /^(\/uploads\/|https?:\/\/)/i.test(attribs.src ?? '')
           ? attribs
           : { ...attribs, src: '' },
       }),

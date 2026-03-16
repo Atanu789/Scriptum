@@ -4,7 +4,7 @@ import crypto from 'crypto';
 import DocumentModel from '../models/Document';
 import { analyzeDocument as runAnalysis } from '../services/aiAnalysis';
 import { analyzeAIScore, humanizeTextContent } from '../services/ai/aiScoreAnalyzer';
-import { structureDocument } from '../services/documentStructure';
+import { htmlToStructuredModel, plainTextToEditorHtml, structureDocument } from '../services/documentStructure';
 import { checkAndIncrementUsage } from '../models/Usage';
 import { AuthenticatedRequest } from '../types';
 
@@ -280,6 +280,8 @@ export const humanizeDetectedText = async (
     }
 
     doc.cleanedText = humanizedText;
+    doc.editorHtml = plainTextToEditorHtml(humanizedText);
+    doc.editorModel = htmlToStructuredModel(doc.editorHtml);
     doc.structuredContent = structureDocument(humanizedText);
 
     // Immediately re-analyze so the user gets an updated AI likelihood after humanization.

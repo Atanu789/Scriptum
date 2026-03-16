@@ -4,9 +4,9 @@ import { body, validationResult } from 'express-validator';
 import DocumentModel from '../models/Document';
 import { extractContent } from '../services/textExtraction';
 import { extractFromWebsite } from '../services/webScraper';
-import { structureDocument } from '../services/documentStructure';
+import { htmlToStructuredModel, structureDocument } from '../services/documentStructure';
 import { deleteFile, isMediaFile, DOC_SIZE_LIMIT } from '../utils/fileFilter';
-import { sanitizeText } from '../utils/sanitize';
+import { sanitizeMediaContent, sanitizeText } from '../utils/sanitize';
 import { AuthenticatedRequest, ApiResponse, UploadResult } from '../types';
 
 const MEDIA_EXTENSIONS = new Set([
@@ -73,6 +73,8 @@ export const uploadFile = async (
         sourceType:       sourceTypeMap[ext] ?? 'image',
         rawText:          '',
         cleanedText:      embedHtml,
+        editorHtml:       embedHtml,
+        editorModel:      htmlToStructuredModel(embedHtml),
         structuredContent: { sections: [] },
         wordCount:        0,
         mediaUrl,
@@ -106,6 +108,7 @@ export const uploadFile = async (
     // Sanitize extracted text to strip any embedded HTML/scripts
     extracted.rawText = sanitizeText(extracted.rawText);
     extracted.cleanedText = sanitizeText(extracted.cleanedText);
+    extracted.editorHtml = sanitizeMediaContent(extracted.editorHtml);
 
     const structured = structureDocument(extracted.cleanedText, extracted.structuredSections);
     deleteFile(file.path);
@@ -116,6 +119,8 @@ export const uploadFile = async (
       sourceType: extracted.sourceType,
       rawText: extracted.rawText,
       cleanedText: extracted.cleanedText,
+      editorHtml: extracted.editorHtml,
+      editorModel: extracted.editorModel ?? htmlToStructuredModel(extracted.editorHtml),
       structuredContent: structured,
       presentationContent: extracted.presentationContent ?? null,
       wordCount: extracted.wordCount,
@@ -176,6 +181,7 @@ export const uploadWebsite = async (
     // Sanitize scraped content aggressively — web pages may contain XSS payloads
     extracted.rawText = sanitizeText(extracted.rawText);
     extracted.cleanedText = sanitizeText(extracted.cleanedText);
+    extracted.editorHtml = sanitizeMediaContent(extracted.editorHtml);
 
     const structured = structureDocument(extracted.cleanedText, extracted.structuredSections);
 
@@ -186,6 +192,8 @@ export const uploadWebsite = async (
       websiteUrl,
       rawText:          extracted.rawText,
       cleanedText:      extracted.cleanedText,
+      editorHtml:       extracted.editorHtml,
+      editorModel:      extracted.editorModel ?? htmlToStructuredModel(extracted.editorHtml),
       structuredContent: structured,
       wordCount:        extracted.wordCount,
       status:           'pending',

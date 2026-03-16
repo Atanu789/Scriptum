@@ -67,6 +67,10 @@ export interface IDocument extends Document {
   mediaUrl?: string;        // stored URL for uploaded image/audio/video files
   rawText: string;
   cleanedText: string;
+  editorHtml: string;
+  editorModel?: {
+    content: unknown[];
+  } | null;
   structuredContent: {
     sections: Array<{
       _id?: mongoose.Types.ObjectId;
@@ -195,6 +199,14 @@ const documentSchema = new Schema<IDocument>(
     cleanedText: {
       type: String,
       default: '',
+    },
+    editorHtml: {
+      type: String,
+      default: '',
+    },
+    editorModel: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
     structuredContent: {
       sections: [documentSectionSchema],

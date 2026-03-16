@@ -1,6 +1,7 @@
 import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { ExtractedContent, DocumentSection } from '../types';
+import { htmlToStructuredModel } from './documentStructure';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Noise selectors
@@ -72,6 +73,64 @@ function decodeEntities(s: string): string {
     .replace(/&#x27;/g, "'")
     .replace(/&#x2F;/g, '/')
     .replace(/&#\d+;/g, '');
+}
+
+function absolutizeUrl(value: string | undefined, baseUrl: string): string | undefined {
+  if (!value) return undefined;
+  try {
+    return new URL(value, baseUrl).toString();
+  } catch {
+    return undefined;
+  }
+}
+
+function extractEditorHtml(
+  $: ReturnType<typeof cheerio.load>,
+  root: cheerio.Cheerio,
+  pageUrl: string,
+): string {
+  const cloned = cheerio.load(root.html() || '');
+
+  cloned('*').each((_index, el) => {
+    const node = el as cheerio.Element & { tagName?: string; attribs?: Record<string, string> };
+    const tag = node.tagName?.toLowerCase();
+    if (!tag) return;
+
+    if (!['h1', 'h2', 'h3', 'h4', 'p', 'img', 'a', 'ul', 'ol', 'li', 'blockquote', 'pre', 'strong', 'b', 'em', 'i'].includes(tag)) {
+      cloned(el).replaceWith(cloned(el).text());
+      return;
+    }
+
+    if (tag === 'img') {
+      const src = absolutizeUrl(cloned(el).attr('src'), pageUrl);
+      if (!src) {
+        cloned(el).remove();
+        return;
+      }
+      cloned(el).attr('src', src);
+      cloned(el).attr('style', 'max-width:100%;border-radius:8px;display:block;margin:16px auto;');
+    }
+
+    if (tag === 'a') {
+      const href = absolutizeUrl(cloned(el).attr('href'), pageUrl);
+      if (!href) {
+        cloned(el).replaceWith(cloned(el).text());
+        return;
+      }
+      cloned(el).attr('href', href);
+      cloned(el).attr('target', '_blank');
+      cloned(el).attr('rel', 'noopener noreferrer');
+    }
+
+    if (tag !== 'a' && tag !== 'img') {
+      const allowedAttrs = ['href', 'src', 'alt', 'target', 'rel', 'style'];
+      Object.keys(node.attribs || {}).forEach((attr) => {
+        if (!allowedAttrs.includes(attr)) cloned(el).removeAttr(attr);
+      });
+    }
+  });
+
+  return (cloned.root().html() || '').trim();
 }
 
 /* ─────────────────────────────────────────────────────────────────────────────
@@ -220,10 +279,13 @@ export async function extractFromWebsite(url: string): Promise<ExtractedContent>
   }
 
   const { text, sections } = extractStructured($, contentRoot);
+  const editorHtml = extractEditorHtml($, contentRoot, url);
 
   return {
     rawText: text,
     cleanedText: text,
+    editorHtml,
+    editorModel: htmlToStructuredModel(editorHtml),
     structuredSections: sections,
     wordCount: text.split(/\s+/).filter(Boolean).length,
     sourceType: 'website',

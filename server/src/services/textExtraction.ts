@@ -1,8 +1,10 @@
 import fs from 'fs';
+import path from 'path';
 import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import axios from 'axios';
 import JSZip from 'jszip';
+import { htmlToStructuredModel, plainTextToEditorHtml } from './documentStructure';
 import {
   ExtractedContent,
   DocumentSection,
@@ -31,6 +33,35 @@ function countWords(text: string): number {
     .trim()
     .split(/\s+/)
     .filter((w) => w.length > 0).length;
+}
+
+function normalizeHtml(html: string): string {
+  return html
+    .replace(/\r\n/g, '\n')
+    .replace(/\s*<p>\s*<\/p>\s*/g, '')
+    .trim();
+}
+
+async function saveDocxImageToUploads(element: { contentType: string; read: (format: string) => Promise<Buffer> }): Promise<string> {
+  const uploadDir = path.join(process.cwd(), process.env.UPLOAD_DIR || 'uploads');
+  if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+
+  const extMap: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'image/bmp': 'bmp',
+    'image/tiff': 'tiff',
+  };
+
+  const ext = extMap[element.contentType] || 'png';
+  const filename = `docx-${Date.now()}-${Math.random().toString(36).slice(2, 10)}.${ext}`;
+  const absolutePath = path.join(uploadDir, filename);
+  const buffer = await element.read('buffer');
+  fs.writeFileSync(absolutePath, buffer);
+  return `/uploads/${filename}`;
 }
 
 // ─── Structuring ──────────────────────────────────────────────────────────────
@@ -101,8 +132,21 @@ function structureText(cleanedText: string): DocumentSection[] {
 
 export async function extractFromDocx(filePath: string): Promise<ExtractedContent> {
   const buffer = fs.readFileSync(filePath);
-  const result = await mammoth.extractRawText({ buffer });
-  const rawText = result.value;
+  const [textResult, htmlResult] = await Promise.all([
+    mammoth.extractRawText({ buffer }),
+    mammoth.convertToHtml(
+      { buffer },
+      {
+        convertImage: mammoth.images.imgElement(async (element: { contentType: string; read: (format: string) => Promise<string> }) => {
+          const src = await saveDocxImageToUploads(element as unknown as { contentType: string; read: (format: string) => Promise<Buffer> });
+          return {
+            src,
+          };
+        }),
+      }
+    ),
+  ]);
+  const rawText = textResult.value;
 
   if (!rawText || rawText.trim().length === 0) {
     throw new Error('No text could be extracted from the DOCX file');
@@ -110,10 +154,13 @@ export async function extractFromDocx(filePath: string): Promise<ExtractedConten
 
   const cleanedText = cleanText(rawText);
   const structuredSections = structureText(cleanedText);
+  const editorHtml = normalizeHtml(htmlResult.value || plainTextToEditorHtml(cleanedText));
 
   return {
     rawText,
     cleanedText,
+    editorHtml,
+    editorModel: htmlToStructuredModel(editorHtml),
     structuredSections,
     wordCount: countWords(cleanedText),
     sourceType: 'docx',
@@ -135,6 +182,8 @@ export async function extractFromPdf(filePath: string): Promise<ExtractedContent
   return {
     rawText,
     cleanedText,
+    editorHtml: plainTextToEditorHtml(cleanedText),
+    editorModel: htmlToStructuredModel(plainTextToEditorHtml(cleanedText)),
     structuredSections,
     wordCount: countWords(cleanedText),
     sourceType: 'pdf',
@@ -154,6 +203,8 @@ export async function extractFromTxt(filePath: string): Promise<ExtractedContent
   return {
     rawText,
     cleanedText,
+    editorHtml: plainTextToEditorHtml(cleanedText),
+    editorModel: htmlToStructuredModel(plainTextToEditorHtml(cleanedText)),
     structuredSections,
     wordCount: countWords(cleanedText),
     sourceType: 'txt',
@@ -287,6 +338,8 @@ export async function extractFromYouTube(youtubeUrl: string): Promise<ExtractedC
   return {
     rawText,
     cleanedText,
+    editorHtml: plainTextToEditorHtml(cleanedText),
+    editorModel: htmlToStructuredModel(plainTextToEditorHtml(cleanedText)),
     structuredSections,
     wordCount: countWords(cleanedText),
     sourceType: 'youtube',
@@ -530,6 +583,30 @@ function presentationToStructuredSections(presentation: PptPresentationContent):
   }];
 }
 
+function presentationToEditorHtml(presentation: PptPresentationContent): string {
+  return presentation.slides.map((slide) => {
+    const parts: string[] = [`<section data-slide="${slide.slideNumber}">`, `<h2>${slide.title || `Slide ${slide.slideNumber}`}</h2>`];
+
+    for (const paragraph of slide.paragraphs) {
+      const text = paragraph.runs.map((run) => run.text).join('').trim();
+      if (!text) continue;
+
+      if ((paragraph.level ?? 0) > 0) {
+        parts.push(`<ul><li>${text}</li></ul>`);
+      } else {
+        parts.push(`<p>${text}</p>`);
+      }
+    }
+
+    if (parts.length === 2 && slide.text.trim()) {
+      parts.push(`<p>${slide.text}</p>`);
+    }
+
+    parts.push('</section>');
+    return parts.join('');
+  }).join('');
+}
+
 export async function extractFromPptx(filePath: string): Promise<ExtractedContent> {
   const buffer = fs.readFileSync(filePath);
   const zip = await JSZip.loadAsync(buffer);
@@ -584,6 +661,8 @@ export async function extractFromPptx(filePath: string): Promise<ExtractedConten
   return {
     rawText,
     cleanedText,
+    editorHtml: presentationToEditorHtml(presentationContent),
+    editorModel: htmlToStructuredModel(presentationToEditorHtml(presentationContent)),
     structuredSections,
     wordCount: countWords(cleanedText),
     sourceType: 'pptx',
@@ -601,6 +680,8 @@ function mediaStub(sourceType: string, note: string): ExtractedContent {
   return {
     rawText: cleanedText,
     cleanedText,
+    editorHtml: `<p>${cleanedText}</p>`,
+    editorModel: htmlToStructuredModel(`<p>${cleanedText}</p>`),
     structuredSections: [{
       title: 'Media',
       paragraphs: [cleanedText],

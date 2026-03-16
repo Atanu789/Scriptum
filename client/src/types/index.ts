@@ -71,6 +71,35 @@ export interface StructuredContent {
   sections: DocumentSection[];
 }
 
+export interface StructuredInlineText {
+  type: 'text';
+  value: string;
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+}
+
+export interface StructuredInlineLink {
+  type: 'link';
+  text: string;
+  url: string;
+}
+
+export type StructuredInlineNode = StructuredInlineText | StructuredInlineLink;
+
+export type StructuredBlockNode =
+  | { type: 'heading'; level: 1 | 2 | 3 | 4 | 5 | 6; text: string }
+  | { type: 'paragraph'; content: StructuredInlineNode[] }
+  | { type: 'image'; src: string; alt?: string; alignment?: 'left' | 'center' | 'right' }
+  | { type: 'list'; ordered: boolean; items: string[] }
+  | { type: 'blockquote'; text: string }
+  | { type: 'table'; rows: string[][] }
+  | { type: 'slide'; title: string; content: StructuredInlineNode[] };
+
+export interface StructuredDocumentModel {
+  content: StructuredBlockNode[];
+}
+
 export interface PptTextRunStyle {
   bold?: boolean;
   italic?: boolean;
@@ -147,6 +176,8 @@ export interface Document {
   mediaUrl?: string;
   rawText: string;
   cleanedText: string;
+  editorHtml: string;
+  editorModel?: StructuredDocumentModel | null;
   structuredContent: StructuredContent;
   presentationContent?: PptPresentationContent | null;
   wordCount: number;
@@ -170,7 +201,7 @@ export interface Document {
   updatedAt: string;
 }
 
-export type DocumentSummary = Omit<Document, 'rawText' | 'cleanedText' | 'structuredContent'>;
+export type DocumentSummary = Omit<Document, 'rawText' | 'cleanedText' | 'editorHtml' | 'structuredContent'>;
 
 // ─── Analysis ────────────────────────────────────────────────────────────────
 
@@ -255,6 +286,7 @@ export interface UploadResult {
   originalFileName: string;
   rawText: string;
   cleanedText: string;
+  editorHtml?: string;
   wordCount: number;
   sourceType: string;
 }

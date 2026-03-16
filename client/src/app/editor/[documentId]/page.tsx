@@ -404,14 +404,14 @@ export default function EditorPage() {
 
   useEffect(() => {
     if (!doc || !editorRef.current) return;
-    const signature = `${doc._id}:${doc.updatedAt}:${doc.cleanedText?.length ?? 0}`;
+    const signature = `${doc._id}:${doc.updatedAt}:${doc.editorHtml?.length ?? 0}:${doc.cleanedText?.length ?? 0}`;
     if (signature === lastLoadedSignatureRef.current) return;
 
     const editorText = editorRef.current.innerText.trim();
     const canHydrate = !isDirty || editorText.length === 0;
     if (!canHydrate) return;
 
-    editorRef.current.innerHTML = toEditorHtml(doc.cleanedText || '');
+    editorRef.current.innerHTML = doc.editorHtml || toEditorHtml(doc.cleanedText || '');
     recalcEditorMetrics();
     editorRef.current.scrollTop = 0;
     setEditorScrollTop(0);

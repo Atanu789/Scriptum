@@ -12,6 +12,7 @@ function sanitizeDoc(doc: Document): Document {
     ...doc,
     rawText:          sanitize(doc.rawText),
     cleanedText:      sanitizeContent(doc.cleanedText),   // preserves media HTML from /uploads/
+    editorHtml:       sanitizeContent(doc.editorHtml || ''),
     originalFileName: sanitize(doc.originalFileName),
     humanizationTips: doc.humanizationTips?.map(sanitize) ?? [],
     claimFlags:       doc.claimFlags ?? [],
@@ -51,7 +52,7 @@ interface UseDocumentReturn {
   refresh: () => Promise<void>;
   analyze: () => Promise<void>;
   humanize: () => Promise<HumanizeResult | null>;
-  updateContent: (cleanedText: string) => Promise<void>;
+  updateContent: (editorHtml: string) => Promise<void>;
 }
 
 export function useDocument(documentId: string): UseDocumentReturn {
@@ -141,11 +142,15 @@ export function useDocument(documentId: string): UseDocumentReturn {
     }
   }, [documentId, refresh]);
 
-  const updateContent = useCallback(async (cleanedText: string) => {
+  const updateContent = useCallback(async (editorHtml: string) => {
     if (!documentId) return;
     try {
-      await documentApi.update(documentId, { cleanedText });
-      setDocument((prev) => prev ? { ...prev, cleanedText } : prev);
+      const updated = await documentApi.update(documentId, { editorHtml });
+      setDocument((prev) => prev ? sanitizeDoc({
+        ...prev,
+        editorHtml,
+        cleanedText: typeof updated.cleanedText === 'string' ? updated.cleanedText : prev.cleanedText,
+      } as Document) : prev);
       toast.success('Document saved');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Save failed';

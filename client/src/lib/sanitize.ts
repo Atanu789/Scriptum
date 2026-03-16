@@ -30,6 +30,7 @@ export function sanitizeContent(dirty: string): string {
     ALLOWED_TAGS: [
       'p', 'br', 'div', 'span',
       'b', 'i', 'em', 'strong', 'u', 's', 'del', 'mark',
+      'a',
       'ul', 'ol', 'li',
       'h1', 'h2', 'h3', 'h4',
       'blockquote', 'pre', 'code',
@@ -38,8 +39,7 @@ export function sanitizeContent(dirty: string): string {
       'table', 'thead', 'tbody', 'tr', 'th', 'td',
       'hr',
     ],
-    ALLOWED_ATTR: ['src', 'alt', 'controls', 'style', 'type', 'class'],
-    // Only permit server-generated /uploads/ paths — blocks external URLs / injections
-    ALLOWED_URI_REGEXP: /^\/uploads\//i,
+    ALLOWED_ATTR: ['src', 'alt', 'controls', 'style', 'type', 'class', 'href', 'target', 'rel'],
+    ALLOWED_URI_REGEXP: /^(?:\/uploads\/|https?:\/\/|data:image\/|mailto:|tel:)/i,
   });
 }
