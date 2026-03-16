@@ -129,8 +129,14 @@ function countWords(text: string): number {
   return text.trim().split(/\s+/).filter(Boolean).length;
 }
 
-function countLines(text: string): number {
-  return Math.max(1, text.split('\n').length);
+function countVisualLines(el: HTMLElement): number {
+  const styles = window.getComputedStyle(el);
+  const lineHeight = Number.parseFloat(styles.lineHeight);
+  const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+  const paddingBottom = Number.parseFloat(styles.paddingBottom) || 0;
+  const safeLineHeight = Number.isFinite(lineHeight) && lineHeight > 0 ? lineHeight : 28;
+  const contentHeight = Math.max(0, el.scrollHeight - paddingTop - paddingBottom);
+  return Math.max(1, Math.ceil(contentHeight / safeLineHeight));
 }
 
 function tokenizeWithWhitespace(line: string): string[] {
@@ -198,10 +204,13 @@ export default function EditorPage() {
   const { canUseGrammarFix, canUseHumanizeText } = useSubscription();
 
   // ── contentEditable ref & init ───────────────────────────────────────────
-  const editorRef      = useRef<HTMLDivElement>(null);
+  const editorRef = useRef<HTMLDivElement>(null);
+  const gutterRef = useRef<HTMLDivElement>(null);
   const lastLoadedSignatureRef = useRef<string>('');
   const [wordCount, setWordCount] = useState(0);
   const [editorLineCount, setEditorLineCount] = useState(1);
+  const [editorLineHeight, setEditorLineHeight] = useState(28);
+  const [activeVisualLine, setActiveVisualLine] = useState(1);
   const [editorScrollTop, setEditorScrollTop] = useState(0);
   const [isDirty, setIsDirty]     = useState(false);
   const [isSaving, setIsSaving]   = useState(false);
@@ -358,6 +367,41 @@ export default function EditorPage() {
   }, []);
 
   // Hydrate editor when a new/updated document arrives; do not overwrite active edits.
+  const recalcEditorMetrics = useCallback(() => {
+    const el = editorRef.current;
+    if (!el) return;
+    const text = el.innerText || '';
+    const styles = window.getComputedStyle(el);
+    const parsedLineHeight = Number.parseFloat(styles.lineHeight);
+    const safeLineHeight = Number.isFinite(parsedLineHeight) && parsedLineHeight > 0
+      ? parsedLineHeight
+      : 28;
+    const nextLineCount = countVisualLines(el);
+    setWordCount(countWords(text));
+    setEditorLineHeight(safeLineHeight);
+    setEditorLineCount(nextLineCount);
+    setActiveVisualLine((prev) => Math.max(1, Math.min(nextLineCount, prev)));
+  }, []);
+
+  const updateActiveLineFromSelection = useCallback(() => {
+    const el = editorRef.current;
+    if (!el) return;
+
+    const selection = window.getSelection();
+    if (!selection || selection.rangeCount === 0) return;
+    if (!selection.anchorNode || !el.contains(selection.anchorNode)) return;
+
+    const range = selection.getRangeAt(0);
+    const rangeRect = range.getClientRects()[0] ?? range.getBoundingClientRect();
+    const editorRect = el.getBoundingClientRect();
+    const styles = window.getComputedStyle(el);
+    const paddingTop = Number.parseFloat(styles.paddingTop) || 0;
+    const topInside = rangeRect.top - editorRect.top + el.scrollTop - paddingTop;
+    const line = Math.floor(topInside / editorLineHeight) + 1;
+    const bounded = Math.max(1, Math.min(editorLineCount, line));
+    setActiveVisualLine(bounded);
+  }, [editorLineCount, editorLineHeight]);
+
   useEffect(() => {
     if (!doc || !editorRef.current) return;
     const signature = `${doc._id}:${doc.updatedAt}:${doc.cleanedText?.length ?? 0}`;
@@ -368,12 +412,13 @@ export default function EditorPage() {
     if (!canHydrate) return;
 
     editorRef.current.innerHTML = toEditorHtml(doc.cleanedText || '');
-    const text = editorRef.current.innerText;
-    setWordCount(countWords(text));
-    setEditorLineCount(countLines(text));
+    recalcEditorMetrics();
+    editorRef.current.scrollTop = 0;
     setEditorScrollTop(0);
+    setActiveVisualLine(1);
+    if (gutterRef.current) gutterRef.current.scrollTop = 0;
     lastLoadedSignatureRef.current = signature;
-  }, [doc, isDirty]);
+  }, [doc, isDirty, recalcEditorMetrics]);
 
   useEffect(() => {
     return () => {
@@ -382,13 +427,13 @@ export default function EditorPage() {
   }, [selectedImageEl]);
 
   const handleInput = useCallback(() => {
-    const text = editorRef.current?.innerText || '';
-    setWordCount(countWords(text));
-    setEditorLineCount(countLines(text));
+    recalcEditorMetrics();
+    updateActiveLineFromSelection();
     if (!isDirty) setIsDirty(true);
-  }, [isDirty]);
+  }, [isDirty, recalcEditorMetrics, updateActiveLineFromSelection]);
 
   const handleEditorScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
+    if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop;
     setEditorScrollTop(e.currentTarget.scrollTop);
   }, []);
 
@@ -400,10 +445,12 @@ export default function EditorPage() {
       img.classList.add('editor-image-selected');
       setSelectedImageEl(img);
       syncImageControlsFromElement(img);
+      updateActiveLineFromSelection();
       return;
     }
     clearImageSelection();
-  }, [clearImageSelection, selectedImageEl, syncImageControlsFromElement]);
+    updateActiveLineFromSelection();
+  }, [clearImageSelection, selectedImageEl, syncImageControlsFromElement, updateActiveLineFromSelection]);
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -474,9 +521,8 @@ export default function EditorPage() {
 
     if (appliedByOffset) {
       setIsDirty(true);
+      recalcEditorMetrics();
       const text = editorRef.current.innerText;
-      setWordCount(countWords(text));
-      setEditorLineCount(countLines(text));
       setCompareSnapshot({
         title: 'Grammar Fix Applied',
         before: beforeText,
@@ -495,9 +541,8 @@ export default function EditorPage() {
       if (updated !== html) {
         editorRef.current.innerHTML = updated;
         setIsDirty(true);
+        recalcEditorMetrics();
         const text = editorRef.current.innerText;
-        setWordCount(countWords(text));
-        setEditorLineCount(countLines(text));
         setCompareSnapshot({
           title: 'Grammar Fix Applied',
           before: beforeText,
@@ -511,7 +556,7 @@ export default function EditorPage() {
     navigator.clipboard.writeText(replacement).then(() => {
       toast.success('Could not auto-apply — replacement copied to clipboard');
     });
-  }, []);
+  }, [recalcEditorMetrics]);
 
   const handleHumanizeAction = useCallback(async () => {
     const beforeText = editorRef.current?.innerText || doc?.cleanedText || '';
@@ -521,14 +566,14 @@ export default function EditorPage() {
     editorRef.current.innerHTML = toEditorHtml(result.cleanedText || '');
     const afterText = editorRef.current.innerText || '';
     setWordCount(countWords(afterText));
-    setEditorLineCount(countLines(afterText));
+    recalcEditorMetrics();
     setIsDirty(false);
     setCompareSnapshot({
       title: 'Humanize Completed',
       before: beforeText,
       after: afterText,
     });
-  }, [doc?.cleanedText, humanize]);
+  }, [doc?.cleanedText, humanize, recalcEditorMetrics]);
 
   const getIssueLineNumber = useCallback((issue: GrammarIssue) => {
     if (!Number.isInteger(issue.offset)) return null;
@@ -731,13 +776,22 @@ export default function EditorPage() {
               </div>
             </div>
             <div className="flex flex-1 overflow-hidden bg-white dark:bg-zinc-900">
-              <div className="w-12 flex-shrink-0 border-r border-slate-100 bg-slate-50/80 text-[11px] text-slate-400 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-500">
+              <div
+                ref={gutterRef}
+                aria-hidden
+                className="w-14 flex-shrink-0 overflow-hidden border-r border-slate-100 bg-slate-50/90 text-[11px] text-slate-500 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-500"
+              >
                 <div className="h-full overflow-hidden">
-                  <div className="py-8" style={{ transform: `translateY(-${editorScrollTop}px)` }}>
+                  <div className="py-8">
                     {Array.from({ length: editorLineCount }).map((_, i) => (
                       <div
                         key={`ln-${i}`}
-                        className="h-7 pr-2 text-right font-mono leading-7"
+                        className={cn(
+                          'h-7 pr-2.5 text-right font-mono tabular-nums leading-7 transition-colors',
+                          i + 1 === activeVisualLine
+                            ? 'bg-indigo-100/80 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300'
+                            : 'text-slate-500 dark:text-zinc-500',
+                        )}
                       >
                         {i + 1}
                       </div>
@@ -746,15 +800,28 @@ export default function EditorPage() {
                 </div>
               </div>
 
-              <div
-                ref={editorRef}
-                contentEditable
-                suppressContentEditableWarning
-                onInput={handleInput}
-                onClick={handleEditorClick}
-                onScroll={handleEditorScroll}
-                className={cn(
-                  'flex-1 overflow-y-auto bg-white p-8 focus:outline-none dark:bg-zinc-900',
+              <div className="relative flex-1 overflow-hidden bg-white dark:bg-zinc-900">
+                <div
+                  aria-hidden
+                  className="pointer-events-none absolute inset-x-0 z-0 border-y border-indigo-200/80 bg-indigo-100/50 dark:border-indigo-500/30 dark:bg-indigo-500/10"
+                  style={{
+                    top: `${32 + (activeVisualLine - 1) * editorLineHeight - editorScrollTop}px`,
+                    height: `${editorLineHeight}px`,
+                  }}
+                />
+
+                <div
+                  ref={editorRef}
+                  contentEditable
+                  suppressContentEditableWarning
+                  onInput={handleInput}
+                  onClick={handleEditorClick}
+                  onScroll={handleEditorScroll}
+                  onMouseUp={updateActiveLineFromSelection}
+                  onKeyUp={updateActiveLineFromSelection}
+                  onFocus={updateActiveLineFromSelection}
+                  className={cn(
+                  'relative z-10 flex-1 overflow-y-auto bg-transparent p-8 focus:outline-none',
                   // base text
                   'text-base leading-7 text-slate-800 dark:text-zinc-100',
                   // headings
@@ -788,9 +855,10 @@ export default function EditorPage() {
                   '[&_figure]:my-6',
                   '[&_figcaption]:mt-2 [&_figcaption]:text-center [&_figcaption]:text-xs [&_figcaption]:text-slate-400',
                 )}
-                style={{ minHeight: 'calc(100vh - 280px)' }}
-                spellCheck
-              />
+                  style={{ minHeight: 'calc(100vh - 280px)' }}
+                  spellCheck
+                />
+              </div>
             </div>
           </div>
         </div>

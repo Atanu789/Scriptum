@@ -13,6 +13,7 @@ import {
 import { cn } from '@/lib/utils';
 import { BorderBeam } from '@/components/ui/border-beam';
 import { BackgroundDots, BackgroundGrid } from '@/components/ui/background-dots';
+import { MeteorCard } from '@/components/ui/meteor-card';
 
 declare global {
   interface Window {
@@ -41,6 +42,89 @@ type DisplayPlan = PlanEntry & {
   bestFor: string;
   isPremium?: boolean;
 };
+
+const PLAN_COMPARE_ROWS = [
+  {
+    label: 'Uploads / month',
+    values: {
+      free: '5',
+      pro: '50',
+      custom: 'Custom',
+    },
+  },
+  {
+    label: 'AI analyses / month',
+    values: {
+      free: '5',
+      pro: '50',
+      custom: 'Custom',
+    },
+  },
+  {
+    label: 'Grammar fix',
+    values: {
+      free: false,
+      pro: true,
+      custom: true,
+    },
+  },
+  {
+    label: 'Humanize text',
+    values: {
+      free: false,
+      pro: true,
+      custom: true,
+    },
+  },
+  {
+    label: 'AI teleprompter',
+    values: {
+      free: false,
+      pro: true,
+      custom: true,
+    },
+  },
+  {
+    label: 'TTS narration',
+    values: {
+      free: false,
+      pro: true,
+      custom: true,
+    },
+  },
+  {
+    label: 'PDF + DOCX export',
+    values: {
+      free: true,
+      pro: true,
+      custom: true,
+    },
+  },
+  {
+    label: 'PPTX export',
+    values: {
+      free: false,
+      pro: true,
+      custom: true,
+    },
+  },
+  {
+    label: 'Support',
+    values: {
+      free: 'Standard',
+      pro: 'Priority',
+      custom: 'Priority+',
+    },
+  },
+  {
+    label: 'Teams / onboarding',
+    values: {
+      free: false,
+      pro: false,
+      custom: true,
+    },
+  },
+] as const;
 
 function loadRazorpayScript(): Promise<boolean> {
   return new Promise((resolve) => {
@@ -83,6 +167,16 @@ function UsageMeter({ label, used, limit }: { label: string; used: number; limit
       )}
     </div>
   );
+}
+
+function PlanCompareCell({ value }: { value: boolean | string }) {
+  if (typeof value === 'boolean') {
+    return value
+      ? <Check className="mx-auto h-4 w-4 text-emerald-500" />
+      : <X className="mx-auto h-4 w-4 text-slate-300 dark:text-white/20" />;
+  }
+
+  return <span className="text-xs font-semibold text-slate-700 dark:text-white/75">{value}</span>;
 }
 
 // ─── Page ─────────────────────────────────────────────────────────────────────
@@ -236,7 +330,7 @@ export default function PricingPage() {
       }
       return {
         ...plan,
-        description: 'Full AI power for daily use.',
+          description: 'Power plan with 50 uploads + 50 AI analyses every month.',
         ctaLabel: `Go premium - Rs.${plan.priceINR}/month`,
         bestFor: 'Best for power users',
         isPremium: true,
@@ -265,7 +359,7 @@ export default function PricingPage() {
           <h1 className="text-4xl font-extrabold tracking-tight">Choose your plan</h1>
           <p className="mx-auto max-w-2xl text-slate-500 dark:text-white/35">
             Transparent plans for creators, learners, and teams. Upgrade anytime to unlock premium narration,
-            PowerPoint export, and advanced AI workflows.
+            PowerPoint export, and advanced AI workflows with 50 uploads and 50 analyses per month on Pro.
           </p>
           {error && (
             <div className="mx-auto max-w-md rounded-lg border border-red-300 bg-red-50 px-4 py-2 text-sm text-red-700 dark:border-red-700 dark:bg-red-950/60 dark:text-red-300">
@@ -335,7 +429,7 @@ export default function PricingPage() {
               )}
             </div>
             <div className="flex gap-6">
-              <UsageMeter label="AI uses" used={sub.aiUsageThisMonth} limit={sub.limits.aiUsagePerMonth} />
+              <UsageMeter label="AI analyses" used={sub.aiUsageThisMonth} limit={sub.limits.aiUsagePerMonth} />
               <UsageMeter label="Uploads" used={sub.uploadUsageThisMonth} limit={sub.limits.uploadsPerMonth} />
             </div>
           </div>
@@ -347,16 +441,9 @@ export default function PricingPage() {
             const isCurrent = effectivePlan === plan.id;
             const isPro = plan.id === 'pro';
             const isCustom = plan.id === 'custom';
-            return (
-              <div
-                key={plan.id}
-                className={cn(
-                  'relative flex flex-col overflow-hidden rounded-2xl border p-5',
-                  isPro
-                    ? 'border-indigo-400/50 bg-white/80 shadow-xl shadow-indigo-500/15 backdrop-blur-xl dark:border-indigo-500/40 dark:bg-[#0d0d1a]/85'
-                    : 'border-slate-200/90 bg-white/65 backdrop-blur-xl dark:border-white/[0.08] dark:bg-[#0e0e16]/80',
-                )}
-              >
+
+            const cardBody = (
+              <>
                 {isPro && <BorderBeam duration={8} colorFrom="#6366f1" colorTo="#a855f7" />}
                 {isPro && (
                   <span className="absolute left-1/2 -top-px -translate-x-1/2 rounded-b-full bg-indigo-600 px-3 py-0.5 text-[10px] font-bold uppercase tracking-wide text-white">
@@ -364,7 +451,6 @@ export default function PricingPage() {
                   </span>
                 )}
 
-                {/* Plan name + price */}
                 <div>
                   <div className={cn(
                     'mb-3 mt-3 inline-flex h-8 w-8 items-center justify-center rounded-xl',
@@ -393,19 +479,19 @@ export default function PricingPage() {
 
                 <div className={cn('my-4 h-px', isPro ? 'bg-indigo-100 dark:bg-indigo-500/15' : 'bg-slate-100 dark:bg-white/[0.05]')} />
 
-                {/* Feature list */}
                 <ul className="flex flex-1 flex-col gap-2">
-                  <PlanFeature included label={`${plan.limits.aiUsagePerMonth === -1 ? 'Unlimited' : plan.limits.aiUsagePerMonth} AI uses / month`} />
-                  <PlanFeature included label={`${plan.limits.uploadsPerMonth === -1 ? 'Unlimited' : plan.limits.uploadsPerMonth} document uploads`} />
-                  <PlanFeature included={plan.limits.teleprompterAI} label="AI-powered teleprompter" />
-                  <PlanFeature included={plan.limits.exportPPT} label="Export to PowerPoint" />
-                  <PlanFeature included={plan.limits.ttsNarration} label="Text-to-speech narration" />
-                  <PlanFeature included={plan.limits.grammarFix} label="One-click grammar fix" />
-                  <PlanFeature included={plan.limits.humanizeText} label="Humanize AI-style text" />
-                  <PlanFeature included={isPro} label="Priority support" />
+                  <PlanFeature included label={`${plan.limits.uploadsPerMonth === -1 ? 'Custom' : plan.limits.uploadsPerMonth} uploads / month`} />
+                  <PlanFeature included label={`${plan.limits.aiUsagePerMonth === -1 ? 'Custom' : plan.limits.aiUsagePerMonth} AI analyses / month`} />
+                  <PlanFeature included label="PDF and DOCX export" />
+                  <PlanFeature included={plan.limits.grammarFix} label="Grammar fix" />
+                  <PlanFeature included={plan.limits.humanizeText} label="Humanize text" />
+                  <PlanFeature included={plan.limits.teleprompterAI} label="AI teleprompter" />
+                  <PlanFeature included={plan.limits.ttsNarration} label="TTS narration" />
+                  <PlanFeature included={plan.limits.exportPPT} label="PPTX export" />
+                  <PlanFeature included={isPro || isCustom} label="Priority support" />
+                  <PlanFeature included={isCustom} label="Team onboarding" />
                 </ul>
 
-                {/* CTA */}
                 <div>
                   {isCurrent ? (
                     <div className="mt-5 block rounded-xl border border-slate-200 px-4 py-2 text-center text-xs font-semibold text-slate-700 dark:border-white/[0.08] dark:text-white/55">
@@ -433,10 +519,64 @@ export default function PricingPage() {
                     </div>
                   )}
                 </div>
-              </div>
+              </>
+            );
+
+            return (
+              isPro ? (
+                <MeteorCard
+                  key={plan.id}
+                  meteors={16}
+                  className="h-full scale-100 border-indigo-400/60 bg-white/80 shadow-xl shadow-indigo-500/20 backdrop-blur-xl sm:scale-[1.04] sm:-translate-y-2 dark:border-indigo-500/50 dark:bg-[#0d0d1a]/90"
+                >
+                  <div className="relative flex h-full flex-col">
+                    {cardBody}
+                  </div>
+                </MeteorCard>
+              ) : (
+                <div
+                  key={plan.id}
+                  className="relative flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200/90 bg-white/65 p-5 backdrop-blur-xl dark:border-white/[0.08] dark:bg-[#0e0e16]/80"
+                >
+                  {cardBody}
+                </div>
+              )
             );
           })}
         </div>
+
+        <section className="overflow-hidden rounded-2xl border border-slate-200/90 bg-white/70 backdrop-blur-xl dark:border-white/[0.08] dark:bg-white/[0.05]">
+          <div className="border-b border-slate-200/80 px-5 py-4 dark:border-white/[0.08]">
+            <h2 className="text-lg font-semibold text-slate-900 dark:text-white">Compare plans at a glance</h2>
+            <p className="mt-1 text-sm text-slate-500 dark:text-white/40">Quick scan of what changes between Free, Pro, and Custom.</p>
+          </div>
+
+          <div className="overflow-x-auto">
+            <div className="min-w-[720px]">
+              <div className="grid grid-cols-[1.4fr_1fr_1fr_1fr] border-b border-slate-200/80 bg-slate-50/80 dark:border-white/[0.08] dark:bg-white/[0.03]">
+                <div className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/35">Feature</div>
+                <div className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-white/55">Free</div>
+                <div className="bg-indigo-50/80 px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">Pro</div>
+                <div className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-white/55">Custom</div>
+              </div>
+
+              {PLAN_COMPARE_ROWS.map((row, index) => (
+                <div
+                  key={row.label}
+                  className={cn(
+                    'grid grid-cols-[1.4fr_1fr_1fr_1fr] border-b border-slate-100 dark:border-white/[0.06]',
+                    index % 2 === 0 ? 'bg-white/60 dark:bg-transparent' : 'bg-slate-50/50 dark:bg-white/[0.015]',
+                  )}
+                >
+                  <div className="px-5 py-3 text-sm font-medium text-slate-700 dark:text-white/80">{row.label}</div>
+                  <div className="px-4 py-3 text-center"><PlanCompareCell value={row.values.free} /></div>
+                  <div className="bg-indigo-50/60 px-4 py-3 text-center dark:bg-indigo-500/5"><PlanCompareCell value={row.values.pro} /></div>
+                  <div className="px-4 py-3 text-center"><PlanCompareCell value={row.values.custom} /></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
 
         {/* Trust strip */}
         <div className="flex flex-wrap justify-center gap-8 text-slate-500 text-xs dark:text-white/30">

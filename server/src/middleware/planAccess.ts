@@ -122,7 +122,7 @@ export async function checkUploadUsage(
     if (limit !== -1 && user.uploadUsageThisMonth >= limit) {
       res.status(429).json({
         success: false,
-        error:   `Monthly upload limit (${limit}) reached. Upgrade to Pro for unlimited uploads.`,
+        error:   `Monthly upload limit (${limit}) reached. Upgrade to Pro for higher limits.`,
         code:    'UPLOAD_LIMIT_REACHED',
         usage:   user.uploadUsageThisMonth,
         limit,

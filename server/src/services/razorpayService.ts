@@ -33,7 +33,7 @@ export const PLAN_LIMITS: { [P in Plan]: {
   },
   pro: {
     aiUsagePerMonth:  50,
-    uploadsPerMonth:  -1,
+    uploadsPerMonth:  50,
     teleprompterAI:   true,
     exportPPT:        true,
     ttsNarration:     true,
