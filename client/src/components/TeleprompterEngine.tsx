@@ -76,6 +76,8 @@ const ScriptRenderer = memo(function ScriptRenderer({
 // ─── Controls ─────────────────────────────────────────────────────────────────
 
 interface ControlsProps {
+  readingMode:     'ai' | 'presenter';
+  onReadingModeChange: (mode: 'ai' | 'presenter') => void;
   activeMode:      ActiveMode;
   ttsStatus:       TTSStatus;
   syncStatus:      SyncStatus;
@@ -95,6 +97,7 @@ interface ControlsProps {
 }
 
 function Controls({
+  readingMode, onReadingModeChange,
   activeMode, ttsStatus, syncStatus, isManualPlaying,
   speed, fontSize,
   onStartTTS, onPauseTTS, onResumeTTS, onStopTTS,
@@ -108,19 +111,45 @@ function Controls({
   const isTTSDone    = ttsStatus === 'done';
   const isMicLive    = syncStatus === 'listening';
   const isMicConn    = syncStatus === 'connecting';
+  const isAIMode     = readingMode === 'ai';
+  const isPresenterMode = readingMode === 'presenter';
 
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#0d0d18]/95 px-4 py-3 backdrop-blur-md">
+
+      {/* ── Mode toggle ───────────────────────────────────────── */}
+      <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+        <button
+          onClick={() => onReadingModeChange('ai')}
+          className={cn(
+            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+            isAIMode ? 'bg-indigo-600 text-white' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/80',
+          )}
+        >
+          AI Narration
+        </button>
+        <button
+          onClick={() => onReadingModeChange('presenter')}
+          className={cn(
+            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
+            isPresenterMode ? 'bg-emerald-600 text-white' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/80',
+          )}
+        >
+          Presenter Reading
+        </button>
+      </div>
+
+      <div className="h-5 w-px bg-white/20" />
 
       {/* ── TTS Read Aloud ─────────────────────────────────────── */}
       {activeMode !== 'tts' && (
         <button
           onClick={onStartTTS}
-          disabled={activeMode === 'mic'}
-          title={activeMode === 'mic' ? 'Stop mic first' : 'Read aloud with Draco voice'}
+          disabled={activeMode === 'mic' || !isAIMode}
+          title={!isAIMode ? 'Switch to AI Narration mode' : activeMode === 'mic' ? 'Stop mic first' : 'Read aloud with Draco voice'}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all active:scale-[0.97]',
-            activeMode === 'mic'
+            activeMode === 'mic' || !isAIMode
               ? 'cursor-not-allowed bg-white/[0.03] text-white/20'
               : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-500',
           )}
@@ -173,11 +202,11 @@ function Controls({
       {!isMicLive && !isMicConn && activeMode !== 'tts' && (
         <button
           onClick={onStartMic}
-          disabled={activeMode === 'manual'}
-          title={activeMode === 'manual' ? 'Stop manual first' : 'Sync with your voice'}
+          disabled={activeMode === 'manual' || !isPresenterMode}
+          title={!isPresenterMode ? 'Switch to Presenter Reading mode' : activeMode === 'manual' ? 'Stop manual first' : 'Sync with your voice'}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all active:scale-[0.97]',
-            activeMode === 'manual'
+            activeMode === 'manual' || !isPresenterMode
               ? 'cursor-not-allowed text-white/30'
               : 'bg-white/[0.08] text-white/70 hover:bg-white/[0.13] hover:text-white',
 
@@ -209,12 +238,12 @@ function Controls({
       {/* ── Manual Scroll ───────────────────────────────────────── */}
       <button
         onClick={onToggleManual}
-        disabled={activeMode === 'tts' || activeMode === 'mic'}
+        disabled={activeMode === 'tts' || activeMode === 'mic' || !isPresenterMode}
         className={cn(
           'inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all active:scale-[0.97]',
           activeMode === 'manual'
             ? 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30 hover:bg-amber-500/20'
-            : (activeMode === 'tts' || activeMode === 'mic')
+            : (activeMode === 'tts' || activeMode === 'mic' || !isPresenterMode)
             ? 'cursor-not-allowed text-white/25'
             : 'bg-white/[0.08] text-white/70 hover:bg-white/[0.13] hover:text-white',
         )}
@@ -268,6 +297,7 @@ function Controls({
 export default function TeleprompterEngine({ script, documentTitle }: TeleprompterEngineProps) {
 
   // ── State ──────────────────────────────────────────────────────────────────
+  const [readingMode,     setReadingMode]     = useState<'ai' | 'presenter'>('ai');
   const [activeMode,      setActiveMode]      = useState<ActiveMode>('idle');
   const [ttsStatus,       setTTSStatus]       = useState<TTSStatus>('idle');
   const [syncStatus,      setSyncStatus]      = useState<SyncStatus>('idle');
@@ -368,6 +398,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleStartTTS = useCallback(() => {
+    if (readingMode !== 'ai') return;
     setErrorMsg(null);
     micStop();
     cancelAnimationFrame(rafManualRef.current);
@@ -376,7 +407,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     resetMatcher();
     setActiveMode('tts');
     ttsStart();
-  }, [micStop, resetDOM, resetMatcher, ttsStart]);
+  }, [micStop, readingMode, resetDOM, resetMatcher, ttsStart]);
 
   const handlePauseTTS  = useCallback(() => ttsPause(),  [ttsPause]);
   const handleResumeTTS = useCallback(() => ttsResume(), [ttsResume]);
@@ -387,6 +418,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   }, [ttsStop]);
 
   const handleStartMic = useCallback(() => {
+    if (readingMode !== 'presenter') return;
     setErrorMsg(null);
     ttsStop();
     cancelAnimationFrame(rafManualRef.current);
@@ -394,7 +426,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     resetMatcher();
     setActiveMode('mic');
     micStart();
-  }, [micStart, resetMatcher, ttsStop]);
+  }, [micStart, readingMode, resetMatcher, ttsStop]);
 
   const handleStopMic = useCallback(() => {
     micStop();
@@ -402,6 +434,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   }, [micStop]);
 
   const handleToggleManual = useCallback(() => {
+    if (readingMode !== 'presenter') return;
     if (activeMode !== 'manual') {
       ttsStop();
       micStop();
@@ -410,7 +443,20 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     } else {
       setIsManualPlaying((v) => !v);
     }
-  }, [activeMode, micStop, ttsStop]);
+  }, [activeMode, micStop, readingMode, ttsStop]);
+
+  const handleReadingModeChange = useCallback((mode: 'ai' | 'presenter') => {
+    if (mode === readingMode) return;
+    setReadingMode(mode);
+    ttsStop();
+    micStop();
+    cancelAnimationFrame(rafManualRef.current);
+    setActiveMode('idle');
+    setTTSStatus('idle');
+    setSyncStatus('idle');
+    setIsManualPlaying(false);
+    setErrorMsg(null);
+  }, [micStop, readingMode, ttsStop]);
 
   const handleReset = useCallback(() => {
     ttsStop();
@@ -464,6 +510,8 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
       {/* Controls */}
       <Controls
+        readingMode={readingMode}
+        onReadingModeChange={handleReadingModeChange}
         activeMode={activeMode}
         ttsStatus={ttsStatus}
         syncStatus={syncStatus}

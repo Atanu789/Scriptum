@@ -60,8 +60,8 @@ export async function streamTTS(text: string, model = 'aura-2-draco-en'): Promis
   const key = process.env.DEEPGRAM_API_KEY;
   if (!key) throw new Error('DEEPGRAM_API_KEY is not set');
 
-  const response = await axios.post(
-    `https://api.deepgram.com/v1/speak?model=${model}&encoding=mp3`,
+  const requestStream = async (query: string) => axios.post(
+    `https://api.deepgram.com/v1/speak?${query}`,
     { text },
     {
       headers: {
@@ -73,6 +73,14 @@ export async function streamTTS(text: string, model = 'aura-2-draco-en'): Promis
       validateStatus: null, // don't throw on non-2xx — we'll check manually
     },
   );
+
+  // Prefer a higher sample rate for cleaner playback on teleprompter output.
+  let response = await requestStream(`model=${model}&encoding=mp3&sample_rate=48000`);
+
+  // Fallback if a Deepgram plan/model rejects explicit sample-rate params.
+  if (response.status === 400 || response.status === 422) {
+    response = await requestStream(`model=${model}&encoding=mp3`);
+  }
 
   if (response.status !== 200) {
     // Drain the error body so we can surface a useful message

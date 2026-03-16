@@ -15,7 +15,7 @@ function extractJSON(text: string): any {
 
 export async function analyzeAIScore(text: string): Promise<AIScoreResult> {
   const sample = text.slice(0, 3000);
-  
+
   const prompt = `You are an expert editorial assistant and AI-detection specialist.
 Analyze the text below for AI-generated patterns.
 
@@ -74,4 +74,31 @@ ${sample}`;
       humanizationSuggestions: [],
     };
   }
+}
+
+export async function humanizeTextContent(text: string): Promise<string> {
+  const sample = text.slice(0, 12_000);
+
+  const prompt = `You are a senior editor. Rewrite the text below so it reads more naturally human-written.
+
+Goals:
+- Keep the original meaning and key facts.
+- Vary sentence structure and rhythm.
+- Reduce repetitive phrasing and predictable transitions.
+- Use natural, specific phrasing.
+- Keep paragraph breaks.
+
+Rules:
+- Return ONLY the rewritten text.
+- No markdown fences.
+- No explanations.
+
+Text:
+${sample}`;
+
+  const response = await callGemini(prompt);
+  return response
+    .replace(/^```[a-z]*\n?/i, '')
+    .replace(/```$/i, '')
+    .trim();
 }

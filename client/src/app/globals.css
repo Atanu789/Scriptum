@@ -269,3 +269,8 @@
   font-weight: 600;
 }
 
+.editor-image-selected {
+  outline: 2px solid rgb(79 70 229);
+  outline-offset: 3px;
+}
+

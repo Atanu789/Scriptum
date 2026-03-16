@@ -10,6 +10,7 @@ import {
   DocumentSummary,
   UploadResult,
   AnalysisResult,
+  HumanizeResult,
   AudioSegment,
   UsageStats,
 } from '@/types';
@@ -156,6 +157,11 @@ export const analysisApi = {
     const { data } = await api.post<ApiResponse<AnalysisResult>>(
       `/analyze/${documentId}${force ? '?force=1' : ''}`
     );
+    return unwrap(data);
+  },
+
+  humanize: async (documentId: string): Promise<HumanizeResult> => {
+    const { data } = await api.post<ApiResponse<HumanizeResult>>(`/analyze/${documentId}/humanize`);
     return unwrap(data);
   },
 };

@@ -79,6 +79,39 @@ export interface IDocument extends Document {
       }>;
     }>;
   };
+  presentationContent?: {
+    totalSlides: number;
+    hasMedia: boolean;
+    hasAudio: boolean;
+    slides: Array<{
+      slideNumber: number;
+      title: string;
+      text: string;
+      paragraphs: Array<{
+        level?: number;
+        alignment?: string;
+        spacingBeforePt?: number;
+        spacingAfterPt?: number;
+        lineSpacingPt?: number;
+        runs: Array<{
+          text: string;
+          style?: {
+            bold?: boolean;
+            italic?: boolean;
+            underline?: boolean;
+            fontFamily?: string;
+            fontSizePt?: number;
+            colorHex?: string;
+          };
+        }>;
+      }>;
+      media: Array<{
+        relationshipId: string;
+        target: string;
+        type: 'image' | 'audio' | 'video' | 'other';
+      }>;
+    }>;
+  };
   wordCount: number;
   aiScore: number | null;
   grammarScore: number | null;
@@ -165,6 +198,10 @@ const documentSchema = new Schema<IDocument>(
     },
     structuredContent: {
       sections: [documentSectionSchema],
+    },
+    presentationContent: {
+      type: Schema.Types.Mixed,
+      default: null,
     },
     wordCount: {
       type: Number,

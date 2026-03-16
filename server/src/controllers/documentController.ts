@@ -52,7 +52,7 @@ export const listDocuments = async (
 
     const [documents, total] = await Promise.all([
       DocumentModel.find({ userId: req.user!.userId })
-        .select('-rawText -cleanedText -structuredContent')
+        .select('-rawText -cleanedText -structuredContent -presentationContent')
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit),

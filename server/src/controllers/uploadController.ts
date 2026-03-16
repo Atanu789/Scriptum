@@ -117,6 +117,7 @@ export const uploadFile = async (
       rawText: extracted.rawText,
       cleanedText: extracted.cleanedText,
       structuredContent: structured,
+      presentationContent: extracted.presentationContent ?? null,
       wordCount: extracted.wordCount,
       mediaUrl: null,
       status: 'pending',

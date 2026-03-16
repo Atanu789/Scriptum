@@ -40,7 +40,9 @@ export function useTTSPlayback({
   const audioRef    = useRef<HTMLAudioElement | null>(null);
   const abortRef    = useRef<AbortController | null>(null);
   const isActiveRef = useRef(false);
+  const isPausedRef = useRef(false);
   const statusRef   = useRef<TTSStatus>('idle');
+  const resumeWaitersRef = useRef<Array<() => void>>([]);
 
   // Keep latest callbacks in refs so helpers never rebuild on re-render.
   const onPointerRef = useRef(onPointerChange);
@@ -68,6 +70,16 @@ export function useTTSPlayback({
       audioRef.current              = null;
     }
     if (abortRef.current) { abortRef.current.abort(); abortRef.current = null; }
+    isPausedRef.current = false;
+    resumeWaitersRef.current.forEach((resume) => resume());
+    resumeWaitersRef.current = [];
+  }, []);
+
+  const waitUntilResumed = useCallback(async (): Promise<void> => {
+    if (!isPausedRef.current) return;
+    await new Promise<void>((resolve) => {
+      resumeWaitersRef.current.push(resolve);
+    });
   }, []);
 
   // ─── Fetch audio blob from server ────────────────────────────────────────────
@@ -98,9 +110,19 @@ export function useTTSPlayback({
         const audio        = new Audio(url);
         audioRef.current   = audio;
 
-        audio.oncanplaythrough = () => {
-          if (!isActiveRef.current) { resolve(); return; }
-          audio.play().catch(reject);
+        audio.oncanplaythrough = async () => {
+          try {
+            if (!isActiveRef.current) { resolve(); return; }
+            if (isPausedRef.current) {
+              setStatus('paused');
+              await waitUntilResumed();
+            }
+            if (!isActiveRef.current) { resolve(); return; }
+            await audio.play();
+            setStatus('playing');
+          } catch (err) {
+            reject(err);
+          }
         };
 
         // Real-time word pointer: maps audio.currentTime → word index
@@ -117,22 +139,24 @@ export function useTTSPlayback({
 
         audio.onended = () => {
           URL.revokeObjectURL(url);
+          audioRef.current = null;
           resolve();
         };
 
         audio.onerror = () => {
           URL.revokeObjectURL(url);
+          audioRef.current = null;
           reject(new Error('Audio playback error at chunk starting at token ' + chunkStart));
         };
       }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-    [],
+    [setStatus, waitUntilResumed],
   );
 
   const start = useCallback(async (): Promise<void> => {
     isActiveRef.current = false;
     clearAudio();
     isActiveRef.current = true;
+    isPausedRef.current = false;
 
     const toks = tokensRef.current;
     if (toks.length === 0) return;
@@ -145,16 +169,32 @@ export function useTTSPlayback({
     abortRef.current = ctrl;
 
     try {
+      let nextChunkUrlPromise: Promise<string> | null = null;
+
       for (let i = 0; i < chunks.length; i++) {
         if (!isActiveRef.current) break;
+        await waitUntilResumed();
+
         const chunk      = chunks[i];
         const chunkStart = i * WORDS_PER_CHUNK;
         const text       = chunk.map((t) => t.original).join(' ');
 
-        const url = await fetchAudio(text, ctrl.signal);
+        if (!nextChunkUrlPromise) {
+          nextChunkUrlPromise = fetchAudio(text, ctrl.signal);
+        }
+
+        const url = await nextChunkUrlPromise;
         if (!isActiveRef.current) { URL.revokeObjectURL(url); break; }
 
-        if (i === 0) setStatus('playing');
+        const nextChunk = chunks[i + 1];
+        if (nextChunk) {
+          const nextText = nextChunk.map((t) => t.original).join(' ');
+          nextChunkUrlPromise = fetchAudio(nextText, ctrl.signal);
+        } else {
+          nextChunkUrlPromise = null;
+        }
+
+        if (i > 0 && !isPausedRef.current) setStatus('loading');
         await playBlob(url, chunkStart, chunk.length);
       }
       if (isActiveRef.current) {
@@ -172,19 +212,26 @@ export function useTTSPlayback({
   }, [clearAudio, fetchAudio, playBlob, setStatus]);
 
   const pause = useCallback((): void => {
+    if (!isActiveRef.current) return;
+    isPausedRef.current = true;
     const audio = audioRef.current;
     if (audio && !audio.paused) {
       audio.pause();
-      setStatus('paused');
     }
+    setStatus('paused');
   }, [setStatus]);
 
   const resume = useCallback((): void => {
+    if (!isActiveRef.current) return;
+    isPausedRef.current = false;
+    resumeWaitersRef.current.forEach((resumeWaiter) => resumeWaiter());
+    resumeWaitersRef.current = [];
+
     const audio = audioRef.current;
-    if (audio && audio.paused && isActiveRef.current) {
+    if (audio && audio.paused) {
       audio.play().catch((e: Error) => onErrorRef.current(e.message));
-      setStatus('playing');
     }
+    setStatus('playing');
   }, [setStatus]);
 
   const stop = useCallback((): void => {

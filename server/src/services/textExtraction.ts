@@ -3,7 +3,16 @@ import mammoth from 'mammoth';
 import pdfParse from 'pdf-parse';
 import axios from 'axios';
 import JSZip from 'jszip';
-import { ExtractedContent, DocumentSection } from '../types';
+import {
+  ExtractedContent,
+  DocumentSection,
+  PptParagraph,
+  PptPresentationContent,
+  PptSlideContent,
+  PptTextRun,
+  PptTextRunStyle,
+  PptMediaReference,
+} from '../types';
 
 // ─── Text Cleaning ─────────────────────────────────────────────────────────────
 
@@ -332,50 +341,253 @@ export async function extractContent(
 
 // ─── PPTX text extraction ─────────────────────────────────────────────────────
 
+function decodeXmlEntities(text: string): string {
+  return text
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;|&apos;/g, "'")
+    .replace(/&#xA;/gi, '\n')
+    .replace(/&#10;/g, '\n');
+}
+
+function getAttrValue(tagFragment: string, attrName: string): string | undefined {
+  const escaped = attrName.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const re = new RegExp(`${escaped}="([^"]+)"`);
+  const m = tagFragment.match(re);
+  return m?.[1];
+}
+
+function parseRunStyle(runTag: string, runPropsTag?: string): PptTextRunStyle | undefined {
+  const style: PptTextRunStyle = {};
+  const src = runPropsTag ?? runTag;
+
+  const bold = getAttrValue(src, 'b');
+  const italic = getAttrValue(src, 'i');
+  const underline = getAttrValue(src, 'u');
+  const latinTypeface = src.match(/<a:latin[^>]*typeface="([^"]+)"/i)?.[1];
+  const sizeVal = getAttrValue(src, 'sz');
+  const colorVal = src.match(/<a:srgbClr[^>]*val="([0-9A-Fa-f]{6})"/i)?.[1];
+
+  if (bold === '1') style.bold = true;
+  if (italic === '1') style.italic = true;
+  if (underline && underline !== 'none') style.underline = true;
+  if (latinTypeface) style.fontFamily = latinTypeface;
+  if (sizeVal) {
+    const sizeHundredths = Number.parseInt(sizeVal, 10);
+    if (Number.isFinite(sizeHundredths) && sizeHundredths > 0) {
+      style.fontSizePt = sizeHundredths / 100;
+    }
+  }
+  if (colorVal) style.colorHex = `#${colorVal.toUpperCase()}`;
+
+  return Object.keys(style).length > 0 ? style : undefined;
+}
+
+function parseParagraph(paragraphXml: string): PptParagraph {
+  const paragraph: PptParagraph = { runs: [] };
+  const pPrTag = paragraphXml.match(/<a:pPr([^>]*)\/>|<a:pPr([^>]*)>/i);
+  const pPrAttrs = pPrTag ? (pPrTag[1] ?? pPrTag[2] ?? '') : '';
+
+  if (pPrAttrs) {
+    const level = getAttrValue(pPrAttrs, 'lvl');
+    const align = getAttrValue(pPrAttrs, 'algn');
+    const spcBef = getAttrValue(pPrAttrs, 'spcBef');
+    const spcAft = getAttrValue(pPrAttrs, 'spcAft');
+    const lnSpc = getAttrValue(pPrAttrs, 'lnSpc');
+
+    if (level) paragraph.level = Number.parseInt(level, 10);
+    if (align) paragraph.alignment = align;
+    if (spcBef) paragraph.spacingBeforePt = Number.parseInt(spcBef, 10) / 100;
+    if (spcAft) paragraph.spacingAfterPt = Number.parseInt(spcAft, 10) / 100;
+    if (lnSpc) paragraph.lineSpacingPt = Number.parseInt(lnSpc, 10) / 100;
+  }
+
+  const runRe = /<a:r>([\s\S]*?)<\/a:r>/g;
+  let runMatch: RegExpExecArray | null;
+  while ((runMatch = runRe.exec(paragraphXml)) !== null) {
+    const runXml = runMatch[1];
+    const text = decodeXmlEntities(runXml.match(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/)?.[1] ?? '').trim();
+    if (!text) continue;
+
+    const runPropsTag = runXml.match(/<a:rPr([^>]*)\/>|<a:rPr([^>]*)>/i);
+    const runProps = runPropsTag ? (runPropsTag[0] ?? '') : undefined;
+    const style = parseRunStyle(runXml, runProps);
+    const run: PptTextRun = { text };
+    if (style) run.style = style;
+    paragraph.runs.push(run);
+  }
+
+  if (paragraph.runs.length === 0) {
+    const fieldTextRe = /<a:fld[^>]*>([\s\S]*?)<\/a:fld>/g;
+    let fieldMatch: RegExpExecArray | null;
+    while ((fieldMatch = fieldTextRe.exec(paragraphXml)) !== null) {
+      const text = decodeXmlEntities(fieldMatch[1].match(/<a:t(?:\s[^>]*)?>([\s\S]*?)<\/a:t>/)?.[1] ?? '').trim();
+      if (!text) continue;
+      paragraph.runs.push({ text });
+    }
+  }
+
+  return paragraph;
+}
+
+function parseSlideMediaReferences(slideXml: string, relTargets: Map<string, string>): PptMediaReference[] {
+  const refs: PptMediaReference[] = [];
+  const seen = new Set<string>();
+  const relIdRe = /r:(?:embed|link)="([^"]+)"/g;
+  let relMatch: RegExpExecArray | null;
+
+  while ((relMatch = relIdRe.exec(slideXml)) !== null) {
+    const relationshipId = relMatch[1];
+    if (seen.has(relationshipId)) continue;
+    seen.add(relationshipId);
+
+    const target = relTargets.get(relationshipId) ?? '';
+    const lowerTarget = target.toLowerCase();
+    let type: PptMediaReference['type'] = 'other';
+
+    if (/\.(png|jpg|jpeg|gif|bmp|tif|tiff|svg|webp)$/i.test(lowerTarget)) type = 'image';
+    else if (/\.(mp3|wav|m4a|aac|ogg|wma)$/i.test(lowerTarget)) type = 'audio';
+    else if (/\.(mp4|mov|avi|wmv|mkv|webm|mpeg|mpg)$/i.test(lowerTarget)) type = 'video';
+
+    refs.push({
+      relationshipId,
+      target,
+      type,
+    });
+  }
+
+  return refs;
+}
+
+async function parseSlideRelationships(zip: JSZip, slidePath: string): Promise<Map<string, string>> {
+  const relPath = slidePath
+    .replace('ppt/slides/', 'ppt/slides/_rels/')
+    .replace(/\.xml$/, '.xml.rels');
+
+  const relFile = zip.files[relPath];
+  if (!relFile) return new Map();
+
+  const relXml = await relFile.async('string');
+  const rels = new Map<string, string>();
+
+  const relRe = /<Relationship\s+[^>]*Id="([^"]+)"[^>]*Target="([^"]+)"[^>]*\/?>(?:<\/Relationship>)?/g;
+  let relMatch: RegExpExecArray | null;
+  while ((relMatch = relRe.exec(relXml)) !== null) {
+    const id = relMatch[1];
+    const target = relMatch[2];
+    rels.set(id, target);
+  }
+
+  return rels;
+}
+
+function parseSlide(slideXml: string, slideNumber: number, media: PptMediaReference[]): PptSlideContent {
+  const paragraphs: PptParagraph[] = [];
+
+  const pRe = /<a:p>([\s\S]*?)<\/a:p>/g;
+  let pMatch: RegExpExecArray | null;
+  while ((pMatch = pRe.exec(slideXml)) !== null) {
+    const pXml = pMatch[0];
+    const paragraph = parseParagraph(pXml);
+    if (paragraph.runs.length > 0) paragraphs.push(paragraph);
+  }
+
+  const paragraphTexts = paragraphs
+    .map((p) => p.runs.map((r) => r.text).join(' ').trim())
+    .filter(Boolean);
+
+  const title = paragraphTexts[0] ?? `Slide ${slideNumber}`;
+  const text = paragraphTexts.join('\n').trim();
+
+  return {
+    slideNumber,
+    title,
+    text,
+    paragraphs,
+    media,
+  };
+}
+
+function presentationToStructuredSections(presentation: PptPresentationContent): DocumentSection[] {
+  const sections: DocumentSection[] = presentation.slides.map((slide) => {
+    const paragraphs = slide.paragraphs
+      .map((p) => p.runs.map((r) => r.text).join(' ').trim())
+      .filter(Boolean);
+
+    return {
+      title: slide.title || `Slide ${slide.slideNumber}`,
+      paragraphs: paragraphs.length > 0 ? paragraphs : (slide.text ? [slide.text] : []),
+      narrationSegments: [],
+    };
+  }).filter((section) => section.paragraphs.length > 0);
+
+  return sections.length > 0 ? sections : [{
+    title: 'Presentation',
+    paragraphs: ['No readable text found in slides.'],
+    narrationSegments: [],
+  }];
+}
+
 export async function extractFromPptx(filePath: string): Promise<ExtractedContent> {
   const buffer = fs.readFileSync(filePath);
   const zip = await JSZip.loadAsync(buffer);
 
-  const textParts: string[] = [];
-
-  // pptx stores slides under ppt/slides/slide*.xml
   const slideFiles = Object.keys(zip.files)
     .filter((name) => /^ppt\/slides\/slide\d+\.xml$/.test(name))
     .sort((a, b) => {
-      const numA = parseInt(a.match(/\d+/)?.[0] ?? '0', 10);
-      const numB = parseInt(b.match(/\d+/)?.[0] ?? '0', 10);
-      return numA - numB;
+      const getNum = (s: string) => Number.parseInt(s.match(/slide(\d+)\.xml$/)?.[1] ?? '0', 10);
+      return getNum(a) - getNum(b);
     });
 
-  for (const slideFile of slideFiles) {
-    const xmlContent = await zip.files[slideFile].async('string');
-    // Extract text from <a:t> tags (DrawingML text runs)
-    const texts: string[] = [];
-    const re = /<a:t(?:\s[^>]*)?>([^<]*)<\/a:t>/g;
-    let m: RegExpExecArray | null;
-    while ((m = re.exec(xmlContent)) !== null) {
-      const t = m[1].trim();
-      if (t) texts.push(t);
-    }
-    if (texts.length > 0) {
-      textParts.push(texts.join(' '));
-    }
+  if (slideFiles.length === 0) {
+    throw new Error('No slides were found in the PowerPoint file');
   }
 
-  if (textParts.length === 0) {
+  const slides: PptSlideContent[] = [];
+  let hasMedia = false;
+  let hasAudio = false;
+
+  for (let i = 0; i < slideFiles.length; i++) {
+    const slidePath = slideFiles[i];
+    const slideXml = await zip.files[slidePath].async('string');
+    const rels = await parseSlideRelationships(zip, slidePath);
+    const media = parseSlideMediaReferences(slideXml, rels);
+    if (media.length > 0) hasMedia = true;
+    if (media.some((m) => m.type === 'audio')) hasAudio = true;
+
+    const slide = parseSlide(slideXml, i + 1, media);
+    slides.push(slide);
+  }
+
+  const presentationContent: PptPresentationContent = {
+    totalSlides: slides.length,
+    hasMedia,
+    hasAudio,
+    slides,
+  };
+
+  const slideTextBlocks = slides
+    .map((slide) => slide.text)
+    .filter((t) => t.trim().length > 0)
+    .map((t, i) => `Slide ${i + 1}\n${t}`);
+
+  if (slideTextBlocks.length === 0) {
     throw new Error('No text could be extracted from the PowerPoint file');
   }
 
-  const rawText = textParts.join('\n\n');
+  const rawText = slideTextBlocks.join('\n\n');
   const cleanedText = cleanText(rawText);
-  const structuredSections = structureText(cleanedText);
+  const structuredSections = presentationToStructuredSections(presentationContent);
 
   return {
     rawText,
     cleanedText,
     structuredSections,
     wordCount: countWords(cleanedText),
-    sourceType: 'pptx' as any,
+    sourceType: 'pptx',
+    presentationContent,
   };
 }
 

@@ -27,6 +27,50 @@ export interface DocumentSection {
   narrationSegments: NarrationSegment[];
 }
 
+export interface PptTextRunStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  fontFamily?: string;
+  fontSizePt?: number;
+  colorHex?: string;
+}
+
+export interface PptTextRun {
+  text: string;
+  style?: PptTextRunStyle;
+}
+
+export interface PptParagraph {
+  level?: number;
+  alignment?: string;
+  spacingBeforePt?: number;
+  spacingAfterPt?: number;
+  lineSpacingPt?: number;
+  runs: PptTextRun[];
+}
+
+export interface PptMediaReference {
+  relationshipId: string;
+  target: string;
+  type: 'image' | 'audio' | 'video' | 'other';
+}
+
+export interface PptSlideContent {
+  slideNumber: number;
+  title: string;
+  text: string;
+  paragraphs: PptParagraph[];
+  media: PptMediaReference[];
+}
+
+export interface PptPresentationContent {
+  totalSlides: number;
+  hasMedia: boolean;
+  hasAudio: boolean;
+  slides: PptSlideContent[];
+}
+
 export interface StructuredContent {
   sections: DocumentSection[];
 }
@@ -86,6 +130,7 @@ export interface ExtractedContent {
   structuredSections: DocumentSection[];
   wordCount: number;
   sourceType: 'docx' | 'pdf' | 'txt' | 'youtube' | 'website' | 'pptx' | 'ppt' | 'image' | 'audio' | 'video';
+  presentationContent?: PptPresentationContent;
   pageTitle?: string;   // populated for website scrapes
   pageUrl?:   string;   // populated for website scrapes
 }

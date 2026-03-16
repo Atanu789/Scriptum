@@ -17,11 +17,15 @@ import { useTheme } from '@/components/providers/ThemeProvider';
 interface Props {
   analysis:              AnalysisResult | null;
   isAnalyzing:           boolean;
+  isHumanizing?:         boolean;
   analysisProgress?:     AnalysisProgress | null;
   onAnalyze:             () => void;
+  onHumanize?:           () => void;
   onCancelAnalyze?:      () => void;
   onSave?:               () => void;
   onApplySuggestion?:    (original: string, replacement: string) => void;
+  onApplyGrammarFix?:    (issue: GrammarIssue, replacement: string) => void;
+  getGrammarIssueLine?:  (issue: GrammarIssue) => number | null;
   documentStatus:        string;
   expanded?:             boolean;
 }
@@ -237,27 +241,57 @@ const sevCfg = {
   suggestion: { label: 'Suggestion', Icon: Info,        cls: 'bg-blue-50 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400 border border-blue-200 dark:border-blue-800' },
 } as const;
 
-function GrammarIssueCard({ issue, isDark }: { issue: GrammarIssue; isDark: boolean }) {
+function GrammarIssueCard({
+  issue,
+  isDark,
+  onApplyGrammarFix,
+  lineNumber,
+}: {
+  issue: GrammarIssue;
+  isDark: boolean;
+  onApplyGrammarFix?: (issue: GrammarIssue, replacement: string) => void;
+  lineNumber?: number | null;
+}) {
   const [open, setOpen] = useState(false);
   const sev = (issue.severity ?? 'warning') as keyof typeof sevCfg;
   const { label, Icon: SevIcon, cls } = sevCfg[sev] ?? sevCfg.warning;
+  const topReplacement = issue.replacements?.[0]?.trim();
+  const canQuickFix = !!onApplyGrammarFix && !!topReplacement;
   return (
     <div className={cn('rounded-xl border p-3',
       sev === 'error'      ? (isDark ? 'border-red-900/40 bg-red-950/20'    : 'border-red-100 bg-red-50/40')
       : sev === 'suggestion' ? (isDark ? 'border-blue-900/40 bg-blue-950/20'  : 'border-blue-100 bg-blue-50/40')
       :                         (isDark ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-100 bg-amber-50/40'))}>
-      <button onClick={() => setOpen((o) => !o)} className="flex w-full items-start justify-between gap-2 text-left">
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5 mb-1">
-            <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium', cls)}>
-              <SevIcon className="h-3 w-3" /> {label}
-            </span>
-            <span className={cn('text-xs px-1.5 py-0.5 rounded-full', isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')}>{issue.rule.category}</span>
+      <div className="flex w-full items-start justify-between gap-2">
+        <button onClick={() => setOpen((o) => !o)} className="flex flex-1 items-start justify-between gap-2 text-left">
+          <div className="flex-1 min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5 mb-1">
+              <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium', cls)}>
+                <SevIcon className="h-3 w-3" /> {label}
+              </span>
+              <span className={cn('text-xs px-1.5 py-0.5 rounded-full', isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')}>{issue.rule.category}</span>
+              {lineNumber && lineNumber > 0 && (
+                <span className={cn('text-xs px-1.5 py-0.5 rounded-full', isDark ? 'bg-indigo-950/60 text-indigo-300' : 'bg-indigo-50 text-indigo-700')}>
+                  Line {lineNumber}
+                </span>
+              )}
+            </div>
+            <p className={cn('text-sm font-medium leading-snug', isDark ? 'text-slate-100' : 'text-slate-800')}>{issue.shortMessage || issue.message}</p>
           </div>
-          <p className={cn('text-sm font-medium leading-snug', isDark ? 'text-slate-100' : 'text-slate-800')}>{issue.shortMessage || issue.message}</p>
-        </div>
-        {open ? <ChevronDown className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" /> : <ChevronRight className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" />}
-      </button>
+          {open ? <ChevronDown className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" /> : <ChevronRight className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" />}
+        </button>
+
+        {canQuickFix && (
+          <button
+            type="button"
+            onClick={() => onApplyGrammarFix?.(issue, topReplacement!)}
+            className="ml-2 inline-flex items-center rounded-md bg-emerald-600 px-2 py-1 text-[10px] font-semibold text-white hover:bg-emerald-500 transition-colors"
+            title={`Apply: ${topReplacement}`}
+          >
+            Fix
+          </button>
+        )}
+      </div>
       {open && (
         <div className={cn('mt-2.5 space-y-2 border-t pt-2.5', isDark ? 'border-slate-700' : 'border-slate-200')}>
           {issue.shortMessage && issue.shortMessage !== issue.message && (
@@ -274,12 +308,24 @@ function GrammarIssueCard({ issue, isDark }: { issue: GrammarIssue; isDark: bool
           )}
           {issue.replacements.length > 0 && (
             <div>
-              <p className="mb-1 text-xs text-slate-400 font-medium">Suggested fixes:</p>
+              <p className="mb-1 text-xs text-slate-400 font-medium">
+                Suggested fixes{onApplyGrammarFix ? ' (click to apply)' : ''}:
+              </p>
               <div className="flex flex-wrap gap-1">
                 {issue.replacements.slice(0, 5).map((r, i) => (
-                  <span key={i} className="inline-flex items-center gap-0.5 rounded bg-green-50 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">
-                    {r}
-                  </span>
+                  onApplyGrammarFix ? (
+                    <button
+                      key={i}
+                      onClick={() => onApplyGrammarFix(issue, r)}
+                      className="inline-flex items-center gap-0.5 rounded bg-green-50 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors"
+                    >
+                      {r}
+                    </button>
+                  ) : (
+                    <span key={i} className="inline-flex items-center gap-0.5 rounded bg-green-50 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">
+                      {r}
+                    </span>
+                  )
                 ))}
               </div>
             </div>
@@ -312,8 +358,8 @@ type TabId = 'overview' | 'integrity' | 'language' | 'tone';
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 function AnalysisPanel({
-  analysis, isAnalyzing, analysisProgress, onAnalyze, onCancelAnalyze, onSave, documentStatus, expanded = false,
-  onApplySuggestion,
+  analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onCancelAnalyze, onSave, documentStatus, expanded = false,
+  onApplySuggestion, onApplyGrammarFix, getGrammarIssueLine,
 }: Props) {
   const { theme } = useTheme();
   const D = theme === 'dark';
@@ -340,10 +386,11 @@ function AnalysisPanel({
   const lastAnalyzed  = analysis?.analyzedAt ? new Date(analysis.analyzedAt).toLocaleString() : null;
 
   const aiVerdict =
-    aiScore >= 70 ? 'Likely AI-Generated'
-    : aiScore >= 40 ? 'Possibly AI-Assisted'
-    : aiScore >= 0  ? 'Appears Human-Written'
+    aiScore >= 70 ? 'Higher AI-pattern likelihood'
+    : aiScore >= 40 ? 'Mixed AI/human pattern signals'
+    : aiScore >= 0  ? 'Lower AI-pattern likelihood'
     : '—';
+  const canHumanize = !isAnalyzing && !isHumanizing && !!onHumanize && (humanizationSuggestions.length > 0 || aiScore >= 40);
 
   const sortedIssues = useMemo(() => {
     if (!analysis?.grammarIssues) return [];
@@ -464,7 +511,7 @@ function AnalysisPanel({
           <div>
             <SectionLabel icon={BarChart3} label="Editorial Scores" isDark={D} />
             <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <ScoreRing value={aiScore} label="AI Score"
+              <ScoreRing value={aiScore} label="AI Likelihood"
                 sublabel={aiScore >= 0 ? aiVerdict : undefined} isDark={D} inverted />
               <ScoreRing value={grammarScore} label="Grammar"    sublabel={grammarScoreLabel(grammarScore)} isDark={D} />
               <ScoreRing value={readability}  label="Readability" isDark={D} />
@@ -476,35 +523,50 @@ function AnalysisPanel({
 
           {/* Quick Status Row */}
           <div className="grid grid-cols-3 gap-2">
-            <div className={cn('rounded-xl border p-3 text-center',
+            <button
+              type="button"
+              onClick={() => setActiveTab('integrity')}
+              className={cn('rounded-xl border p-3 text-center transition-all hover:shadow-sm active:scale-[0.99]',
               isQuotaError ? (D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')
               : aiScore >= 70 ? (D ? 'border-red-900/40 bg-red-950/20'    : 'border-red-200 bg-red-50')
               : aiScore >= 40 ? (D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')
-              :                  (D ? 'border-green-900/40 bg-green-950/20' : 'border-green-200 bg-green-50'))}>
+              :                  (D ? 'border-green-900/40 bg-green-950/20' : 'border-green-200 bg-green-50'))}
+              title="Open Content Integrity"
+            >
               <Bot className={cn('h-4 w-4 mx-auto mb-1', isQuotaError ? 'text-amber-400' : aiScore >= 70 ? 'text-red-400' : aiScore >= 40 ? 'text-amber-400' : 'text-green-400')} />
-              <p className="text-[10px] font-bold text-slate-500 mb-0.5">AI Risk</p>
+              <p className="text-[10px] font-bold text-slate-500 mb-0.5">AI Likelihood</p>
               <p className={cn('text-[11px] font-semibold',
                 isQuotaError ? (D ? 'text-amber-300' : 'text-amber-700')
                 : aiScore >= 70 ? (D ? 'text-red-300' : 'text-red-700') : aiScore >= 40 ? (D ? 'text-amber-300' : 'text-amber-700') : (D ? 'text-green-300' : 'text-green-700'))}>
                 {isQuotaError ? 'Unavailable' : aiScore >= 70 ? 'High' : aiScore >= 40 ? 'Medium' : 'Low'}
               </p>
-            </div>
-            <div className={cn('rounded-xl border p-3 text-center',
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('language')}
+              className={cn('rounded-xl border p-3 text-center transition-all hover:shadow-sm active:scale-[0.99]',
               grammarScore >= 80 ? (D ? 'border-green-900/40 bg-green-950/20'  : 'border-green-200 bg-green-50')
               : grammarScore >= 55 ? (D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')
-              :                       (D ? 'border-red-900/40 bg-red-950/20'    : 'border-red-200 bg-red-50'))}>
+              :                       (D ? 'border-red-900/40 bg-red-950/20'    : 'border-red-200 bg-red-50'))}
+              title="Open Language"
+            >
               <FileCheck2 className={cn('h-4 w-4 mx-auto mb-1', grammarScore >= 80 ? 'text-green-400' : grammarScore >= 55 ? 'text-amber-400' : 'text-red-400')} />
               <p className="text-[10px] font-bold text-slate-500 mb-0.5">Grammar</p>
               <p className={cn('text-[11px] font-semibold',
                 grammarScore >= 80 ? (D ? 'text-green-300' : 'text-green-700') : grammarScore >= 55 ? (D ? 'text-amber-300' : 'text-amber-700') : (D ? 'text-red-300' : 'text-red-700'))}>
                 {issueCount === 0 ? 'Clean' : `${issueCount} issue${issueCount !== 1 ? 's' : ''}`}
               </p>
-            </div>
-            <div className={cn('rounded-xl border p-3 text-center', D ? 'border-indigo-900/40 bg-indigo-950/20' : 'border-indigo-200 bg-indigo-50')}>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('tone')}
+              className={cn('rounded-xl border p-3 text-center transition-all hover:shadow-sm active:scale-[0.99]', D ? 'border-indigo-900/40 bg-indigo-950/20' : 'border-indigo-200 bg-indigo-50')}
+              title="Open Tone & Bias"
+            >
               <Mic2 className="h-4 w-4 mx-auto mb-1 text-indigo-400" />
               <p className="text-[10px] font-bold text-slate-500 mb-0.5">Dominant Tone</p>
               <p className={cn('text-[11px] font-semibold capitalize', D ? 'text-indigo-300' : 'text-indigo-700')}>{dominantTone}</p>
-            </div>
+            </button>
           </div>
 
           <Hr isDark={D} />
@@ -559,7 +621,7 @@ function AnalysisPanel({
               aiScore >= 70 ? (D ? 'bg-red-950/30 border-red-900/40'    : 'bg-red-50 border-red-200')
               : aiScore >= 40 ? (D ? 'bg-amber-950/30 border-amber-900/40' : 'bg-amber-50 border-amber-200')
               :                  (D ? 'bg-green-950/30 border-green-900/40' : 'bg-green-50 border-green-200'))}>
-              <ScoreRing value={aiScore} label="AI Score" size="lg" isDark={D} inverted />
+              <ScoreRing value={aiScore} label="AI Likelihood Estimate" size="lg" isDark={D} inverted />
               <span className={cn('rounded-full px-4 py-1.5 text-xs font-bold flex items-center gap-1.5',
                 aiScore >= 70 ? (D ? 'bg-red-900/50 text-red-200'    : 'bg-red-100 text-red-700')
                 : aiScore >= 40 ? (D ? 'bg-amber-900/50 text-amber-200' : 'bg-amber-100 text-amber-700')
@@ -580,8 +642,33 @@ function AnalysisPanel({
               </div>
             </div>
             <p className="mt-2 text-[10px] text-slate-500 text-center leading-relaxed">
-              Probability assessment only — AI detection tools carry inherent uncertainty.
+              AI likelihood estimate (not guaranteed). Different detectors can disagree significantly, so use this as guidance rather than proof.
             </p>
+
+            {onHumanize && (
+              <div className="mt-3">
+                <button
+                  onClick={onHumanize}
+                  disabled={!canHumanize}
+                  className={cn(
+                    'w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
+                    canHumanize
+                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500 hover:to-teal-500 shadow-sm'
+                      : D
+                      ? 'cursor-not-allowed bg-slate-800 text-slate-500'
+                      : 'cursor-not-allowed bg-slate-100 text-slate-400',
+                  )}
+                >
+                  {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
+                  {isHumanizing ? 'Humanizing…' : 'Humanize'}
+                </button>
+                {!canHumanize && (
+                  <p className="mt-1.5 text-center text-[10px] text-slate-500">
+                    Re-run analysis first to generate AI-flagged passages.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
 
           {analysis.aiReasoning && (
@@ -717,7 +804,15 @@ function AnalysisPanel({
                   })}
                 </div>
                 <div className={cn('space-y-2', expanded ? '' : 'max-h-[28rem] overflow-y-auto pr-1')}>
-                  {filteredIssues.map((issue, i) => <GrammarIssueCard key={i} issue={issue} isDark={D} />)}
+                  {filteredIssues.map((issue, i) => (
+                    <GrammarIssueCard
+                      key={i}
+                      issue={issue}
+                      isDark={D}
+                      onApplyGrammarFix={onApplyGrammarFix}
+                      lineNumber={getGrammarIssueLine?.(issue) ?? null}
+                    />
+                  ))}
                   {filteredIssues.length === 0 && <p className="py-6 text-center text-xs text-slate-400">No {grammarFilter} issues.</p>}
                 </div>
               </div>

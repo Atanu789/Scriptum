@@ -1,5 +1,6 @@
 'use client';
 
+import { useCallback } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import AnalysisPanel from '@/components/AnalysisPanel';
@@ -11,11 +12,22 @@ import {
 import { BorderBeam } from '@/components/ui/border-beam';
 import { BackgroundDots } from '@/components/ui/background-dots';
 import { Footer } from '@/components/ui/footer';
+import ShareMenu from '@/components/ShareMenu';
 
 export default function AnalysisPage() {
   const params = useParams<{ documentId: string }>();
-  const { document, isLoading, isAnalyzing, error, analysis, analyze } =
+  const { document, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize } =
     useDocument(params.documentId);
+
+  const getIssueLineNumber = useCallback((issue: { offset?: number }) => {
+    if (!document?.cleanedText || !Number.isInteger(issue.offset)) return null;
+    const safeOffset = Math.max(0, Math.min(issue.offset ?? 0, document.cleanedText.length));
+    let line = 1;
+    for (let i = 0; i < safeOffset; i++) {
+      if (document.cleanedText.charCodeAt(i) === 10) line += 1;
+    }
+    return line;
+  }, [document?.cleanedText]);
 
   /* ── Loading ── */
   if (isLoading) {
@@ -123,6 +135,7 @@ export default function AnalysisPage() {
 
             {/* Right: quick actions */}
             <div className="flex flex-wrap items-center gap-2 flex-shrink-0">
+              <ShareMenu title={`${document.originalFileName} - Analysis`} />
               <Link
                 href={`/teleprompter/${params.documentId}`}
                 className="inline-flex items-center gap-1.5 rounded-xl border border-slate-200/80 dark:border-white/[0.08] bg-white/80 dark:bg-white/[0.04] backdrop-blur-sm px-3 py-2 text-xs font-medium text-slate-600 dark:text-white/50 hover:bg-white dark:hover:bg-white/[0.07] hover:border-sky-300 dark:hover:border-sky-500/30 transition-all"
@@ -153,8 +166,11 @@ export default function AnalysisPage() {
         <AnalysisPanel
           analysis={analysis}
           isAnalyzing={isAnalyzing}
+          isHumanizing={isHumanizing}
           onAnalyze={analyze}
+          onHumanize={humanize}
           documentStatus={document.status}
+          getGrammarIssueLine={getIssueLineNumber}
           expanded
         />
       </main>

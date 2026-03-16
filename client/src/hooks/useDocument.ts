@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Document, AnalysisResult } from '@/types';
+import { Document, AnalysisResult, HumanizeResult } from '@/types';
 import { documentApi, analysisApi } from '@/lib/api';
 import { sanitize, sanitizeContent } from '@/lib/sanitize';
 import toast from 'react-hot-toast';
@@ -45,10 +45,12 @@ interface UseDocumentReturn {
   document: Document | null;
   isLoading: boolean;
   isAnalyzing: boolean;
+  isHumanizing: boolean;
   error: string | null;
   analysis: AnalysisResult | null;
   refresh: () => Promise<void>;
   analyze: () => Promise<void>;
+  humanize: () => Promise<HumanizeResult | null>;
   updateContent: (cleanedText: string) => Promise<void>;
 }
 
@@ -56,6 +58,7 @@ export function useDocument(documentId: string): UseDocumentReturn {
   const [document, setDocument] = useState<Document | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isHumanizing, setIsHumanizing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
 
@@ -84,6 +87,8 @@ export function useDocument(documentId: string): UseDocumentReturn {
           sentenceCount:    doc.sentenceCount    ?? 0,
           analyzedAt:       doc.analysisRunAt,
         });
+      } else {
+        setAnalysis(null);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Failed to load document';
@@ -116,6 +121,26 @@ export function useDocument(documentId: string): UseDocumentReturn {
     }
   }, [documentId, refresh]);
 
+  const humanize = useCallback(async (): Promise<HumanizeResult | null> => {
+    if (!documentId) return null;
+    setIsHumanizing(true);
+    const toastId = toast.loading('Humanizing AI-like sections…');
+    try {
+      const result = await analysisApi.humanize(documentId);
+      await refresh();
+      const score = result.analysis?.aiScore;
+      const scoreSuffix = typeof score === 'number' ? ` · AI likelihood now ${Math.round(score)}%` : '';
+      toast.success(`Humanized ${result.appliedCount} section${result.appliedCount === 1 ? '' : 's'}${scoreSuffix}`, { id: toastId });
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Humanization failed';
+      toast.error(msg, { id: toastId });
+      return null;
+    } finally {
+      setIsHumanizing(false);
+    }
+  }, [documentId, refresh]);
+
   const updateContent = useCallback(async (cleanedText: string) => {
     if (!documentId) return;
     try {
@@ -128,5 +153,16 @@ export function useDocument(documentId: string): UseDocumentReturn {
     }
   }, [documentId]);
 
-  return { document, isLoading, isAnalyzing, error, analysis, refresh, analyze, updateContent };
+  return {
+    document,
+    isLoading,
+    isAnalyzing,
+    isHumanizing,
+    error,
+    analysis,
+    refresh,
+    analyze,
+    humanize,
+    updateContent,
+  };
 }

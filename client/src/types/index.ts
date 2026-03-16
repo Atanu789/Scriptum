@@ -31,6 +31,50 @@ export interface StructuredContent {
   sections: DocumentSection[];
 }
 
+export interface PptTextRunStyle {
+  bold?: boolean;
+  italic?: boolean;
+  underline?: boolean;
+  fontFamily?: string;
+  fontSizePt?: number;
+  colorHex?: string;
+}
+
+export interface PptTextRun {
+  text: string;
+  style?: PptTextRunStyle;
+}
+
+export interface PptParagraph {
+  level?: number;
+  alignment?: string;
+  spacingBeforePt?: number;
+  spacingAfterPt?: number;
+  lineSpacingPt?: number;
+  runs: PptTextRun[];
+}
+
+export interface PptMediaReference {
+  relationshipId: string;
+  target: string;
+  type: 'image' | 'audio' | 'video' | 'other';
+}
+
+export interface PptSlideContent {
+  slideNumber: number;
+  title: string;
+  text: string;
+  paragraphs: PptParagraph[];
+  media: PptMediaReference[];
+}
+
+export interface PptPresentationContent {
+  totalSlides: number;
+  hasMedia: boolean;
+  hasAudio: boolean;
+  slides: PptSlideContent[];
+}
+
 export interface GrammarIssue {
   message: string;
   shortMessage?: string;
@@ -64,6 +108,7 @@ export interface Document {
   rawText: string;
   cleanedText: string;
   structuredContent: StructuredContent;
+  presentationContent?: PptPresentationContent | null;
   wordCount: number;
   aiScore: number | null;
   grammarScore: number | null;
@@ -126,6 +171,17 @@ export interface AnalysisResult {
   avgSentenceLength?:  number;
   longSentences?:      string[];
   tone?:               ToneResult;
+}
+
+export interface HumanizeResult {
+  documentId: string;
+  appliedCount: number;
+  appliedRewrites: Array<{ original: string; replacement: string }>;
+  cleanedText: string;
+  analysis?: {
+    aiScore: number | null;
+    analyzedAt: string;
+  };
 }
 
 // ─── Audio ───────────────────────────────────────────────────────────────────
