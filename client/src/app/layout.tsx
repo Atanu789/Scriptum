@@ -59,7 +59,7 @@ export default function RootLayout({
           <VortexBackground className="pointer-events-none fixed inset-0 z-0 opacity-75 dark:opacity-90" compact />
           <div
             aria-hidden
-            className="pointer-events-none fixed inset-0 z-[1]"
+            className="pointer-events-none fixed inset-0 z-[1] opacity-70 blur-[1.5px] dark:opacity-55"
             style={{
               backgroundImage:
                 'linear-gradient(to right, var(--grid-color) 1px, transparent 1px), linear-gradient(to bottom, var(--grid-color) 1px, transparent 1px)',
