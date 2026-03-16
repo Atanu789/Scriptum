@@ -1,5 +1,43 @@
 // ─── User & Auth ──────────────────────────────────────────────────────────────
 
+export type Plan = 'free' | 'pro';
+
+export interface PlanLimits {
+  aiUsagePerMonth:  number;   // -1 = unlimited
+  uploadsPerMonth:  number;   // -1 = unlimited
+  teleprompterAI:   boolean;
+  exportPPT:        boolean;
+  ttsNarration:     boolean;
+}
+
+export interface PlanConfig {
+  name:       string;
+  priceINR:   number;
+  priceLabel: string;
+  limits:     PlanLimits;
+}
+
+export interface SubscriptionInfo {
+  plan:                 Plan;
+  planStartDate:        string | null;
+  planExpiryDate:       string | null;
+  isActive:             boolean;
+  aiUsageThisMonth:     number;
+  uploadUsageThisMonth: number;
+  limits:               PlanLimits;
+}
+
+export interface PaymentRecord {
+  _id:                string;
+  plan:               Plan;
+  amount:             number;
+  currency:           string;
+  razorpayOrderId:    string;
+  razorpayPaymentId:  string | null;
+  status:             'created' | 'captured' | 'failed' | 'refunded';
+  createdAt:          string;
+}
+
 export interface User {
   id: string;
   name: string;

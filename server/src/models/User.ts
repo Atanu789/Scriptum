@@ -1,11 +1,26 @@
 import mongoose, { Document, Schema, Model } from 'mongoose';
 import bcrypt from 'bcryptjs';
 
+export type Plan = 'free' | 'pro';
+
 export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
   email: string;
   password: string;
   name: string;
+
+  // ── Subscription ───────────────────────────────────────────────────────
+  plan: Plan;
+  planStartDate: Date | null;
+  planExpiryDate: Date | null;
+  razorpayCustomerId: string | null;
+  razorpayPaymentId: string | null;
+
+  // ── Usage metering ─────────────────────────────────────────────────────
+  aiUsageThisMonth: number;
+  uploadUsageThisMonth: number;
+  aiUsageResetAt: Date | null;
+
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -25,7 +40,7 @@ const userSchema = new Schema<IUser>(
       type: String,
       required: [true, 'Password is required'],
       minlength: [8, 'Password must be at least 8 characters'],
-      select: false, // Never return password by default
+      select: false,
     },
     name: {
       type: String,
@@ -33,6 +48,18 @@ const userSchema = new Schema<IUser>(
       trim: true,
       maxlength: [100, 'Name cannot exceed 100 characters'],
     },
+
+    // ── Subscription ─────────────────────────────────────────────────────
+    plan:                { type: String, enum: ['free', 'pro'], default: 'free' },
+    planStartDate:       { type: Date,   default: null },
+    planExpiryDate:      { type: Date,   default: null },
+    razorpayCustomerId:  { type: String, default: null },
+    razorpayPaymentId:   { type: String, default: null },
+
+    // ── Usage metering ───────────────────────────────────────────────────
+    aiUsageThisMonth:     { type: Number, default: 0 },
+    uploadUsageThisMonth: { type: Number, default: 0 },
+    aiUsageResetAt:       { type: Date,   default: null },
   },
   {
     timestamps: true,

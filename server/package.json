@@ -31,6 +31,7 @@
     "pdf-parse": "^1.1.1",
     "pdfkit": "^0.17.2",
     "pptxgenjs": "^3.12.0",
+    "razorpay": "^2.9.6",
     "sanitize-html": "^2.17.1",
     "uuid": "^9.0.1",
     "youtube-transcript": "^1.2.1"

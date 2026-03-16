@@ -4,12 +4,13 @@ import { useState } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import { useDocument } from '@/hooks/useDocument';
+import { useSubscription } from '@/hooks/useSubscription';
 import { exportApi } from '@/lib/api';
 import { downloadBlob } from '@/lib/utils';
 import {
   Loader2, AlertCircle, ChevronLeft,
   Presentation, Download, Video, CheckCircle2,
-  FileText, FileDown,
+  FileText, FileDown, Lock, Crown,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import toast from 'react-hot-toast';
@@ -19,6 +20,7 @@ type Theme = 'light' | 'dark' | 'professional';
 export default function ExportPage() {
   const params = useParams<{ documentId: string }>();
   const { document, isLoading, error } = useDocument(params.documentId);
+  const { canUseExportPPT } = useSubscription();
 
   const [pptOptions, setPptOptions] = useState({
     title: '',
@@ -41,7 +43,7 @@ export default function ExportPage() {
     getTitle().replace(/[^a-zA-Z0-9\s\-_]/g, '').trim().replace(/\s+/g, '_').slice(0, 60) + ext;
 
   const handleExportPpt = async () => {
-    if (!document) return;
+    if (!document || !canUseExportPPT) return;
     setIsExportingPpt(true);
     setPptDone(false);
     const id = toast.loading('Generating PowerPoint…');
@@ -145,6 +147,11 @@ export default function ExportPage() {
                 <h2 className="font-semibold text-slate-900 dark:text-white">PowerPoint Presentation</h2>
                 <p className="text-sm text-slate-500">Auto-generated slides from your document sections</p>
               </div>
+              {!canUseExportPPT && (
+                <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300">
+                  <Lock className="h-3 w-3" /> Premium
+                </span>
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -155,6 +162,7 @@ export default function ExportPage() {
                   className="input"
                   placeholder={document.originalFileName.replace(/\.[^.]+$/, '')}
                   value={pptOptions.title}
+                  disabled={!canUseExportPPT}
                   onChange={(e) => setPptOptions((p) => ({ ...p, title: e.target.value }))}
                 />
               </div>
@@ -163,6 +171,7 @@ export default function ExportPage() {
                 <select
                   className="input"
                   value={pptOptions.theme}
+                  disabled={!canUseExportPPT}
                   onChange={(e) => setPptOptions((p) => ({ ...p, theme: e.target.value as Theme }))}
                 >
                   <option value="professional">Professional (Recommended)</option>
@@ -177,6 +186,7 @@ export default function ExportPage() {
                 type="checkbox"
                 className="h-4 w-4 rounded border-slate-300 text-brand-600 focus:ring-brand-500"
                 checked={pptOptions.includeNotes}
+                disabled={!canUseExportPPT}
                 onChange={(e) => setPptOptions((p) => ({ ...p, includeNotes: e.target.checked }))}
               />
               <span className="text-sm text-slate-700 dark:text-slate-300">
@@ -186,10 +196,12 @@ export default function ExportPage() {
 
             <button
               onClick={handleExportPpt}
-              disabled={isExportingPpt}
+              disabled={isExportingPpt || !canUseExportPPT}
               className={cn('btn-primary', pptDone && 'bg-green-600 hover:bg-green-700')}
             >
-              {isExportingPpt ? (
+              {!canUseExportPPT ? (
+                <><Lock className="h-4 w-4" /> Go Premium to export .pptx</>
+              ) : isExportingPpt ? (
                 <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
               ) : pptDone ? (
                 <><CheckCircle2 className="h-4 w-4" /> Downloaded!</>
@@ -197,6 +209,15 @@ export default function ExportPage() {
                 <><Download className="h-4 w-4" /> Export as .pptx</>
               )}
             </button>
+
+            {!canUseExportPPT && (
+              <Link
+                href="/pricing"
+                className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
+              >
+                <Crown className="h-4 w-4" /> Go Premium
+              </Link>
+            )}
           </div>
 
           {/* ── Video Export (future) ── */}

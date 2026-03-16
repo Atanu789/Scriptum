@@ -9,11 +9,14 @@ const REQUIRED_VARS = [
 ] as const;
 
 const OPTIONAL_VARS = [
-  { key: 'GEMINI_API_KEY',      warn: 'AI analysis will be disabled' },
-  { key: 'TEXTGEARS_API_KEY',   warn: 'Readability will use local Flesch calculation only' },
-  { key: 'CLIENT_URL',          warn: 'CORS will default to http://localhost:3000' },
-  { key: 'DEEPGRAM_API_KEY',    warn: 'Teleprompter mic-sync and TTS will be unavailable' },
-  { key: 'DEEPGRAM_PROJECT_ID', warn: 'Deepgram temp-key generation will fail — set project ID for production' },
+  { key: 'GEMINI_API_KEY',          warn: 'AI analysis will be disabled' },
+  { key: 'TEXTGEARS_API_KEY',       warn: 'Readability will use local Flesch calculation only' },
+  { key: 'CLIENT_URL',              warn: 'CORS will default to http://localhost:3000' },
+  { key: 'DEEPGRAM_API_KEY',        warn: 'Teleprompter mic-sync and TTS will be unavailable' },
+  { key: 'DEEPGRAM_PROJECT_ID',     warn: 'Deepgram temp-key generation will fail — set project ID for production' },
+  { key: 'RAZORPAY_KEY_ID',         warn: 'Payments will be unavailable — set Razorpay credentials' },
+  { key: 'RAZORPAY_KEY_SECRET',     warn: 'Payment verification will fail — set RAZORPAY_KEY_SECRET' },
+  { key: 'RAZORPAY_WEBHOOK_SECRET', warn: 'Webhook signature verification will fail — set RAZORPAY_WEBHOOK_SECRET' },
 ] as const;
 
 export function validateEnv(): void {

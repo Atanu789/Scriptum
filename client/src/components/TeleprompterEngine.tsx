@@ -21,6 +21,7 @@ import {
   AlertCircle, Loader2, Volume2, VolumeX, Headphones,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useSubscription } from '@/hooks/useSubscription';
 import { useScriptTokens, Token }          from '@/hooks/useScriptTokens';
 import { useWordMatcher }                   from '@/hooks/useWordMatcher';
 import { useDeepgramSync, SyncStatus }      from '@/hooks/useDeepgramSync';
@@ -77,6 +78,8 @@ const ScriptRenderer = memo(function ScriptRenderer({
 
 interface ControlsProps {
   readingMode:     'ai' | 'presenter';
+  canUsePremiumAI: boolean;
+  onGoPremium:     () => void;
   onReadingModeChange: (mode: 'ai' | 'presenter') => void;
   activeMode:      ActiveMode;
   ttsStatus:       TTSStatus;
@@ -97,6 +100,8 @@ interface ControlsProps {
 }
 
 function Controls({
+  canUsePremiumAI,
+  onGoPremium,
   readingMode, onReadingModeChange,
   activeMode, ttsStatus, syncStatus, isManualPlaying,
   speed, fontSize,
@@ -117,13 +122,25 @@ function Controls({
   return (
     <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#0d0d18]/95 px-4 py-3 backdrop-blur-md">
 
+      {!canUsePremiumAI && (
+        <button
+          onClick={onGoPremium}
+          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/20"
+        >
+          Go Premium
+        </button>
+      )}
+
       {/* ── Mode toggle ───────────────────────────────────────── */}
       <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
         <button
+          disabled={!canUsePremiumAI}
           onClick={() => onReadingModeChange('ai')}
+          title={!canUsePremiumAI ? 'Available on Pro plan' : 'AI Narration mode'}
           className={cn(
             'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
             isAIMode ? 'bg-indigo-600 text-white' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/80',
+            !canUsePremiumAI && 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-white/60',
           )}
         >
           AI Narration
@@ -145,11 +162,11 @@ function Controls({
       {activeMode !== 'tts' && (
         <button
           onClick={onStartTTS}
-          disabled={activeMode === 'mic' || !isAIMode}
-          title={!isAIMode ? 'Switch to AI Narration mode' : activeMode === 'mic' ? 'Stop mic first' : 'Read aloud with Draco voice'}
+          disabled={activeMode === 'mic' || !isAIMode || !canUsePremiumAI}
+          title={!canUsePremiumAI ? 'Available on Pro plan' : !isAIMode ? 'Switch to AI Narration mode' : activeMode === 'mic' ? 'Stop mic first' : 'Read aloud with Draco voice'}
           className={cn(
             'inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all active:scale-[0.97]',
-            activeMode === 'mic' || !isAIMode
+            activeMode === 'mic' || !isAIMode || !canUsePremiumAI
               ? 'cursor-not-allowed bg-white/[0.03] text-white/20'
               : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-500',
           )}
@@ -295,6 +312,8 @@ function Controls({
 // ─── Main Engine ──────────────────────────────────────────────────────────────
 
 export default function TeleprompterEngine({ script, documentTitle }: TeleprompterEngineProps) {
+  const { canUseTeleprompterAI, canUseTTSNarration } = useSubscription();
+  const canUsePremiumAI = canUseTeleprompterAI && canUseTTSNarration;
 
   // ── State ──────────────────────────────────────────────────────────────────
   const [readingMode,     setReadingMode]     = useState<'ai' | 'presenter'>('ai');
@@ -398,7 +417,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
   // ── Handlers ───────────────────────────────────────────────────────────────
   const handleStartTTS = useCallback(() => {
-    if (readingMode !== 'ai') return;
+    if (readingMode !== 'ai' || !canUsePremiumAI) return;
     setErrorMsg(null);
     micStop();
     cancelAnimationFrame(rafManualRef.current);
@@ -407,7 +426,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     resetMatcher();
     setActiveMode('tts');
     ttsStart();
-  }, [micStop, readingMode, resetDOM, resetMatcher, ttsStart]);
+  }, [canUsePremiumAI, micStop, readingMode, resetDOM, resetMatcher, ttsStart]);
 
   const handlePauseTTS  = useCallback(() => ttsPause(),  [ttsPause]);
   const handleResumeTTS = useCallback(() => ttsResume(), [ttsResume]);
@@ -446,6 +465,10 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   }, [activeMode, micStop, readingMode, ttsStop]);
 
   const handleReadingModeChange = useCallback((mode: 'ai' | 'presenter') => {
+    if (mode === 'ai' && !canUsePremiumAI) {
+      setErrorMsg('AI narration is available on Pro plan. Upgrade to continue.');
+      return;
+    }
     if (mode === readingMode) return;
     setReadingMode(mode);
     ttsStop();
@@ -456,7 +479,16 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     setSyncStatus('idle');
     setIsManualPlaying(false);
     setErrorMsg(null);
-  }, [micStop, readingMode, ttsStop]);
+  }, [canUsePremiumAI, micStop, readingMode, ttsStop]);
+
+  useEffect(() => {
+    if (readingMode === 'ai' && !canUsePremiumAI) {
+      setReadingMode('presenter');
+      setActiveMode('idle');
+      setTTSStatus('idle');
+      setErrorMsg('AI narration is available on Pro plan.');
+    }
+  }, [canUsePremiumAI, readingMode]);
 
   const handleReset = useCallback(() => {
     ttsStop();
@@ -510,6 +542,8 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
       {/* Controls */}
       <Controls
+        canUsePremiumAI={canUsePremiumAI}
+        onGoPremium={() => { window.location.href = '/pricing'; }}
         readingMode={readingMode}
         onReadingModeChange={handleReadingModeChange}
         activeMode={activeMode}

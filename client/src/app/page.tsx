@@ -51,7 +51,7 @@ function LandingNav() {
 
         <nav className="hidden items-center gap-5 text-sm font-medium text-slate-500 dark:text-white/40 md:flex">
           <a href="#features" className="hover:text-slate-900 dark:hover:text-white transition-colors">Features</a>
-          <a href="#pricing" className="hover:text-slate-900 dark:hover:text-white transition-colors">Pricing</a>
+          <Link href="/pricing" className="hover:text-slate-900 dark:hover:text-white transition-colors">Pricing</Link>
         </nav>
 
         <div className="flex items-center gap-1.5">
@@ -200,10 +200,10 @@ function FeaturesSection() {
             </div>
             <h3 className="text-base font-semibold text-slate-900 dark:text-white">Deep AI Analysis</h3>
             <p className="mt-1.5 text-sm leading-relaxed text-slate-500 dark:text-white/35">
-              Powered by Google Gemini â€” readability scores, tone fingerprinting, key-topic extraction, and actionable improvement suggestions in seconds.
+              Gemini scoring, AI-human detector confidence, readability + tone insights, and instant structure suggestions.
             </p>
             <div className="mt-4 flex flex-wrap gap-1.5">
-              {['Readability', 'Tone', 'Topics', 'Suggestions'].map((t) => (
+              {['AI score', 'Readability', 'Tone', 'Topics'].map((t) => (
                 <span key={t} className="rounded-full border border-violet-200 bg-violet-50 px-2.5 py-0.5 text-[11px] font-medium text-violet-600 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-400">
                   {t}
                 </span>
@@ -218,7 +218,7 @@ function FeaturesSection() {
             </div>
             <h3 className="text-[14px] font-semibold text-slate-900 dark:text-white">Grammar & Style</h3>
             <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 dark:text-white/35">
-              Sentence-level analysis with confidence scores and one-click corrections.
+              One-click grammar fixes, line-numbered issues, and side-by-side word diff before apply.
             </p>
           </SpotlightCard>
 
@@ -229,7 +229,7 @@ function FeaturesSection() {
             </div>
             <h3 className="text-[14px] font-semibold text-slate-900 dark:text-white">Plagiarism Detection</h3>
             <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 dark:text-white/35">
-              Paragraph-level similarity scanning with match percentage and source attribution.
+              Fast similarity scan with cleaner trust-style verdict messaging.
             </p>
           </SpotlightCard>
 
@@ -240,7 +240,7 @@ function FeaturesSection() {
             </div>
             <h3 className="text-[14px] font-semibold text-slate-900 dark:text-white">Smart Upload</h3>
             <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 dark:text-white/35">
-              PDF, DOCX, PPTX or a URL â€” content is extracted and normalised automatically.
+              PDF, DOCX, PPTX, image, audio, video, and URL ingestion with auto-normalized content.
             </p>
           </SpotlightCard>
 
@@ -251,7 +251,7 @@ function FeaturesSection() {
             </div>
             <h3 className="text-[14px] font-semibold text-slate-900 dark:text-white">Flexible Export</h3>
             <p className="mt-1.5 text-[13px] leading-relaxed text-slate-500 dark:text-white/35">
-              One-click export to PDF, DOCX, or PowerPoint from the dashboard.
+              Export to PDF, DOCX, PPTX with premium gates and polished share-ready output.
             </p>
           </SpotlightCard>
 
@@ -262,16 +262,16 @@ function FeaturesSection() {
             </div>
             <h3 className="text-base font-semibold text-slate-900 dark:text-white">Teleprompter Mode</h3>
             <p className="mt-1.5 text-sm leading-relaxed text-slate-500 dark:text-white/35">
-              Variable-speed auto-scroll, adjustable font size, full-screen focus mode, and live mic-sync â€” turn any script into a polished presentation instantly.
+              AI narration, TTS playback, presenter mic-sync, smooth auto-scroll, and fullscreen delivery controls.
             </p>
             <div className="mt-4 grid grid-cols-3 gap-2">
               {[
-                { label: 'Auto-scroll', icon: 'â©' },
-                { label: 'Mic sync', icon: 'ðŸŽ™' },
-                { label: 'Full-screen', icon: 'â›¶' },
+                { label: 'AI + TTS', icon: 'AI' },
+                { label: 'Mic sync', icon: 'MIC' },
+                { label: 'Fullscreen', icon: 'FS' },
               ].map(({ label, icon }) => (
                 <div key={label} className="flex flex-col items-center gap-1 rounded-xl border border-slate-100 bg-white/60 py-2.5 dark:border-white/[0.06] dark:bg-white/[0.02]">
-                  <span className="text-base">{icon}</span>
+                  <span className="text-[11px] font-bold tracking-wide text-slate-600 dark:text-white/60">{icon}</span>
                   <span className="text-[10px] font-medium text-slate-500 dark:text-white/30">{label}</span>
                 </div>
               ))}
@@ -337,10 +337,10 @@ const PRICING: PricingTier[] = [
   {
     icon: GraduationCap,
     name: 'Free',
-    price: '$0',
+    price: '₹0',
     period: '/mo',
     description: 'For individuals exploring AI tools.',
-    features: ['5 AI analyses / month', 'Basic grammar check', 'Teleprompter', 'PDF export'],
+    features: ['5 AI analyses / month', 'Basic grammar check', 'Manual teleprompter', 'PDF export'],
     cta: 'Start free',
     href: '/register',
     highlight: false,
@@ -348,23 +348,23 @@ const PRICING: PricingTier[] = [
   {
     icon: Zap,
     name: 'Pro',
-    price: '$12',
+    price: '₹499',
     period: '/mo',
     description: 'Full AI power for daily use.',
-    features: ['50 AI analyses / month', 'Advanced grammar & tone', 'Plagiarism detection', 'PDF, DOCX & PPTX', 'URL upload', 'Priority support'],
-    cta: 'Start free trial',
-    href: '/register',
+    features: ['50 AI analyses / month', 'Advanced grammar & tone', 'Plagiarism detection', 'PDF, DOCX & PPTX export', 'AI + TTS teleprompter', 'Priority support'],
+    cta: 'Go premium',
+    href: '/pricing',
     highlight: true,
     badge: 'Most popular',
   },
   {
     icon: Building2,
-    name: 'Enterprise',
+    name: 'Custom',
     price: 'Custom',
-    description: 'Unlimited for teams.',
-    features: ['Unlimited analyses', 'All Pro features', 'Team workspaces', 'SSO & custom auth', 'Dedicated support'],
+    description: 'Tailored plan for institutes and teams.',
+    features: ['Custom usage limits', 'All Pro features', 'Team onboarding', 'Priority onboarding support', 'Flexible billing'],
     cta: 'Contact sales',
-    href: '/register',
+    href: '/pricing',
     highlight: false,
   },
 ];
@@ -512,7 +512,6 @@ export default function LandingPage() {
       <HeroSection />
       <FeaturesSection />
       <StepsStrip />
-      <PricingSection />
       <CtaSection />
       <Footer />
     </div>

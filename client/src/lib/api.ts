@@ -13,6 +13,9 @@ import {
   HumanizeResult,
   AudioSegment,
   UsageStats,
+  SubscriptionInfo,
+  PaymentRecord,
+  PlanConfig,
 } from '@/types';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -230,6 +233,44 @@ export const userApi = {
 
   deleteAccount: async (): Promise<{ documentsDeleted: number }> => {
     const { data } = await api.delete<ApiResponse<{ documentsDeleted: number }>>('/user');
+    return unwrap(data);
+  },
+};
+
+// ─── Payment ────────────────────────────────────────────────────────────────────────
+
+export const paymentApi = {
+  getPlans: async (): Promise<Record<string, PlanConfig>> => {
+    const { data } = await api.get<ApiResponse<Record<string, PlanConfig>>>('/payment/plans');
+    return unwrap(data);
+  },
+
+  getSubscription: async (): Promise<SubscriptionInfo> => {
+    const { data } = await api.get<ApiResponse<SubscriptionInfo>>('/payment/subscription');
+    return unwrap(data);
+  },
+
+  getHistory: async (): Promise<PaymentRecord[]> => {
+    const { data } = await api.get<ApiResponse<PaymentRecord[]>>('/payment/history');
+    return unwrap(data);
+  },
+
+  createOrder: async (plan: string): Promise<{
+    orderId: string;
+    amount: number;
+    currency: string;
+    keyId: string;
+  }> => {
+    const { data } = await api.post<ApiResponse<{ orderId: string; amount: number; currency: string; keyId: string }>>('/payment/create-order', { plan });
+    return unwrap(data);
+  },
+
+  verify: async (payload: {
+    razorpay_order_id:   string;
+    razorpay_payment_id: string;
+    razorpay_signature:  string;
+  }): Promise<{ plan: string; planExpiryDate: string; message: string }> => {
+    const { data } = await api.post<ApiResponse<{ plan: string; planExpiryDate: string; message: string }>>('/payment/verify', payload);
     return unwrap(data);
   },
 };

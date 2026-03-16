@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { documentApi } from '@/lib/api';
 import { useUsage } from '@/hooks/useUsage';
+import { useSubscription } from '@/hooks/useSubscription';
 import { DocumentSummary, UsageStats } from '@/types';
 import {
   formatRelativeTime, formatWordCount, sourceTypeLabel,
@@ -17,7 +18,7 @@ import {
   Pencil, CheckCircle2, Clock,
   AlertTriangle, TrendingUp, Sparkles,
   Search, SlidersHorizontal, ArrowUpRight,
-  Zap, Globe,
+  Zap, Globe, Crown,
   Image as ImageIcon, Video, Music,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -386,6 +387,7 @@ export default function DashboardPage() {
   const { user }   = useAuth();
   const router     = useRouter();
   const { usage }  = useUsage();
+  const { isPremium } = useSubscription();
 
   const [documents, setDocuments]   = useState<DocumentSummary[]>([]);
   const [isLoading, setIsLoading]   = useState(true);
@@ -548,6 +550,42 @@ export default function DashboardPage() {
                   <p className="mt-1 text-[11px] text-slate-400 dark:text-white/25">{s.sub}</p>
                 </CardSpotlight>
               ))}
+        </div>
+
+        {/* ── Premium section ─────────────────────────────────────── */}
+        <div className="mb-8 rounded-2xl border border-amber-200/70 bg-gradient-to-r from-amber-50 via-white to-indigo-50 p-5 dark:border-amber-500/20 dark:from-amber-500/10 dark:via-[#0d0d1a] dark:to-indigo-500/10">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div className="space-y-2">
+              <p className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/70 bg-amber-100/70 px-3 py-0.5 text-[11px] font-bold uppercase tracking-widest text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300">
+                <Crown className="h-3.5 w-3.5" /> Premium Access
+              </p>
+              <h2 className="text-base font-extrabold text-slate-900 dark:text-white">
+                {isPremium ? 'You are on Pro plan' : 'Unlock Pro tools'}
+              </h2>
+              <p className="text-sm text-slate-600 dark:text-white/45">
+                {isPremium
+                  ? 'All premium features are active, including AI narration and PPT export.'
+                  : 'Free plan excludes AI narration, TTS narration, and PowerPoint export.'}
+              </p>
+              <div className="flex flex-wrap gap-2 text-xs">
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">AI Teleprompter</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">TTS Narration</span>
+                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">Export PPT</span>
+              </div>
+            </div>
+            <Link
+              href="/pricing"
+              className={cn(
+                'inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
+                isPremium
+                  ? 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-50 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70 dark:hover:bg-white/[0.07]'
+                  : 'bg-amber-500 text-white shadow-lg shadow-amber-500/25 hover:bg-amber-400',
+              )}
+            >
+              <Crown className="h-4 w-4" />
+              {isPremium ? 'Manage Plan' : 'Go Premium'}
+            </Link>
+          </div>
         </div>
 
         {/* ── Documents label ──────────────────────────────────────────── */}
