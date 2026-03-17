@@ -5,6 +5,8 @@ import { Token } from './useScriptTokens';
 
 const WORDS_PER_CHUNK = 150;
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+const SILENT_WAV_DATA_URI =
+  'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
 
 export type TTSStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error' | 'done';
 
@@ -60,6 +62,22 @@ export function useTTSPlayback({
     onStatusRef.current(s);
   }, []);
 
+  const primeAudioOutput = useCallback(async (): Promise<void> => {
+    if (typeof window === 'undefined') return;
+
+    try {
+      const unlockAudio = new Audio(SILENT_WAV_DATA_URI);
+      unlockAudio.preload = 'auto';
+      unlockAudio.muted = true;
+      await unlockAudio.play();
+      unlockAudio.pause();
+      unlockAudio.currentTime = 0;
+      unlockAudio.src = '';
+    } catch {
+      // Best-effort unlock only. If this fails, regular playback path still runs.
+    }
+  }, []);
+
   const clearAudio = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.pause();
@@ -107,23 +125,74 @@ export function useTTSPlayback({
       new Promise((resolve, reject) => {
         if (!isActiveRef.current) { resolve(); return; }
 
-        const audio        = new Audio(url);
+        const audio        = new Audio();
+        audio.preload      = 'auto';
+        audio.volume       = 1;
+        audio.muted        = false;
+        audio.src          = url;
         audioRef.current   = audio;
+        let hasStarted = false;
+        let loadTimeout: ReturnType<typeof setTimeout> | null = null;
 
-        audio.oncanplaythrough = async () => {
+        const finalize = (err?: Error) => {
+          if (loadTimeout) {
+            clearTimeout(loadTimeout);
+            loadTimeout = null;
+          }
+          audio.oncanplay = null;
+          audio.oncanplaythrough = null;
+          audio.onloadeddata = null;
+          if (err) {
+            reject(err);
+          }
+        };
+
+        const tryStartPlayback = async () => {
+          if (hasStarted || !isActiveRef.current) return;
+          hasStarted = true;
           try {
-            if (!isActiveRef.current) { resolve(); return; }
             if (isPausedRef.current) {
               setStatus('paused');
               await waitUntilResumed();
             }
             if (!isActiveRef.current) { resolve(); return; }
-            await audio.play();
+
+            try {
+              await audio.play();
+            } catch (err) {
+              const message = err instanceof Error ? err.message.toLowerCase() : '';
+              // Safari/Chrome can throw NotAllowedError after async fetch despite user click.
+              if (message.includes('notallowed') || message.includes('interact')) {
+                audio.muted = true;
+                await audio.play();
+                audio.muted = false;
+              } else {
+                throw err;
+              }
+            }
+
             setStatus('playing');
           } catch (err) {
-            reject(err);
+            hasStarted = false;
+            finalize(err as Error);
           }
         };
+
+        audio.oncanplay = async () => {
+          await tryStartPlayback();
+        };
+        audio.oncanplaythrough = async () => { await tryStartPlayback(); };
+        audio.onloadeddata = async () => { await tryStartPlayback(); };
+
+        loadTimeout = setTimeout(() => {
+          if (!hasStarted && isActiveRef.current) {
+            finalize(new Error('Audio took too long to become playable.'));
+          }
+        }, 15000);
+
+        if (audio.readyState >= 2) {
+          void tryStartPlayback();
+        }
 
         // Real-time word pointer: maps audio.currentTime → word index
         audio.ontimeupdate = () => {
@@ -138,12 +207,14 @@ export function useTTSPlayback({
         };
 
         audio.onended = () => {
+          finalize();
           URL.revokeObjectURL(url);
           audioRef.current = null;
           resolve();
         };
 
         audio.onerror = () => {
+          finalize();
           URL.revokeObjectURL(url);
           audioRef.current = null;
           reject(new Error('Audio playback error at chunk starting at token ' + chunkStart));
@@ -157,6 +228,8 @@ export function useTTSPlayback({
     clearAudio();
     isActiveRef.current = true;
     isPausedRef.current = false;
+
+    await primeAudioOutput();
 
     const toks = tokensRef.current;
     if (toks.length === 0) return;
@@ -180,9 +253,11 @@ export function useTTSPlayback({
         const text       = chunk.map((t) => t.original).join(' ');
 
         if (!nextChunkUrlPromise) {
+          setStatus('loading');
           nextChunkUrlPromise = fetchAudio(text, ctrl.signal);
         }
 
+        setStatus('loading');
         const url = await nextChunkUrlPromise;
         if (!isActiveRef.current) { URL.revokeObjectURL(url); break; }
 
@@ -194,7 +269,6 @@ export function useTTSPlayback({
           nextChunkUrlPromise = null;
         }
 
-        if (i > 0 && !isPausedRef.current) setStatus('loading');
         await playBlob(url, chunkStart, chunk.length);
       }
       if (isActiveRef.current) {
@@ -209,7 +283,7 @@ export function useTTSPlayback({
       setStatus('error');
       clearAudio();
     }
-  }, [clearAudio, fetchAudio, playBlob, setStatus]);
+  }, [clearAudio, fetchAudio, playBlob, primeAudioOutput, setStatus]);
 
   const pause = useCallback((): void => {
     if (!isActiveRef.current) return;

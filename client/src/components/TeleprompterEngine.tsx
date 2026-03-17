@@ -13,6 +13,7 @@ import React, {
   useRef,
   useCallback,
   useEffect,
+  useMemo,
   memo,
 } from 'react';
 import {
@@ -43,12 +44,14 @@ type ActiveMode = 'tts' | 'mic' | 'manual' | 'idle';
 
 interface ScriptRendererProps {
   tokens:       Token[];
+  sentenceIndexByToken: number[];
   containerRef: React.RefObject<HTMLDivElement>;
   fontSize:     number;
 }
 
 const ScriptRenderer = memo(function ScriptRenderer({
   tokens,
+  sentenceIndexByToken,
   containerRef,
   fontSize,
 }: ScriptRendererProps) {
@@ -64,6 +67,7 @@ const ScriptRenderer = memo(function ScriptRenderer({
           <span
             key={token.index}
             data-token-index={token.index}
+            data-sentence-index={sentenceIndexByToken[token.index] ?? 0}
             className="tp-token mr-[0.28em] inline-block"
           >
             {token.original}
@@ -323,11 +327,12 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   const [isManualPlaying, setIsManualPlaying] = useState(false);
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
   const [speed,           setSpeed]           = useState(3);
-  const [fontSize,        setFontSize]        = useState(32);
+  const [fontSize,        setFontSize]        = useState(26);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const containerRef       = useRef<HTMLDivElement>(null);
   const lastHighlightedRef = useRef<number>(-1);
+  const lastSentenceRef    = useRef<number>(-1);
   const rafManualRef       = useRef<number>(0);
   const speedRef           = useRef(speed);
   const isManualPlayingRef = useRef(isManualPlaying);
@@ -339,6 +344,38 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
   // ── Tokenise ───────────────────────────────────────────────────────────────
   const tokens = useScriptTokens(script);
+
+  const sentenceIndexByToken = useMemo(() => {
+    if (tokens.length === 0) return [] as number[];
+
+    const indices: number[] = [];
+    let currentSentence = 0;
+
+    for (let i = 0; i < tokens.length; i++) {
+      const token = tokens[i];
+      indices[token.index] = currentSentence;
+
+      if (/[.!?]+[)\]"']*$/.test(token.original)) {
+        currentSentence += 1;
+      }
+    }
+
+    return indices;
+  }, [tokens]);
+
+  const sentenceStartByIndex = useMemo(() => {
+    const starts: number[] = [];
+
+    for (let i = 0; i < tokens.length; i++) {
+      const tokenIndex = tokens[i].index;
+      const sentenceIndex = sentenceIndexByToken[tokenIndex] ?? 0;
+      if (starts[sentenceIndex] === undefined) {
+        starts[sentenceIndex] = tokenIndex;
+      }
+    }
+
+    return starts;
+  }, [sentenceIndexByToken, tokens]);
 
   // ── Word matcher (mic mode) ────────────────────────────────────────────────
   const { processChunk, reset: resetMatcher } = useWordMatcher(tokens);
@@ -364,10 +401,41 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     lastHighlightedRef.current = newPointer;
   }, []);
 
+  const applySentenceHighlight = useCallback((newSentence: number) => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const prevSentence = lastSentenceRef.current;
+    if (prevSentence >= 0) {
+      container
+        .querySelectorAll<HTMLElement>(`[data-sentence-index="${prevSentence}"]`)
+        .forEach((el) => {
+          el.classList.remove('tp-active');
+          el.classList.add('tp-spoken');
+        });
+    }
+
+    container
+      .querySelectorAll<HTMLElement>(`[data-sentence-index="${newSentence}"]`)
+      .forEach((el) => {
+        el.classList.add('tp-active');
+      });
+
+    lastSentenceRef.current = newSentence;
+  }, []);
+
   const advancePointer = useCallback((pointer: number) => {
+    if (activeModeRef.current === 'tts') {
+      const sentenceIndex = sentenceIndexByToken[pointer] ?? 0;
+      applySentenceHighlight(sentenceIndex);
+      const sentenceStart = sentenceStartByIndex[sentenceIndex] ?? pointer;
+      scrollToToken(sentenceStart);
+      return;
+    }
+
     applyHighlight(pointer);
     scrollToToken(pointer);
-  }, [applyHighlight, scrollToToken]);
+  }, [applyHighlight, applySentenceHighlight, scrollToToken, sentenceIndexByToken, sentenceStartByIndex]);
 
   // ── Full DOM reset helper ──────────────────────────────────────────────────
   const resetDOM = useCallback(() => {
@@ -377,6 +445,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       el.classList.remove('tp-spoken', 'tp-active');
     });
     lastHighlightedRef.current = -1;
+    lastSentenceRef.current = -1;
   }, []);
 
   // ── TTS playback ───────────────────────────────────────────────────────────
@@ -534,10 +603,19 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       )}
 
       {/* Script */}
-      <div className="flex-1 overflow-hidden">
+      <div className="relative flex-1 overflow-hidden">
         {tokens.length === 0
           ? <div className="flex h-full items-center justify-center"><p className="text-sm text-white/20">No script loaded.</p></div>
-          : <ScriptRenderer tokens={tokens} containerRef={containerRef} fontSize={fontSize} />}
+            : <ScriptRenderer tokens={tokens} sentenceIndexByToken={sentenceIndexByToken} containerRef={containerRef} fontSize={fontSize} />}
+
+        {activeMode === 'tts' && ttsStatus === 'loading' && (
+          <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#07070f]/55 backdrop-blur-[2px]">
+            <div className="inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/35 px-4 py-2 text-sm text-white/80">
+              <Loader2 className="h-4 w-4 animate-spin text-indigo-300" />
+              Fetching audio...
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Controls */}
