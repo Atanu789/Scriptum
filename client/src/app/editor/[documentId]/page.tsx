@@ -11,13 +11,38 @@ import {
   Save, BarChart2, Loader2, Tv2, ExternalLink,
   ChevronLeft, FileText, AlertCircle,
   Image as ImageIcon, Video, Music, X, Library, AlignLeft, AlignCenter, AlignRight, WrapText, GitCompare,
+  Bold, Italic, Underline, List, ListOrdered, Link2, Table2, Upload, Download, History, Eye, EyeOff, MoreHorizontal, PanelRightClose,
 } from 'lucide-react';
 import { formatWordCount, cn } from '@/lib/utils';
 import { documentApi } from '@/lib/api';
 import { DocumentSummary, GrammarIssue } from '@/types';
 import toast from 'react-hot-toast';
+import { exportFile, importFileToHtml, toMarkdown, uid } from '@/components/problem-editor/utils';
 
-// ── Convert plain text → editor HTML ────────────────────────────────────────
+interface LocalVersionSnapshot {
+  id: string;
+  label: string;
+  createdAt: string;
+  html: string;
+}
+
+interface LocalTestCase {
+  id: string;
+  input: string;
+  output: string;
+  explanation: string;
+}
+
+function grammarIssueKey(issue: {
+  rule?: { id?: string };
+  offset?: number;
+  length?: number;
+  message?: string;
+}): string {
+  return `${issue.rule?.id || 'rule'}|${issue.offset ?? -1}|${issue.length ?? -1}|${issue.message || ''}`;
+}
+
+// ������ Convert plain text ��� editor HTML ������������������������������������������������������������������������������������������������������������������������
 // Documents stored as plain text (newline-separated) need to be wrapped in
 // proper block elements so the typography styles render correctly.
 function escHtml(s: string) {
@@ -47,7 +72,7 @@ function headingTag(line: string): string {
 }
 
 function toEditorHtml(text: string): string {
-  // Already has block-level HTML — use as-is
+  // Already has block-level HTML ��� use as-is
   if (/<(p|h[1-6]|ul|ol|figure|blockquote|pre|div)\b/i.test(text)) return text;
 
   const blocks = text.split(/\n{2,}/).map((b) => b.trim()).filter(Boolean);
@@ -65,9 +90,9 @@ function toEditorHtml(text: string): string {
       const rest = lines.slice(1).map(escHtml).join('<br>');
       return heading + (rest ? `<p>${rest}</p>` : '');
     }
-    // Check for bullet lists (lines starting with - or * or •)
-    if (lines.every((l) => /^[-*•]\s/.test(l))) {
-      const items = lines.map((l) => `<li>${escHtml(l.replace(/^[-*•]\s*/, ''))}</li>`).join('');
+    // Check for bullet lists (lines starting with - or * or ���)
+    if (lines.every((l) => /^[-*���]\s/.test(l))) {
+      const items = lines.map((l) => `<li>${escHtml(l.replace(/^[-*���]\s*/, ''))}</li>`).join('');
       return `<ul>${items}</ul>`;
     }
     // Check for numbered lists
@@ -225,7 +250,7 @@ export default function EditorPage() {
     useDocument(documentId);
   const { canUseGrammarFix, canUseHumanizeText } = useSubscription();
 
-  // ── contentEditable ref & init ───────────────────────────────────────────
+  // ������ contentEditable ref & init ���������������������������������������������������������������������������������������������������������������������������������
   const editorRef = useRef<HTMLDivElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
   const lastLoadedSignatureRef = useRef<string>('');
@@ -237,13 +262,28 @@ export default function EditorPage() {
   const [isDirty, setIsDirty]     = useState(false);
   const [isSaving, setIsSaving]   = useState(false);
   const [activeTab, setActiveTab] = useState<'edit' | 'analysis'>('edit');
+  const [rightPanelMode, setRightPanelMode] = useState<'analysis' | 'preview'>('analysis');
+  const [isAnalysisCollapsed, setIsAnalysisCollapsed] = useState(false);
   const [compareSnapshot, setCompareSnapshot] = useState<{
     title: string;
     before: string;
     after: string;
   } | null>(null);
+  const [versions, setVersions] = useState<LocalVersionSnapshot[]>([]);
+  const [metadataDifficulty, setMetadataDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
+  const [metadataTags, setMetadataTags] = useState('DP, Graph');
+  const [metadataTimeLimit, setMetadataTimeLimit] = useState('1 sec');
+  const [metadataMemoryLimit, setMetadataMemoryLimit] = useState('256 MB');
+  const [editorialNotes, setEditorialNotes] = useState('');
+  const [assets, setAssets] = useState<Array<{ id: string; name: string; size: number }>>([]);
+  const [bottomTab, setBottomTab] = useState<'testcases' | 'metadata' | 'editorial' | 'assets'>('testcases');
+  const [pendingFixedGrammarIssueKeys, setPendingFixedGrammarIssueKeys] = useState<string[]>([]);
+  const [testCases, setTestCases] = useState<LocalTestCase[]>([
+    { id: uid('tc'), input: '', output: '', explanation: '' },
+  ]);
+  const importInputRef = useRef<HTMLInputElement>(null);
 
-  // ── Image formatting controls ────────────────────────────────────────────
+  // ������ Image formatting controls ������������������������������������������������������������������������������������������������������������������������������������
   const [selectedImageEl, setSelectedImageEl] = useState<HTMLImageElement | null>(null);
   const [imageAlign, setImageAlign] = useState<'left' | 'center' | 'right'>('center');
   const [imageWrap, setImageWrap] = useState(false);
@@ -364,7 +404,7 @@ export default function EditorPage() {
     setIsDirty(true);
   }, [imageAlign, imagePaddingPx, imageWidthPct, imageWrap, selectedImageEl]);
 
-  // ── Media library ────────────────────────────────────────────────────────
+  // ������ Media library ������������������������������������������������������������������������������������������������������������������������������������������������������������������������
   const [showMediaLib, setShowMediaLib]     = useState(false);
   const [mediaItems, setMediaItems]         = useState<DocumentSummary[]>([]);
   const [mediaLibLoading, setMediaLibLoading] = useState(false);
@@ -621,6 +661,32 @@ export default function EditorPage() {
   }, []);
 
   const handleEditorKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if (e.ctrlKey && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      const href = window.prompt('Paste link URL');
+      if (!href || !editorRef.current) return;
+      const safeHref = href.trim();
+      const selection = window.getSelection();
+      const selectedText = selection?.toString().trim() || '';
+
+      editorRef.current.focus();
+      if (selectedText) {
+        // eslint-disable-next-line deprecation/deprecation
+        window.document.execCommand('createLink', false, safeHref);
+      } else {
+        const label = window.prompt('Link text', safeHref) || safeHref;
+        // eslint-disable-next-line deprecation/deprecation
+        window.document.execCommand(
+          'insertHTML',
+          false,
+          `<a href="${safeHref.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${label.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</a>`
+        );
+      }
+      setIsDirty(true);
+      recalcEditorMetrics();
+      return;
+    }
+
     const img = selectedImageEl;
     if (!img) return;
 
@@ -640,7 +706,7 @@ export default function EditorPage() {
     img.style.left = `${Math.round(currentLeft + dx)}px`;
     img.style.top = `${Math.round(currentTop + dy)}px`;
     setIsDirty(true);
-  }, [parsePxStyle, selectedImageEl]);
+  }, [parsePxStyle, recalcEditorMetrics, selectedImageEl]);
 
   useEffect(() => {
     return () => {
@@ -654,12 +720,133 @@ export default function EditorPage() {
     setIsSaving(true);
     try {
       const html = editorRef.current?.innerHTML || '';
-      await updateContent(html);
+      await updateContent(html, pendingFixedGrammarIssueKeys);
       setIsDirty(false);
+      if (pendingFixedGrammarIssueKeys.length > 0) {
+        setPendingFixedGrammarIssueKeys([]);
+      }
     } finally {
       setIsSaving(false);
     }
   };
+
+  const snapshotVersion = useCallback((label = 'Draft Snapshot') => {
+    if (!editorRef.current) return;
+    setVersions((prev) => [
+      {
+        id: uid('version'),
+        label,
+        createdAt: new Date().toISOString(),
+        html: editorRef.current?.innerHTML || '',
+      },
+      ...prev,
+    ]);
+  }, []);
+
+  const runEditorCommand = useCallback((command: string, value?: string) => {
+    if (!editorRef.current) return;
+    editorRef.current.focus();
+    // eslint-disable-next-line deprecation/deprecation
+    window.document.execCommand(command, false, value);
+    setIsDirty(true);
+    recalcEditorMetrics();
+  }, [recalcEditorMetrics]);
+
+  const insertSectionTemplate = useCallback(() => {
+    if (!editorRef.current) return;
+    const html = [
+      '<h2>Problem Statement</h2><p></p>',
+      '<h2>Input Format</h2><p></p>',
+      '<h2>Output Format</h2><p></p>',
+      '<h2>Constraints</h2><p></p>',
+      '<h2>Sample Input</h2><p></p>',
+      '<h2>Sample Output</h2><p></p>',
+      '<h2>Explanation</h2><p></p>',
+    ].join('');
+    runEditorCommand('insertHTML', html);
+  }, [runEditorCommand]);
+
+  const insertTable = useCallback(() => {
+    const rows = Math.max(2, Number.parseInt(window.prompt('Rows', '3') || '3', 10));
+    const cols = Math.max(2, Number.parseInt(window.prompt('Columns', '3') || '3', 10));
+    const bodyRows = Array.from({ length: rows })
+      .map((_, r) => {
+        const cells = Array.from({ length: cols })
+          .map((__, c) => `<${r === 0 ? 'th' : 'td'} style="border:1px solid #cbd5e1;padding:6px;">${r === 0 ? `H${c + 1}` : ''}</${r === 0 ? 'th' : 'td'}>`)
+          .join('');
+        return `<tr>${cells}</tr>`;
+      })
+      .join('');
+    runEditorCommand('insertHTML', `<table style="border-collapse:collapse;width:100%;margin:12px 0;">${bodyRows}</table><p></p>`);
+  }, [runEditorCommand]);
+
+  const insertHyperlink = useCallback(() => {
+    const href = window.prompt('Paste link URL');
+    if (!href) return;
+    const safeHref = href.trim();
+    const selection = window.getSelection();
+    const selectedText = selection?.toString().trim() || '';
+
+    if (selectedText) {
+      runEditorCommand('createLink', safeHref);
+      return;
+    }
+
+    const label = window.prompt('Link text', safeHref) || safeHref;
+    runEditorCommand(
+      'insertHTML',
+      `<a href="${safeHref.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${label.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</a>`
+    );
+  }, [runEditorCommand]);
+
+  const handleImport = useCallback(async (file: File) => {
+    if (!editorRef.current) return;
+    try {
+      const html = await importFileToHtml(file);
+      editorRef.current.innerHTML = html;
+      prepareEditorImages();
+      setIsDirty(true);
+      recalcEditorMetrics();
+      toast.success('Imported content successfully');
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Import failed';
+      toast.error(message);
+    }
+  }, [prepareEditorImages, recalcEditorMetrics]);
+
+  const handleImportImage = useCallback((file: File) => {
+    if (!editorRef.current) return;
+    const url = URL.createObjectURL(file);
+    editorRef.current.focus();
+    // eslint-disable-next-line deprecation/deprecation
+    window.document.execCommand(
+      'insertHTML',
+      false,
+      `<img src="${url}" alt="Imported image" style="max-width:100%;width:70%;border-radius:8px;display:block;margin:8px auto;" />`
+    );
+    prepareEditorImages();
+    setIsDirty(true);
+    recalcEditorMetrics();
+    toast.success('Image imported');
+  }, [prepareEditorImages, recalcEditorMetrics]);
+
+  const handleExportMarkdown = useCallback(() => {
+    if (!editorRef.current) return;
+    const filename = `${doc?.originalFileName || 'document'}.md`;
+    exportFile(filename, toMarkdown(editorRef.current.innerHTML), 'text/markdown;charset=utf-8');
+  }, [doc?.originalFileName]);
+
+  const handleExportHtml = useCallback(() => {
+    if (!editorRef.current) return;
+    const filename = `${doc?.originalFileName || 'document'}.html`;
+    exportFile(filename, editorRef.current.innerHTML, 'text/html;charset=utf-8');
+  }, [doc?.originalFileName]);
+
+  const handlePublish = useCallback(async () => {
+    await handleSave();
+    snapshotVersion('Published Snapshot');
+    toast.success('Published successfully');
+  }, [handleSave, snapshotVersion]);
 
   // Insert the document's media at the current cursor position
   const isMediaDoc = doc?.sourceType && ['image', 'audio', 'video'].includes(doc.sourceType);
@@ -704,7 +891,7 @@ export default function EditorPage() {
       toast.success('Suggestion applied!');
     } else {
       navigator.clipboard.writeText(replacement).then(() =>
-        toast.success('Could not locate text — suggestion copied to clipboard'),
+        toast.success('Could not locate text ��� suggestion copied to clipboard'),
       );
     }
   }, []);
@@ -721,6 +908,8 @@ export default function EditorPage() {
     if (appliedByOffset) {
       setIsDirty(true);
       recalcEditorMetrics();
+      const key = grammarIssueKey(issue);
+      setPendingFixedGrammarIssueKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
       const text = editorRef.current.innerText;
       setCompareSnapshot({
         title: 'Grammar Fix Applied',
@@ -741,6 +930,8 @@ export default function EditorPage() {
         editorRef.current.innerHTML = updated;
         setIsDirty(true);
         recalcEditorMetrics();
+        const key = grammarIssueKey(issue);
+        setPendingFixedGrammarIssueKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
         const text = editorRef.current.innerText;
         setCompareSnapshot({
           title: 'Grammar Fix Applied',
@@ -753,7 +944,7 @@ export default function EditorPage() {
     }
 
     navigator.clipboard.writeText(replacement).then(() => {
-      toast.success('Could not auto-apply — replacement copied to clipboard');
+      toast.success('Could not auto-apply ��� replacement copied to clipboard');
     });
   }, [recalcEditorMetrics]);
 
@@ -787,7 +978,7 @@ export default function EditorPage() {
     return line;
   }, [doc?.cleanedText]);
 
-  /* ── Loading ── */
+  /* ������ Loading ������ */
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
@@ -796,7 +987,7 @@ export default function EditorPage() {
     );
   }
 
-  /* ── Error ── */
+  /* ������ Error ������ */
   if (error || !doc) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
@@ -844,17 +1035,97 @@ export default function EditorPage() {
           </div>
 
           <div className="flex items-center gap-2">
+            <input
+              ref={importInputRef}
+              type="file"
+              accept="image/*"
+              className="hidden"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImportImage(file);
+                e.currentTarget.value = '';
+              }}
+            />
             <ShareMenu
               title={doc.originalFileName}
               buttonClassName="py-1.5 px-3"
             />
-            <button
-              onClick={insertImageByUrl}
-              className="btn-secondary py-1.5 px-3 text-xs"
-              title="Insert image by URL"
-            >
-              <ImageIcon className="h-3.5 w-3.5" /> Insert Image
-            </button>
+            <details className="relative">
+              <summary className="btn-secondary cursor-pointer list-none py-1.5 px-3 text-xs">
+                <Upload className="h-3.5 w-3.5" /> Media & Import
+              </summary>
+              <div className="absolute right-0 mt-2 w-64 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                <button
+                  onClick={() => importInputRef.current?.click()}
+                  className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  <Upload className="h-3.5 w-3.5" /> Import Image
+                </button>
+                <button
+                  onClick={insertImageByUrl}
+                  className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  <ImageIcon className="h-3.5 w-3.5" /> Insert Image by URL
+                </button>
+                <button
+                  onClick={openMediaLib}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  <Library className="h-3.5 w-3.5" /> Open Media Library
+                </button>
+              </div>
+            </details>
+
+            <details className="relative">
+              <summary className="btn-secondary cursor-pointer list-none py-1.5 px-3 text-xs">
+                <Download className="h-3.5 w-3.5" /> Export
+              </summary>
+              <div className="absolute right-0 mt-2 w-56 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                <button
+                  onClick={handleExportMarkdown}
+                  className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  <Download className="h-3.5 w-3.5" /> Export Markdown
+                </button>
+                <button
+                  onClick={handleExportHtml}
+                  className="mb-1 flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  <Download className="h-3.5 w-3.5" /> Export HTML
+                </button>
+                <Link
+                  href={`/export/${documentId}`}
+                  className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" /> Advanced Export
+                </Link>
+              </div>
+            </details>
+            <details className="relative">
+              <summary className="btn-secondary cursor-pointer list-none py-1.5 px-3 text-xs">
+                <History className="h-3.5 w-3.5" /> Versions
+              </summary>
+              <div className="absolute right-0 mt-2 w-72 rounded-lg border border-slate-200 bg-white p-2 shadow-lg dark:border-zinc-700 dark:bg-zinc-900">
+                <button
+                  onClick={() => snapshotVersion()}
+                  className="mb-2 w-full rounded-md bg-indigo-600 px-2 py-1 text-xs font-medium text-white"
+                >
+                  Save Snapshot
+                </button>
+                {versions.length === 0 ? (
+                  <p className="px-2 py-1 text-xs text-slate-500">No snapshots yet</p>
+                ) : (
+                  <ul className="max-h-44 overflow-auto">
+                    {versions.map((v) => (
+                      <li key={v.id} className="rounded-md px-2 py-1 text-xs text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-zinc-800">
+                        <p className="font-medium">{v.label}</p>
+                        <p className="text-[11px] opacity-70">{new Date(v.createdAt).toLocaleString()}</p>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </details>
             {isDirty && (
               <button onClick={handleSave} disabled={isSaving} className="btn-primary py-1.5 px-3 text-xs">
                 {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
@@ -869,28 +1140,43 @@ export default function EditorPage() {
               {isAnalyzing
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 : <BarChart2 className="h-3.5 w-3.5" />}
-              {isAnalyzing ? 'Analysing…' : 'Analyse'}
+              {isAnalyzing ? 'Analysing�Ǫ' : 'Analyse'}
             </button>
             <button
-              onClick={openMediaLib}
+              onClick={() => setRightPanelMode((prev) => prev === 'analysis' ? 'preview' : 'analysis')}
               className="btn-secondary py-1.5 px-3 text-xs"
-              title="Browse and insert uploaded media"
+              title="Toggle preview"
             >
-              <Library className="h-3.5 w-3.5" /> Media
+              {rightPanelMode === 'preview' ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+              {rightPanelMode === 'preview' ? 'Hide Preview' : 'Preview'}
             </button>
+            {!isAnalysisCollapsed && rightPanelMode === 'analysis' && (
+              <button
+                onClick={() => setIsAnalysisCollapsed(true)}
+                className="btn-secondary py-1.5 px-3 text-xs"
+                title="Squeeze analysis panel"
+              >
+                <PanelRightClose className="h-3.5 w-3.5" /> Squeeze
+              </button>
+            )}
             <Link href={`/teleprompter/${documentId}`} className="btn-secondary py-1.5 px-3 text-xs">
               <Tv2 className="h-3.5 w-3.5" /> Teleprompter
             </Link>
-            <Link href={`/export/${documentId}`} className="btn-secondary py-1.5 px-3 text-xs">
-              <ExternalLink className="h-3.5 w-3.5" /> Export
-            </Link>
+            <button
+              onClick={handlePublish}
+              disabled={isSaving}
+              className="btn-primary py-1.5 px-3 text-xs"
+            >
+              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+              Publish
+            </button>
           </div>
         </div>
       </div>
 
       {/* Two-column layout */}
       <div className="animate-page-in mx-auto flex w-full max-w-7xl flex-1 gap-6 px-4 py-6 sm:px-6">
-        {/* Left – Editor */}
+        {/* Left ��� Editor */}
         <div className={cn('flex flex-1 flex-col', activeTab === 'analysis' && 'hidden md:flex')}>
           <div className="card flex flex-1 flex-col p-0 overflow-hidden">
             <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3 dark:border-zinc-800">
@@ -898,6 +1184,32 @@ export default function EditorPage() {
                 <FileText className="h-4 w-4" /> Document Editor
               </div>
               <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1 rounded-lg border border-slate-200 bg-white px-2 py-1 dark:border-zinc-700 dark:bg-zinc-800">
+                  <button onClick={() => runEditorCommand('bold')} className="rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-zinc-700" title="Bold">
+                    <Bold className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => runEditorCommand('italic')} className="rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-zinc-700" title="Italic">
+                    <Italic className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => runEditorCommand('underline')} className="rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-zinc-700" title="Underline">
+                    <Underline className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => runEditorCommand('insertUnorderedList')} className="rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-zinc-700" title="Bullet List">
+                    <List className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={() => runEditorCommand('insertOrderedList')} className="rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-zinc-700" title="Numbered List">
+                    <ListOrdered className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={insertHyperlink} className="rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-zinc-700" title="Insert Link">
+                    <Link2 className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={insertTable} className="rounded p-1 text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-zinc-700" title="Insert Table">
+                    <Table2 className="h-3.5 w-3.5" />
+                  </button>
+                  <button onClick={insertSectionTemplate} className="rounded px-1.5 py-1 text-[11px] text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-zinc-700" title="Insert problem section template">
+                    Template
+                  </button>
+                </div>
                 {isMediaDoc && doc?.mediaUrl && (
                   <button
                     onClick={insertMedia}
@@ -971,7 +1283,7 @@ export default function EditorPage() {
                   </div>
                 )}
                 {isDirty && (
-                  <span className="text-xs text-amber-500">● Unsaved changes</span>
+                  <span className="text-xs text-amber-500">��� Unsaved changes</span>
                 )}
               </div>
             </div>
@@ -1068,25 +1380,51 @@ export default function EditorPage() {
           </div>
         </div>
 
-        {/* Right – Analysis */}
+        {/* Right ��� Analysis */}
+        {!isAnalysisCollapsed && (
         <div className={cn(
           'w-full md:w-96 flex-shrink-0',
           activeTab === 'edit' && 'hidden md:block',
         )}>
-          <AnalysisPanel
-            analysis={analysis}
-            isAnalyzing={isAnalyzing}
-            isHumanizing={isHumanizing}
-            onAnalyze={analyze}
-            onHumanize={canUseHumanizeText ? handleHumanizeAction : undefined}
-            onSave={isDirty ? handleSave : undefined}
-            documentStatus={doc.status}
-            onApplySuggestion={handleApplySuggestion}
-            onApplyGrammarFix={canUseGrammarFix ? handleApplyGrammarFix : undefined}
-            getGrammarIssueLine={getIssueLineNumber}
-          />
+          {rightPanelMode === 'analysis' ? (
+            <AnalysisPanel
+              analysis={analysis}
+              isAnalyzing={isAnalyzing}
+              isHumanizing={isHumanizing}
+              onAnalyze={analyze}
+              onHumanize={canUseHumanizeText ? handleHumanizeAction : undefined}
+              onSave={isDirty ? handleSave : undefined}
+              documentStatus={doc.status}
+              onApplySuggestion={handleApplySuggestion}
+              onApplyGrammarFix={canUseGrammarFix ? handleApplyGrammarFix : undefined}
+              getGrammarIssueLine={getIssueLineNumber}
+            />
+          ) : (
+            <div className="card h-full overflow-hidden p-0">
+              <div className="border-b border-slate-100 px-4 py-3 text-sm font-semibold text-slate-700 dark:border-zinc-800 dark:text-zinc-200">
+                Live Preview
+              </div>
+              <div
+                className="max-h-[calc(100vh-220px)] overflow-auto p-4 text-sm leading-7 text-slate-700 dark:text-zinc-200"
+                dangerouslySetInnerHTML={{ __html: editorRef.current?.innerHTML || '' }}
+              />
+            </div>
+          )}
         </div>
+        )}
       </div>
+
+      {isAnalysisCollapsed && rightPanelMode === 'analysis' && (
+        <button
+          onClick={() => setIsAnalysisCollapsed(false)}
+          className="fixed right-3 top-1/2 z-40 -translate-y-1/2 rounded-full border border-slate-200 bg-white p-2 text-slate-600 shadow-lg transition hover:bg-slate-100 dark:border-zinc-700 dark:bg-zinc-900 dark:text-zinc-300 dark:hover:bg-zinc-800"
+          title="Expand analysis panel"
+        >
+          <MoreHorizontal className="h-4 w-4" />
+        </button>
+      )}
+
+      
 
       {compareSnapshot && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">

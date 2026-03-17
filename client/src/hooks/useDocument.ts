@@ -52,7 +52,7 @@ interface UseDocumentReturn {
   refresh: () => Promise<void>;
   analyze: () => Promise<void>;
   humanize: () => Promise<HumanizeResult | null>;
-  updateContent: (editorHtml: string) => Promise<void>;
+  updateContent: (editorHtml: string, fixedGrammarIssueKeys?: string[]) => Promise<void>;
 }
 
 export function useDocument(documentId: string): UseDocumentReturn {
@@ -142,15 +142,29 @@ export function useDocument(documentId: string): UseDocumentReturn {
     }
   }, [documentId, refresh]);
 
-  const updateContent = useCallback(async (editorHtml: string) => {
+  const updateContent = useCallback(async (editorHtml: string, fixedGrammarIssueKeys?: string[]) => {
     if (!documentId) return;
     try {
-      const updated = await documentApi.update(documentId, { editorHtml });
+      const updated = await documentApi.update(documentId, { editorHtml, fixedGrammarIssueKeys });
       setDocument((prev) => prev ? sanitizeDoc({
         ...prev,
         editorHtml,
         cleanedText: typeof updated.cleanedText === 'string' ? updated.cleanedText : prev.cleanedText,
       } as Document) : prev);
+
+      if ((fixedGrammarIssueKeys?.length ?? 0) > 0) {
+        const keys = new Set(fixedGrammarIssueKeys);
+        setAnalysis((prev) => {
+          if (!prev) return prev;
+          return {
+            ...prev,
+            grammarIssues: prev.grammarIssues.map((issue) => {
+              const key = `${issue.rule?.id || 'rule'}|${issue.offset}|${issue.length}|${issue.message}`;
+              return keys.has(key) ? { ...issue, fixed: true } : issue;
+            }),
+          };
+        });
+      }
       toast.success('Document saved');
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Save failed';

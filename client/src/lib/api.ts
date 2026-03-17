@@ -176,7 +176,12 @@ export const documentApi = {
 
   update: async (
     id: string,
-    payload: { cleanedText?: string; editorHtml?: string; structuredContent?: Document['structuredContent'] }
+    payload: {
+      cleanedText?: string;
+      editorHtml?: string;
+      structuredContent?: Document['structuredContent'];
+      fixedGrammarIssueKeys?: string[];
+    }
   ): Promise<Partial<Document>> => {
     const { data } = await api.patch<ApiResponse<Partial<Document>>>(`/document/${id}`, payload);
     return unwrap(data);

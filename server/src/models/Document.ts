@@ -24,6 +24,7 @@ const grammarIssueSchema = new Schema(
   {
     message: String,
     shortMessage: String,
+    fixed: { type: Boolean, default: false },
     severity: {
       type: String,
       enum: ['error', 'warning', 'suggestion'],
@@ -125,6 +126,7 @@ export interface IDocument extends Document {
   grammarIssues: Array<{
     message: string;
     shortMessage?: string;
+    fixed?: boolean;
     severity?: 'error' | 'warning' | 'suggestion';
     offset: number;
     length: number;

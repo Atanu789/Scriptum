@@ -256,7 +256,7 @@ function GrammarIssueCard({
   const sev = (issue.severity ?? 'warning') as keyof typeof sevCfg;
   const { label, Icon: SevIcon, cls } = sevCfg[sev] ?? sevCfg.warning;
   const topReplacement = issue.replacements?.[0]?.trim();
-  const canQuickFix = !!onApplyGrammarFix && !!topReplacement;
+  const canQuickFix = !!onApplyGrammarFix && !!topReplacement && !issue.fixed;
   return (
     <div className={cn('rounded-xl border p-3',
       sev === 'error'      ? (isDark ? 'border-red-900/40 bg-red-950/20'    : 'border-red-100 bg-red-50/40')
@@ -269,6 +269,11 @@ function GrammarIssueCard({
               <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium', cls)}>
                 <SevIcon className="h-3 w-3" /> {label}
               </span>
+              {issue.fixed && (
+                <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium', isDark ? 'bg-emerald-900/30 text-emerald-300 border border-emerald-800' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')}>
+                  <CheckCircle2 className="h-3 w-3" /> Fixed
+                </span>
+              )}
               <span className={cn('text-xs px-1.5 py-0.5 rounded-full', isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')}>{issue.rule.category}</span>
               {lineNumber && lineNumber > 0 && (
                 <span className={cn('text-xs px-1.5 py-0.5 rounded-full', isDark ? 'bg-indigo-950/60 text-indigo-300' : 'bg-indigo-50 text-indigo-700')}>

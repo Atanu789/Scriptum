@@ -152,6 +152,7 @@ export interface GrammarIssue {
   length: number;
   replacements: string[];
   context: string;
+  fixed?: boolean;
   severity?: 'error' | 'warning' | 'suggestion';
   rule: {
     id: string;

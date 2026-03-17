@@ -79,19 +79,21 @@ ${sample}`;
 export async function humanizeTextContent(text: string): Promise<string> {
   const sample = text.slice(0, 12_000);
 
-  const prompt = `You are a senior editor. Rewrite the text below so it reads more naturally human-written.
+  const prompt = `You are a senior human editor rewriting content for publication.
 
-Goals:
-- Keep the original meaning and key facts.
-- Vary sentence structure and rhythm.
-- Reduce repetitive phrasing and predictable transitions.
-- Use natural, specific phrasing.
-- Keep paragraph breaks.
+Rewrite goals:
+- Preserve facts, intent, chronology, and all critical details.
+- Improve readability and flow with varied sentence lengths.
+- Replace repetitive transitions and generic filler with specific wording.
+- Add natural human cadence and concise phrasing.
+- Keep paragraph boundaries and overall structure.
 
-Rules:
-- Return ONLY the rewritten text.
-- No markdown fences.
-- No explanations.
+Hard constraints:
+- Do not invent facts, names, numbers, or claims.
+- Do not remove important technical details.
+- Keep meaning equivalent.
+- Output plain text only.
+- No markdown fences, labels, or commentary.
 
 Text:
 ${sample}`;

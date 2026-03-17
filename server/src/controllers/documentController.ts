@@ -80,7 +80,17 @@ export const updateDocumentValidation = [
   body('cleanedText').optional().isString(),
   body('editorHtml').optional().isString(),
   body('structuredContent').optional().isObject(),
+  body('fixedGrammarIssueKeys').optional().isArray(),
 ];
+
+function grammarIssueKey(issue: {
+  rule?: { id?: string };
+  offset?: number;
+  length?: number;
+  message?: string;
+}): string {
+  return `${issue.rule?.id || 'rule'}|${issue.offset ?? -1}|${issue.length ?? -1}|${issue.message || ''}`;
+}
 
 export const updateDocument = async (
   req: AuthenticatedRequest,
@@ -107,7 +117,14 @@ export const updateDocument = async (
       cleanedText?: string;
       editorHtml?: string;
       structuredContent?: { sections: unknown[] };
+      fixedGrammarIssueKeys?: string[];
     };
+
+    const fixedKeys = new Set(
+      Array.isArray((req.body as { fixedGrammarIssueKeys?: unknown[] }).fixedGrammarIssueKeys)
+        ? ((req.body as { fixedGrammarIssueKeys?: string[] }).fixedGrammarIssueKeys || []).filter(Boolean)
+        : []
+    );
 
     if (typeof editorHtml === 'string') {
       doc.editorHtml = sanitizeMediaContent(editorHtml);
@@ -126,6 +143,16 @@ export const updateDocument = async (
 
     if (structuredContent) {
       doc.structuredContent = structuredContent as typeof doc.structuredContent;
+    }
+
+    if (fixedKeys.size > 0 && Array.isArray(doc.grammarIssues)) {
+      doc.grammarIssues = doc.grammarIssues.map((issue) => {
+        const key = grammarIssueKey(issue);
+        if (fixedKeys.has(key)) {
+          return { ...issue, fixed: true };
+        }
+        return issue;
+      }) as typeof doc.grammarIssues;
     }
 
     await doc.save();

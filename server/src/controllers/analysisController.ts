@@ -260,7 +260,9 @@ export const humanizeDetectedText = async (
       // If targeted replacements fail too often, do a full humanization rewrite fallback.
       const fallbackHumanized = await humanizeTextContent(sourceText);
       if (fallbackHumanized && fallbackHumanized.trim().length > 0) {
-        humanizedText = fallbackHumanized;
+        // Light second pass improves cadence and removes residual repetition.
+        const polishedHumanized = await humanizeTextContent(fallbackHumanized);
+        humanizedText = polishedHumanized?.trim().length ? polishedHumanized : fallbackHumanized;
       }
     }
 
