@@ -4,6 +4,7 @@ import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { ToasterProvider } from '@/components/providers/ToasterProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
+import { GoogleAuthProvider } from '@/components/providers/GoogleAuthProvider';
 import FloatingDockNav from '@/components/FloatingDockNav';
 import { VortexBackground } from '@/components/ui/vortex-background';
 
@@ -68,6 +69,7 @@ export default function RootLayout({
       </head>
       <body>
         <ThemeProvider>
+          <GoogleAuthProvider>
           {/* Global background stack applied to every page */}
           <VortexBackground className="pointer-events-none fixed inset-0 z-0 opacity-75 dark:opacity-90" compact />
           <div
@@ -86,6 +88,7 @@ export default function RootLayout({
               {children}
             </AuthProvider>
           </div>
+          </GoogleAuthProvider>
         </ThemeProvider>
       </body>
     </html>

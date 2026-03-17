@@ -85,7 +85,10 @@ api.interceptors.response.use(
   (response) => response,
   (error) => {
     const url: string = error.config?.url || '';
-    const isAuthEndpoint = url.includes('/auth/login') || url.includes('/auth/register');
+    const isAuthEndpoint =
+      url.includes('/auth/login') ||
+      url.includes('/auth/register') ||
+      url.includes('/auth/google');
     if (error.response?.status === 401 && !isAuthEndpoint && typeof window !== 'undefined') {
       localStorage.removeItem('ultimoversio_token');
       localStorage.removeItem('ultimoversio_user');
@@ -117,6 +120,11 @@ export const authApi = {
 
   login: async (payload: { email: string; password: string }): Promise<AuthTokens> => {
     const { data } = await api.post<ApiResponse<AuthTokens>>('/auth/login', payload);
+    return unwrap(data);
+  },
+
+  google: async (payload: { idToken: string }): Promise<AuthTokens> => {
+    const { data } = await api.post<ApiResponse<AuthTokens>>('/auth/google', payload);
     return unwrap(data);
   },
 

@@ -14,6 +14,7 @@ const OPTIONAL_VARS = [
   { key: 'CLIENT_URL',              warn: 'CORS will default to http://localhost:3000' },
   { key: 'DEEPGRAM_API_KEY',        warn: 'Teleprompter mic-sync and TTS will be unavailable' },
   { key: 'DEEPGRAM_PROJECT_ID',     warn: 'Deepgram temp-key generation will fail — set project ID for production' },
+  { key: 'GOOGLE_CLIENT_ID',        warn: 'Google sign-in will be unavailable' },
   { key: 'RAZORPAY_KEY_ID',         warn: 'Payments will be unavailable — set Razorpay credentials' },
   { key: 'RAZORPAY_KEY_SECRET',     warn: 'Payment verification will fail — set RAZORPAY_KEY_SECRET' },
   { key: 'RAZORPAY_WEBHOOK_SECRET', warn: 'Webhook signature verification will fail — set RAZORPAY_WEBHOOK_SECRET' },

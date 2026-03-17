@@ -7,6 +7,7 @@ import { useAuth } from '@/context/AuthContext';
 import { Eye, EyeOff, Loader2, BookOpen, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
+import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { AceLabel, AceInput, ShimmerButton } from '@/components/ui/ace-input';
 import { MeteorCard } from '@/components/ui/meteor-card';
 
@@ -14,11 +15,12 @@ const FEATURES = ['Grammar Check', 'AI Analysis', 'Teleprompter', 'PPT Export'];
 
 export default function LoginPage() {
   const router = useRouter();
-  const { login } = useAuth();
+  const { login, loginWithGoogle } = useAuth();
 
   const [form, setForm]                 = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading]       = useState(false);
+  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -28,6 +30,24 @@ export default function LoginPage() {
       router.replace('/dashboard');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Login failed');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
+    const idToken = credentialResponse.credential;
+    if (!idToken) {
+      toast.error('Google sign-in did not return a valid token');
+      return;
+    }
+
+    setIsLoading(true);
+    try {
+      await loginWithGoogle(idToken);
+      router.replace('/dashboard');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Google sign-in failed');
     } finally {
       setIsLoading(false);
     }
@@ -146,6 +166,28 @@ export default function LoginPage() {
                   }
                 </ShimmerButton>
               </form>
+
+              {googleClientId && (
+                <>
+                  <div className="relative">
+                    <div className="absolute inset-0 flex items-center" aria-hidden>
+                      <div className="w-full border-t border-slate-200 dark:border-slate-800" />
+                    </div>
+                    <div className="relative flex justify-center">
+                      <span className="bg-white px-2 text-xs text-slate-400 dark:bg-slate-950">or continue with</span>
+                    </div>
+                  </div>
+                  <div className="flex justify-center">
+                    <GoogleLogin
+                      onSuccess={handleGoogleSuccess}
+                      onError={() => toast.error('Google sign-in was cancelled or failed')}
+                      text="signin_with"
+                      shape="pill"
+                      width="280"
+                    />
+                  </div>
+                </>
+              )}
 
               <p className="text-center text-sm text-slate-500">
                 Don&apos;t have an account?{' '}
