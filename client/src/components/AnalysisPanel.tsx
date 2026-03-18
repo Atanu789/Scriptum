@@ -25,6 +25,9 @@ interface Props {
   onGoPremium?:          () => void;
   canUseGrammarFixFeature?: boolean;
   canUseHumanizeFeature?: boolean;
+  canUseToneBiasFeature?: boolean;
+  aiUsageLabel?:         string;
+  isAiUsageBlocked?:     boolean;
   onCancelAnalyze?:      () => void;
   onSave?:               () => void;
   onApplySuggestion?:    (original: string, replacement: string) => void;
@@ -395,7 +398,7 @@ type TabId = 'overview' | 'integrity' | 'language' | 'tone';
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 function AnalysisPanel({
-  analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onGoPremium, canUseGrammarFixFeature, canUseHumanizeFeature, onCancelAnalyze, onSave, documentStatus, expanded = false,
+  analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onGoPremium, canUseGrammarFixFeature, canUseHumanizeFeature, canUseToneBiasFeature, aiUsageLabel, isAiUsageBlocked, onCancelAnalyze, onSave, documentStatus, expanded = false,
   onApplySuggestion, onApplyGrammarFix, getGrammarIssueLine,
 }: Props) {
   const { theme } = useTheme();
@@ -429,6 +432,8 @@ function AnalysisPanel({
     : '—';
   const humanizeEnabled = canUseHumanizeFeature ?? Boolean(onHumanize);
   const grammarFixEnabled = canUseGrammarFixFeature ?? Boolean(onApplyGrammarFix);
+  const toneBiasEnabled = canUseToneBiasFeature ?? true;
+  const analyzeBlocked = Boolean(isAiUsageBlocked);
   const canHumanize = humanizeEnabled && !isAnalyzing && !isHumanizing && !!onHumanize && (humanizationSuggestions.length > 0 || aiScore >= 40);
 
   const sortedIssues = useMemo(() => {
@@ -510,11 +515,11 @@ function AnalysisPanel({
 
   // ── Tabs ────────────────────────────────────────────────────────────────────
 
-  const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; badge?: number }> = [
+  const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; badge?: number | string; locked?: boolean }> = [
     { id: 'overview',  label: 'Overview',          icon: Gauge },
     { id: 'integrity', label: 'Content Integrity',  icon: Shield,        badge: claimFlags.length  },
     { id: 'language',  label: 'Language',            icon: AlertTriangle, badge: issueCount         },
-    { id: 'tone',      label: 'Tone & Bias',         icon: Activity,      badge: biasFlags.length   },
+    { id: 'tone',      label: 'Tone & Bias',         icon: Activity,      badge: toneBiasEnabled ? biasFlags.length : 'Premium', locked: !toneBiasEnabled },
   ];
 
   return (
@@ -524,17 +529,24 @@ function AnalysisPanel({
       <div className={cn(card, 'p-2')}>
         <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {tabs.map((tab) => (
-            <button key={tab.id} onClick={() => setActiveTab(tab.id)}
+            <button key={tab.id} onClick={() => (tab.locked ? onGoPremium?.() : setActiveTab(tab.id))}
+              type="button"
               className={cn('flex-shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all whitespace-nowrap',
                 activeTab === tab.id
                   ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-sm'
                   : D ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800')}>
               <tab.icon className="h-3.5 w-3.5" />
               {tab.label}
-              {tab.badge !== undefined && tab.badge > 0 && (
+              {typeof tab.badge === 'number' && tab.badge > 0 && (
                 <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-bold',
                   activeTab === tab.id ? 'bg-white/20 text-white' : (D ? 'bg-slate-700 text-slate-300' : 'bg-slate-200 text-slate-600'))}>
                   {tab.badge}
+                </span>
+              )}
+              {typeof tab.badge === 'string' && (
+                <span className={cn('rounded-full px-1.5 py-0.5 text-[10px] font-bold',
+                  activeTab === tab.id ? 'bg-white/20 text-white' : (D ? 'bg-amber-900/50 text-amber-300' : 'bg-amber-100 text-amber-700'))}>
+                  <span className="inline-flex items-center gap-1"><Lock className="h-3 w-3" />{tab.badge}</span>
                 </span>
               )}
             </button>
@@ -636,9 +648,17 @@ function AnalysisPanel({
           {lastAnalyzed && <p className="text-[11px] text-slate-500 text-center">Analysed {lastAnalyzed}</p>}
 
           <div className="flex gap-2">
-            <button onClick={onAnalyze} className={cn('flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all border',
-              D ? 'border-indigo-800/50 text-indigo-400 hover:bg-indigo-950/50' : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50')}>
-              <RefreshCw className="h-4 w-4" /> Re-run
+            <button
+              onClick={analyzeBlocked ? onGoPremium : onAnalyze}
+              className={cn('flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all border',
+                analyzeBlocked
+                  ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                  : D
+                  ? 'border-indigo-800/50 text-indigo-400 hover:bg-indigo-950/50'
+                  : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50')}
+            >
+              {analyzeBlocked ? <Lock className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
+              {analyzeBlocked ? 'AI Limit Reached - Go Premium' : 'Re-run'}
             </button>
             {onSave && (
               <button onClick={onSave} className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-500 hover:to-violet-500 shadow-sm transition-all">
@@ -646,6 +666,11 @@ function AnalysisPanel({
               </button>
             )}
           </div>
+          {aiUsageLabel && (
+            <p className={cn('text-center text-[11px]', analyzeBlocked ? 'text-amber-500' : 'text-slate-500')}>
+              AI analysis usage: {aiUsageLabel}
+            </p>
+          )}
         </div>
       )}
 
@@ -955,7 +980,21 @@ function AnalysisPanel({
       {/* ────────────────────── TAB 4: TONE & BIAS ───────────────────────── */}
       {activeTab === 'tone' && (
         <div className={cn(card, 'p-5 space-y-6')}>
-          {analysis.tone ? (
+          {!toneBiasEnabled ? (
+            <div className={cn('rounded-xl border p-6 text-center', D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')}>
+              <p className={cn('text-sm font-bold mb-1', D ? 'text-amber-300' : 'text-amber-700')}>Tone &amp; Bias is Premium</p>
+              <p className="text-xs text-slate-500">Upgrade to unlock tone breakdown and bias detection insights.</p>
+              {onGoPremium && (
+                <button
+                  type="button"
+                  onClick={onGoPremium}
+                  className="mt-3 inline-flex items-center gap-2 rounded-xl bg-amber-500 px-4 py-2 text-xs font-semibold text-white hover:bg-amber-400"
+                >
+                  <Crown className="h-3.5 w-3.5" /> Go Premium
+                </button>
+              )}
+            </div>
+          ) : analysis.tone ? (
             <>
               {/* Tone hero */}
               <div className={cn('rounded-xl border p-5 flex items-center gap-5', D ? 'bg-indigo-950/30 border-indigo-800/40' : 'bg-indigo-50 border-indigo-200')}>

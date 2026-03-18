@@ -19,7 +19,14 @@ export default function AnalysisPage() {
   const params = useParams<{ documentId: string }>();
   const { document, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize } =
     useDocument(params.documentId);
-  const { canUseHumanizeText, canUseGrammarFix } = useSubscription();
+  const {
+    canUseHumanizeText,
+    canUseGrammarFix,
+    isPremium,
+    aiUsed,
+    aiLimit,
+    aiBlocked,
+  } = useSubscription();
   const goPremium = useCallback(() => {
     window.location.href = '/pricing';
   }, []);
@@ -177,6 +184,9 @@ export default function AnalysisPage() {
           onGoPremium={goPremium}
           canUseHumanizeFeature={canUseHumanizeText}
           canUseGrammarFixFeature={canUseGrammarFix}
+          canUseToneBiasFeature={isPremium}
+          aiUsageLabel={aiLimit === -1 ? `${aiUsed}/∞` : `${aiUsed}/${aiLimit}`}
+          isAiUsageBlocked={aiBlocked}
           documentStatus={document.status}
           getGrammarIssueLine={getIssueLineNumber}
           expanded

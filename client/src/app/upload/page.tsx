@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { uploadApi } from '@/lib/api';
+import { useSubscription } from '@/hooks/useSubscription';
 import { motion } from 'framer-motion';
 import { AceFileUpload } from '@/components/ui/ace-file-upload';
 import { ShimmerButton } from '@/components/ui/ace-input';
@@ -62,6 +63,12 @@ const WEBSITE_EXAMPLES = ['medium.com/…', 'substack.com/…', 'dev.to/…', 'a
 
 export default function UploadPage() {
   const router = useRouter();
+  const {
+    uploadUsed,
+    uploadLimit,
+    uploadRemaining,
+    uploadBlocked,
+  } = useSubscription();
   const [mode, setMode]               = useState<UploadMode>('document');
   const [websiteUrl, setWebsiteUrl]   = useState('');
   const [file, setFile]               = useState<File | null>(null);
@@ -71,6 +78,13 @@ export default function UploadPage() {
 
   const handleUpload = async () => {
     setError(null);
+
+    if (uploadBlocked) {
+      toast.error('Upload limit reached. Upgrade to Premium to continue.');
+      router.push('/pricing');
+      return;
+    }
+
     setIsUploading(true);
     setProgress(0);
     try {
@@ -91,6 +105,9 @@ export default function UploadPage() {
       const msg = err instanceof Error ? err.message : 'Upload failed';
       setError(msg);
       toast.error(msg, { id: 'upload' });
+      if (msg.toLowerCase().includes('upload limit') || msg.toLowerCase().includes('upgrade')) {
+        router.push('/pricing');
+      }
     } finally {
       setIsUploading(false);
     }
@@ -141,6 +158,16 @@ export default function UploadPage() {
           <p className="mt-2 text-sm text-slate-500">
             Upload a document, image, audio / video, or scrape any blog or article
           </p>
+          <div className={cn(
+            'mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium',
+            uploadBlocked
+              ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
+              : 'border-slate-200 bg-white text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300',
+          )}>
+            Uploads this month: {uploadLimit === -1 ? `${uploadUsed}/∞` : `${uploadUsed}/${uploadLimit}`}
+            {uploadLimit !== -1 && <> · {uploadRemaining} remaining</>}
+            {uploadBlocked && <> · Premium required</>}
+          </div>
         </div>
 
         <MeteorCard meteors={6} className="w-full">
@@ -319,10 +346,25 @@ export default function UploadPage() {
               </motion.div>
             )}
 
+            {uploadBlocked && (
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/20 dark:bg-amber-950/20 dark:text-amber-300">
+                Upload limit reached for your current plan.
+                <button
+                  type="button"
+                  onClick={() => router.push('/pricing')}
+                  className="ml-2 inline-flex items-center gap-1 rounded-md bg-amber-500 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-400"
+                >
+                  Go Premium <ArrowRight className="h-3.5 w-3.5" />
+                </button>
+              </div>
+            )}
+
             {/* Submit */}
-            <ShimmerButton onClick={handleUpload} disabled={!canSubmit}>
+            <ShimmerButton onClick={handleUpload} disabled={!canSubmit || uploadBlocked}>
               {isUploading
                 ? <><Loader2 className="h-4 w-4 animate-spin" /> {mode === 'media' ? 'Importing…' : 'Processing…'}</>
+                : uploadBlocked
+                  ? <>Go Premium <ArrowRight className="h-4 w-4" /></>
                 : mode === 'media'
                   ? <>Import <ArrowRight className="h-4 w-4" /></>
                   : <>Process <ArrowRight className="h-4 w-4" /></>

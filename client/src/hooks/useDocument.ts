@@ -117,6 +117,9 @@ export function useDocument(documentId: string): UseDocumentReturn {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Analysis failed';
       toast.error(msg, { id: toastId });
+      if (typeof window !== 'undefined' && (msg.toLowerCase().includes('ai analysis limit') || msg.toLowerCase().includes('monthly ai analysis limit') || msg.toLowerCase().includes('upgrade to pro'))) {
+        window.location.href = '/pricing';
+      }
     } finally {
       setIsAnalyzing(false);
     }
@@ -136,6 +139,9 @@ export function useDocument(documentId: string): UseDocumentReturn {
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Humanization failed';
       toast.error(msg, { id: toastId });
+      if (typeof window !== 'undefined' && msg.toLowerCase().includes('upgrade')) {
+        window.location.href = '/pricing';
+      }
       return null;
     } finally {
       setIsHumanizing(false);

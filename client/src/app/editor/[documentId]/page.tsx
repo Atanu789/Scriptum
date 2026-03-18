@@ -248,7 +248,14 @@ export default function EditorPage() {
 
   const { document: doc, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize, updateContent } =
     useDocument(documentId);
-  const { canUseGrammarFix, canUseHumanizeText } = useSubscription();
+  const {
+    canUseGrammarFix,
+    canUseHumanizeText,
+    isPremium,
+    aiUsed,
+    aiLimit,
+    aiBlocked,
+  } = useSubscription();
   const goPremium = useCallback(() => {
     window.location.href = '/pricing';
   }, []);
@@ -1399,6 +1406,9 @@ export default function EditorPage() {
               onGoPremium={goPremium}
               canUseHumanizeFeature={canUseHumanizeText}
               canUseGrammarFixFeature={canUseGrammarFix}
+              canUseToneBiasFeature={isPremium}
+              aiUsageLabel={aiLimit === -1 ? `${aiUsed}/∞` : `${aiUsed}/${aiLimit}`}
+              isAiUsageBlocked={aiBlocked}
               onSave={isDirty ? handleSave : undefined}
               documentStatus={doc.status}
               onApplySuggestion={handleApplySuggestion}

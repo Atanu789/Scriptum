@@ -47,6 +47,19 @@ export function useSubscription() {
   const canUseNarrationTrial = Boolean(trials?.ttsNarration?.available);
   const canUseExportTrial = Boolean(trials?.export?.available);
 
+  const uploadLimit = limits?.uploadsPerMonth ?? 5;
+  const aiLimit = limits?.aiUsagePerMonth ?? 5;
+  const uploadUsed = subscription?.uploadUsageThisMonth ?? 0;
+  const aiUsed = subscription?.aiUsageThisMonth ?? 0;
+  const uploadRemaining = uploadLimit === -1 ? Infinity : Math.max(0, uploadLimit - uploadUsed);
+  const aiRemaining = aiLimit === -1 ? Infinity : Math.max(0, aiLimit - aiUsed);
+  const hasUploadOverageTrial = Boolean(trials?.uploadOverage?.available);
+  const hasAiOverageTrial = Boolean(trials?.aiOverage?.available);
+  const uploadLimitReached = uploadLimit !== -1 && uploadUsed >= uploadLimit;
+  const aiLimitReached = aiLimit !== -1 && aiUsed >= aiLimit;
+  const uploadBlocked = uploadLimitReached && !hasUploadOverageTrial;
+  const aiBlocked = aiLimitReached && !hasAiOverageTrial;
+
   return {
     subscription,
     isLoading,
@@ -58,5 +71,17 @@ export function useSubscription() {
     canUseNarrationTrial,
     canUseGrammarFix: Boolean(isPremium && limits?.grammarFix),
     canUseHumanizeText: Boolean(isPremium && limits?.humanizeText),
+    uploadLimit,
+    aiLimit,
+    uploadUsed,
+    aiUsed,
+    uploadRemaining,
+    aiRemaining,
+    hasUploadOverageTrial,
+    hasAiOverageTrial,
+    uploadLimitReached,
+    aiLimitReached,
+    uploadBlocked,
+    aiBlocked,
   };
 }
