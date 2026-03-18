@@ -1,5 +1,6 @@
 import pptxgen from 'pptxgenjs';
-import { StructuredContent, PPTExportOptions } from '../types';
+import { PPTExportOptions } from '../types';
+import { ExportSource, buildExportBlocks, imageToDataUri, resolveImage } from './exportUtils';
 
 interface ThemeConfig {
   background: string;
@@ -34,12 +35,13 @@ const THEMES: Record<string, ThemeConfig> = {
 };
 
 export async function generatePowerPoint(
-  content: StructuredContent,
+  source: ExportSource,
   options: PPTExportOptions
 ): Promise<Buffer> {
   try {
     const pptx = new pptxgen();
     const theme = THEMES[options.theme || 'professional'];
+    const blocks = buildExportBlocks(source);
 
     pptx.defineLayout({ name: 'WIDESCREEN', width: 13.33, height: 7.5 });
     pptx.layout = 'WIDESCREEN';
@@ -72,9 +74,7 @@ export async function generatePowerPoint(
     });
 
     // ─── Content Slides ───────────────────────────────────────────────────────
-    const sections = content?.sections || [];
-    
-    if (sections.length === 0) {
+    if (blocks.length === 0) {
       // No sections - create a single slide with message
       const slide = pptx.addSlide();
       slide.background = { color: theme.background };
@@ -99,60 +99,114 @@ export async function generatePowerPoint(
         align: 'center',
       });
     } else {
-      for (const section of sections) {
-        if (!section.paragraphs || section.paragraphs.length === 0) continue;
+      let slide = pptx.addSlide();
+      slide.background = { color: theme.background };
+      let currentTitle = options.title || 'Content';
+      let y = 1.2;
 
-        // Group paragraphs into slides (max 4 paragraphs per slide for readability)
-        const PARA_PER_SLIDE = 4;
-        const paraGroups: string[][] = [];
+      const addSlideWithTitle = (title: string) => {
+        slide = pptx.addSlide();
+        slide.background = { color: theme.background };
+        currentTitle = title || 'Content';
+        slide.addText(currentTitle, {
+          x: 0.5,
+          y: 0.4,
+          w: 12.33,
+          h: 0.6,
+          fontSize: 26,
+          bold: true,
+          color: theme.accentColor,
+          fontFace: theme.fontFamily,
+        });
+        y = 1.2;
+      };
 
-        for (let i = 0; i < section.paragraphs.length; i += PARA_PER_SLIDE) {
-          paraGroups.push(section.paragraphs.slice(i, i + PARA_PER_SLIDE));
+      addSlideWithTitle(currentTitle);
+
+      for (const block of blocks) {
+        if (block.type === 'heading') {
+          addSlideWithTitle(block.text);
+          continue;
         }
 
-        for (let groupIdx = 0; groupIdx < paraGroups.length; groupIdx++) {
-          const slide = pptx.addSlide();
-          slide.background = { color: theme.background };
+        if (block.type === 'paragraph' || block.type === 'blockquote') {
+          const text = block.type === 'blockquote' ? `"${block.text}"` : block.text;
+          const estimatedHeight = Math.max(0.5, Math.ceil(text.length / 90) * 0.34 + 0.12);
+          if (y + estimatedHeight > 6.8) addSlideWithTitle(currentTitle);
 
-          // Section title
-          const titleText =
-            paraGroups.length > 1
-              ? `${section.title} (${groupIdx + 1}/${paraGroups.length})`
-              : section.title;
-
-          slide.addText(titleText, {
-            x: 0.5,
-            y: 0.5,
-            w: 12.33,
-            h: 0.8,
-            fontSize: 28,
-            bold: true,
-            color: theme.accentColor,
-            fontFace: theme.fontFamily,
-          });
-
-          // Paragraphs
-          const bodyText = paraGroups[groupIdx]
-            .map((p) => `• ${p}`)
-            .join('\n\n');
-
-          slide.addText(bodyText, {
-            x: 0.5,
-            y: 1.5,
-            w: 12.33,
-            h: 5.5,
-            fontSize: 16,
+          slide.addText(text, {
+            x: 0.7,
+            y,
+            w: 11.9,
+            h: estimatedHeight,
+            fontSize: 17,
             color: theme.textColor,
             fontFace: theme.fontFamily,
-            align: 'left',
+            bold: block.type === 'blockquote',
+            breakLine: true,
             valign: 'top',
           });
+          y += estimatedHeight + 0.14;
+          continue;
+        }
 
-          // Speaker notes
-          if (options.includeNotes && section.narrationSegments?.length > 0) {
-            const notes = section.narrationSegments.map((s) => s.text).join(' ');
-            slide.addNotes(notes);
+        if (block.type === 'list') {
+          for (let idx = 0; idx < block.items.length; idx++) {
+            const item = `${block.ordered ? `${idx + 1}.` : '•'} ${block.items[idx]}`;
+            const estimatedHeight = Math.max(0.35, Math.ceil(item.length / 95) * 0.3 + 0.08);
+            if (y + estimatedHeight > 6.8) addSlideWithTitle(currentTitle);
+
+            slide.addText(item, {
+              x: 0.9,
+              y,
+              w: 11.4,
+              h: estimatedHeight,
+              fontSize: 16,
+              color: theme.textColor,
+              fontFace: theme.fontFamily,
+              breakLine: true,
+              valign: 'top',
+            });
+            y += estimatedHeight + 0.08;
           }
+          y += 0.08;
+          continue;
+        }
+
+        if (block.type === 'table') {
+          for (const row of block.rows) {
+            const rowText = row.join(' | ');
+            const estimatedHeight = Math.max(0.3, Math.ceil(rowText.length / 96) * 0.3 + 0.08);
+            if (y + estimatedHeight > 6.8) addSlideWithTitle(currentTitle);
+            slide.addText(rowText, {
+              x: 0.7,
+              y,
+              w: 11.9,
+              h: estimatedHeight,
+              fontSize: 14,
+              color: theme.subTextColor,
+              fontFace: theme.fontFamily,
+            });
+            y += estimatedHeight + 0.05;
+          }
+          y += 0.08;
+          continue;
+        }
+
+        if (block.type === 'image') {
+          const image = await resolveImage(block.src);
+          if (!image) continue;
+          const imageHeight = 2.2;
+          if (y + imageHeight > 6.8) addSlideWithTitle(currentTitle);
+
+          slide.addImage({
+            data: imageToDataUri(image),
+            x: 1.0,
+            y,
+            w: 11.3,
+            h: imageHeight,
+          });
+          y += imageHeight + 0.16;
         }
       }
     }

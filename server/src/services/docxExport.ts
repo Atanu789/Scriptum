@@ -3,22 +3,32 @@ import {
   Packer,
   Paragraph,
   TextRun,
+  ExternalHyperlink,
+  ImageRun,
   HeadingLevel,
   AlignmentType,
   BorderStyle,
-  PageBreak,
+  LevelFormat,
 } from 'docx';
-import { StructuredContent } from '../types';
+import { ExportSource, buildExportBlocks, resolveImage } from './exportUtils';
 
 export interface DocxExportOptions {
   title: string;
   author?: string;
 }
 
+function docxImageTypeFromMime(mimeType: string): 'png' | 'jpg' | 'gif' | 'bmp' {
+  if (mimeType.includes('png')) return 'png';
+  if (mimeType.includes('gif')) return 'gif';
+  if (mimeType.includes('bmp')) return 'bmp';
+  return 'jpg';
+}
+
 export async function generateDocx(
-  content: StructuredContent,
+  source: ExportSource,
   options: DocxExportOptions
 ): Promise<Buffer> {
+  const blocks = buildExportBlocks(source);
   const children: Paragraph[] = [];
 
   // ── Title ─────────────────────────────────────────────────────────────────
@@ -63,41 +73,139 @@ export async function generateDocx(
     })
   );
 
-  // ── Sections ──────────────────────────────────────────────────────────────
-  for (let i = 0; i < content.sections.length; i++) {
-    const section = content.sections[i];
+  // ── Blocks ────────────────────────────────────────────────────────────────
+  for (const block of blocks) {
+    if (block.type === 'heading') {
+      const headingByLevel = {
+        1: HeadingLevel.HEADING_1,
+        2: HeadingLevel.HEADING_2,
+        3: HeadingLevel.HEADING_3,
+        4: HeadingLevel.HEADING_4,
+        5: HeadingLevel.HEADING_5,
+        6: HeadingLevel.HEADING_6,
+      } as const;
 
-    // Page break before each section (except first)
-    if (i > 0) {
       children.push(
         new Paragraph({
-          children: [new PageBreak()],
+          text: block.text,
+          heading: headingByLevel[block.level],
+          spacing: { before: 220, after: 120 },
         })
       );
+      continue;
     }
 
-    // Section heading
-    children.push(
-      new Paragraph({
-        text: section.title,
-        heading: HeadingLevel.HEADING_1,
-        spacing: { before: 240, after: 120 },
-      })
-    );
+    if (block.type === 'paragraph') {
+      if (block.inlines && block.inlines.length > 0) {
+        const inlineChildren: Array<TextRun | ExternalHyperlink> = [];
 
-    // Paragraphs
-    for (const para of section.paragraphs) {
+        for (const inline of block.inlines) {
+          if (inline.type === 'text') {
+            inlineChildren.push(
+              new TextRun({
+                text: inline.value,
+                bold: !!inline.bold,
+                italics: !!inline.italic,
+                underline: inline.underline ? {} : undefined,
+                size: 24,
+                font: 'Calibri',
+              })
+            );
+            continue;
+          }
+
+          inlineChildren.push(
+            new ExternalHyperlink({
+              link: inline.url,
+              children: [
+                new TextRun({
+                  text: inline.text,
+                  style: 'Hyperlink',
+                  size: 24,
+                  font: 'Calibri',
+                }),
+              ],
+            })
+          );
+        }
+
+        children.push(
+          new Paragraph({
+            children: inlineChildren,
+            spacing: { after: 200 },
+            alignment: AlignmentType.LEFT,
+          })
+        );
+      } else {
+        children.push(
+          new Paragraph({
+            children: [
+              new TextRun({ text: block.text, size: 24, font: 'Calibri' }),
+            ],
+            spacing: { after: 200 },
+            alignment: AlignmentType.LEFT,
+          })
+        );
+      }
+      continue;
+    }
+
+    if (block.type === 'blockquote') {
+      children.push(
+        new Paragraph({
+          children: [new TextRun({ text: block.text, italics: true, color: '475569', size: 24 })],
+          border: {
+            left: { style: BorderStyle.SINGLE, size: 6, color: '94A3B8' },
+          },
+          indent: { left: 280 },
+          spacing: { before: 120, after: 180 },
+        })
+      );
+      continue;
+    }
+
+    if (block.type === 'list') {
+      const reference = block.ordered ? 'ordered-list' : 'bullet-list';
+      for (const item of block.items) {
+        children.push(
+          new Paragraph({
+            text: item,
+            numbering: { reference, level: 0 },
+            spacing: { after: 100 },
+          })
+        );
+      }
+      children.push(new Paragraph({ text: '', spacing: { after: 100 } }));
+      continue;
+    }
+
+    if (block.type === 'table') {
+      for (const row of block.rows) {
+        children.push(
+          new Paragraph({
+            text: row.join(' | '),
+            spacing: { after: 120 },
+          })
+        );
+      }
+      continue;
+    }
+
+    if (block.type === 'image') {
+      const image = await resolveImage(block.src);
+      if (!image) continue;
+
       children.push(
         new Paragraph({
           children: [
-            new TextRun({
-              text: para,
-              size: 24, // 12pt
-              font: 'Calibri',
+            new ImageRun({
+              type: docxImageTypeFromMime(image.mimeType),
+              data: image.buffer,
+              transformation: { width: 520, height: 300 },
             }),
           ],
-          spacing: { after: 200 },
-          alignment: AlignmentType.LEFT,
+          alignment: AlignmentType.CENTER,
+          spacing: { before: 120, after: 180 },
         })
       );
     }
@@ -107,6 +215,38 @@ export async function generateDocx(
     creator: options.author || 'Ultimoversio',
     title: options.title,
     description: 'Document exported from Ultimoversio',
+    numbering: {
+      config: [
+        {
+          reference: 'ordered-list',
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.DECIMAL,
+              text: '%1.',
+              alignment: AlignmentType.START,
+              style: {
+                paragraph: { indent: { left: 720, hanging: 260 } },
+              },
+            },
+          ],
+        },
+        {
+          reference: 'bullet-list',
+          levels: [
+            {
+              level: 0,
+              format: LevelFormat.BULLET,
+              text: '•',
+              alignment: AlignmentType.START,
+              style: {
+                paragraph: { indent: { left: 720, hanging: 260 } },
+              },
+            },
+          ],
+        },
+      ],
+    },
     sections: [
       {
         properties: {

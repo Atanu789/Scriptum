@@ -62,7 +62,10 @@ export const exportPpt = async (
     const pptTitle = title || doc.originalFileName.replace(/\.[^.]+$/, '');
     console.log('[PPTX Export] Generating with title:', pptTitle);
 
-    const buffer = await generatePowerPoint(doc.structuredContent, {
+    const buffer = await generatePowerPoint({
+      editorModel: doc.editorModel || null,
+      structuredContent: doc.structuredContent,
+    }, {
       title: pptTitle,
       theme,
       includeNotes,
@@ -122,7 +125,10 @@ export const exportPdf = async (
     }
 
     const pdfTitle = title || doc.originalFileName.replace(/\.[^.]+$/, '');
-    const buffer = await generatePdf(doc.structuredContent, { title: pdfTitle });
+    const buffer = await generatePdf({
+      editorModel: doc.editorModel || null,
+      structuredContent: doc.structuredContent,
+    }, { title: pdfTitle });
 
     const safeFileName = pdfTitle
       .replace(/[^a-zA-Z0-9\s\-_]/g, '')
@@ -174,7 +180,10 @@ export const exportDocx = async (
     }
 
     const docxTitle = title || doc.originalFileName.replace(/\.[^.]+$/, '');
-    const buffer = await generateDocx(doc.structuredContent, { title: docxTitle });
+    const buffer = await generateDocx({
+      editorModel: doc.editorModel || null,
+      structuredContent: doc.structuredContent,
+    }, { title: docxTitle });
 
     const safeFileName = docxTitle
       .replace(/[^a-zA-Z0-9\s\-_]/g, '')
