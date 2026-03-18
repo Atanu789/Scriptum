@@ -3,7 +3,8 @@
 import { useRef, useCallback, useEffect } from 'react';
 import { Token } from './useScriptTokens';
 
-const WORDS_PER_CHUNK = 150;
+const WORDS_PER_CHUNK = 220;
+const PREFETCH_AHEAD = 2;
 const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 const SILENT_WAV_DATA_URI =
   'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEAESsAACJWAAACABAAZGF0YQAAAAA=';
@@ -242,7 +243,18 @@ export function useTTSPlayback({
     abortRef.current = ctrl;
 
     try {
-      let nextChunkUrlPromise: Promise<string> | null = null;
+      const pendingAudio = new Map<number, Promise<string>>();
+
+      const queuePrefetch = (chunkIndex: number) => {
+        if (chunkIndex < 0 || chunkIndex >= chunks.length) return;
+        if (pendingAudio.has(chunkIndex)) return;
+        const text = chunks[chunkIndex].map((t) => t.original).join(' ');
+        pendingAudio.set(chunkIndex, fetchAudio(text, ctrl.signal));
+      };
+
+      for (let k = 0; k <= PREFETCH_AHEAD && k < chunks.length; k++) {
+        queuePrefetch(k);
+      }
 
       for (let i = 0; i < chunks.length; i++) {
         if (!isActiveRef.current) break;
@@ -250,23 +262,21 @@ export function useTTSPlayback({
 
         const chunk      = chunks[i];
         const chunkStart = i * WORDS_PER_CHUNK;
-        const text       = chunk.map((t) => t.original).join(' ');
 
-        if (!nextChunkUrlPromise) {
+        const active = audioRef.current;
+        if (!active && !isPausedRef.current) {
           setStatus('loading');
-          nextChunkUrlPromise = fetchAudio(text, ctrl.signal);
         }
 
-        setStatus('loading');
-        const url = await nextChunkUrlPromise;
+        queuePrefetch(i);
+        const currentPromise = pendingAudio.get(i);
+        if (!currentPromise) throw new Error('Failed to prepare audio chunk');
+        const url = await currentPromise;
+        pendingAudio.delete(i);
         if (!isActiveRef.current) { URL.revokeObjectURL(url); break; }
 
-        const nextChunk = chunks[i + 1];
-        if (nextChunk) {
-          const nextText = nextChunk.map((t) => t.original).join(' ');
-          nextChunkUrlPromise = fetchAudio(nextText, ctrl.signal);
-        } else {
-          nextChunkUrlPromise = null;
+        for (let j = i + 1; j <= i + PREFETCH_AHEAD; j++) {
+          queuePrefetch(j);
         }
 
         await playBlob(url, chunkStart, chunk.length);

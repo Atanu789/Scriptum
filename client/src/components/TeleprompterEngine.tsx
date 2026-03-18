@@ -47,6 +47,7 @@ interface ScriptRendererProps {
   sentenceIndexByToken: number[];
   containerRef: React.RefObject<HTMLDivElement>;
   fontSize:     number;
+  renderedCount: number;
 }
 
 const ScriptRenderer = memo(function ScriptRenderer({
@@ -54,7 +55,10 @@ const ScriptRenderer = memo(function ScriptRenderer({
   sentenceIndexByToken,
   containerRef,
   fontSize,
+  renderedCount,
 }: ScriptRendererProps) {
+  const visibleTokens = useMemo(() => tokens.slice(0, renderedCount), [tokens, renderedCount]);
+
   return (
     <div
       ref={containerRef}
@@ -63,7 +67,7 @@ const ScriptRenderer = memo(function ScriptRenderer({
       tabIndex={-1}
     >
       <div className="mx-auto max-w-3xl select-none" aria-live="off">
-        {tokens.map((token) => (
+        {visibleTokens.map((token) => (
           <React.Fragment key={token.index}>
             {token.breaksBefore && token.breaksBefore > 0 && (
               <>
@@ -85,6 +89,9 @@ const ScriptRenderer = memo(function ScriptRenderer({
     </div>
   );
 });
+
+const INITIAL_RENDER_TOKENS = 1800;
+const RENDER_CHUNK_TOKENS = 1200;
 
 // ─── Controls ─────────────────────────────────────────────────────────────────
 
@@ -336,6 +343,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
   const [speed,           setSpeed]           = useState(3);
   const [fontSize,        setFontSize]        = useState(26);
+  const [renderedCount,   setRenderedCount]   = useState(0);
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const containerRef       = useRef<HTMLDivElement>(null);
@@ -385,6 +393,25 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     return starts;
   }, [sentenceIndexByToken, tokens]);
 
+  useEffect(() => {
+    setRenderedCount(Math.min(tokens.length, INITIAL_RENDER_TOKENS));
+  }, [tokens.length]);
+
+  useEffect(() => {
+    if (renderedCount >= tokens.length) return;
+
+    const id = window.setTimeout(() => {
+      setRenderedCount((prev) => Math.min(tokens.length, prev + RENDER_CHUNK_TOKENS));
+    }, 35);
+
+    return () => window.clearTimeout(id);
+  }, [renderedCount, tokens.length]);
+
+  const ensureTokenRendered = useCallback((targetPointer: number) => {
+    if (targetPointer < renderedCount - 120) return;
+    setRenderedCount((prev) => Math.min(tokens.length, Math.max(prev + RENDER_CHUNK_TOKENS, targetPointer + 240)));
+  }, [renderedCount, tokens.length]);
+
   // ── Word matcher (mic mode) ────────────────────────────────────────────────
   const { processChunk, reset: resetMatcher } = useWordMatcher(tokens);
 
@@ -433,6 +460,8 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   }, []);
 
   const advancePointer = useCallback((pointer: number) => {
+    ensureTokenRendered(pointer);
+
     if (activeModeRef.current === 'tts') {
       const sentenceIndex = sentenceIndexByToken[pointer] ?? 0;
       applySentenceHighlight(sentenceIndex);
@@ -443,7 +472,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
     applyHighlight(pointer);
     scrollToToken(pointer);
-  }, [applyHighlight, applySentenceHighlight, scrollToToken, sentenceIndexByToken, sentenceStartByIndex]);
+  }, [applyHighlight, applySentenceHighlight, ensureTokenRendered, scrollToToken, sentenceIndexByToken, sentenceStartByIndex]);
 
   // ── Full DOM reset helper ──────────────────────────────────────────────────
   const resetDOM = useCallback(() => {
@@ -614,7 +643,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       <div className="relative flex-1 overflow-hidden">
         {tokens.length === 0
           ? <div className="flex h-full items-center justify-center"><p className="text-sm text-white/20">No script loaded.</p></div>
-            : <ScriptRenderer tokens={tokens} sentenceIndexByToken={sentenceIndexByToken} containerRef={containerRef} fontSize={fontSize} />}
+            : <ScriptRenderer tokens={tokens} sentenceIndexByToken={sentenceIndexByToken} containerRef={containerRef} fontSize={fontSize} renderedCount={renderedCount} />}
 
         {activeMode === 'tts' && ttsStatus === 'loading' && (
           <div className="pointer-events-none absolute inset-0 z-10 flex items-center justify-center bg-[#07070f]/55 backdrop-blur-[2px]">

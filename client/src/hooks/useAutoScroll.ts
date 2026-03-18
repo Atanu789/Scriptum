@@ -31,6 +31,7 @@ export function useAutoScroll(containerRef: React.RefObject<HTMLElement>): UseAu
   const lastScrollTimeRef  = useRef<number>(0);
   const lastPointerRef     = useRef<number>(-1);
   const rafRef             = useRef<number>(0);
+  const targetTopRef       = useRef<number>(0);
 
   const scrollToToken = useCallback((pointer: number): void => {
     // Same pointer — nothing to do
@@ -52,7 +53,18 @@ export function useAutoScroll(containerRef: React.RefObject<HTMLElement>): UseAu
       );
       if (!el) return;
 
-      el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      const offsetWithinContainer = el.offsetTop - container.offsetTop;
+      const centeredTop = Math.max(0, offsetWithinContainer - container.clientHeight * 0.45);
+      targetTopRef.current = centeredTop;
+
+      const currentTop = container.scrollTop;
+      const delta = targetTopRef.current - currentTop;
+      if (Math.abs(delta) < 2) return;
+
+      container.scrollTo({
+        top: currentTop + delta * 0.35,
+        behavior: 'auto',
+      });
     });
   }, [containerRef]);
 

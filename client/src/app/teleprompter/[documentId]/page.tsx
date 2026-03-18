@@ -12,7 +12,21 @@ import type { DocumentSummary } from '@/types';
 import { Loader2, AlertCircle, ChevronLeft } from 'lucide-react';
 
 function normalizeListNumbering(text: string): string {
-  return text.replace(/(^|\n)0+(\d+)([.)]\s+)/g, '$1$2$3');
+  return text
+    // 01. Item  ->  1. Item (including indented lines)
+    .replace(/(^|\n)(\s*)0+(\d+)([.)]\s+)/g, '$1$2$3$4')
+    // 01. (without trailing text yet) -> 1.
+    .replace(/(^|\n)(\s*)0+(\d+)([.)]$)/g, '$1$2$3$4');
+}
+
+function normalizeZeroWrappedWords(text: string): string {
+  return text
+    // 0hello0 -> hello
+    .replace(/\b0+([A-Za-z][A-Za-z0-9'_-]*)0+\b/g, '$1')
+    // 0hello -> hello
+    .replace(/\b0+([A-Za-z][A-Za-z0-9'_-]*)\b/g, '$1')
+    // hello0 -> hello
+    .replace(/\b([A-Za-z][A-Za-z0-9'_-]*)0+\b/g, '$1');
 }
 
 function toTeleprompterScript(input: string): string {
@@ -21,14 +35,14 @@ function toTeleprompterScript(input: string): string {
 
   // If there are no tags, treat as plain text and preserve line breaks.
   if (!/[<>]/.test(safe)) {
-    return normalizeListNumbering(
-      safe
-        .replace(/\r\n/g, '\n')
-        .replace(/\r/g, '\n')
-        .replace(/[ \t]+\n/g, '\n')
-        .replace(/\n{3,}/g, '\n\n')
-        .trim(),
-    );
+    const normalized = safe
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+
+    return normalizeZeroWrappedWords(normalizeListNumbering(normalized));
   }
 
   const parser = new DOMParser();
@@ -78,7 +92,7 @@ function toTeleprompterScript(input: string): string {
     .replace(/^[ \t]+|[ \t]+$/gm, '')
     .trim();
 
-  return normalizeListNumbering(withBreaks);
+  return normalizeZeroWrappedWords(normalizeListNumbering(withBreaks));
 }
 
 export default function TeleprompterPage() {
