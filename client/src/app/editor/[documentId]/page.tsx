@@ -249,6 +249,9 @@ export default function EditorPage() {
   const { document: doc, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize, updateContent } =
     useDocument(documentId);
   const { canUseGrammarFix, canUseHumanizeText } = useSubscription();
+  const goPremium = useCallback(() => {
+    window.location.href = '/pricing';
+  }, []);
 
   // ������ contentEditable ref & init ���������������������������������������������������������������������������������������������������������������������������������
   const editorRef = useRef<HTMLDivElement>(null);
@@ -1393,6 +1396,9 @@ export default function EditorPage() {
               isHumanizing={isHumanizing}
               onAnalyze={analyze}
               onHumanize={canUseHumanizeText ? handleHumanizeAction : undefined}
+              onGoPremium={goPremium}
+              canUseHumanizeFeature={canUseHumanizeText}
+              canUseGrammarFixFeature={canUseGrammarFix}
               onSave={isDirty ? handleSave : undefined}
               documentStatus={doc.status}
               onApplySuggestion={handleApplySuggestion}

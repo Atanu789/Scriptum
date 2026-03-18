@@ -19,7 +19,10 @@ export default function AnalysisPage() {
   const params = useParams<{ documentId: string }>();
   const { document, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize } =
     useDocument(params.documentId);
-  const { canUseHumanizeText } = useSubscription();
+  const { canUseHumanizeText, canUseGrammarFix } = useSubscription();
+  const goPremium = useCallback(() => {
+    window.location.href = '/pricing';
+  }, []);
 
   const getIssueLineNumber = useCallback((issue: { offset?: number }) => {
     if (!document?.cleanedText || !Number.isInteger(issue.offset)) return null;
@@ -171,6 +174,9 @@ export default function AnalysisPage() {
           isHumanizing={isHumanizing}
           onAnalyze={analyze}
           onHumanize={canUseHumanizeText ? humanize : undefined}
+          onGoPremium={goPremium}
+          canUseHumanizeFeature={canUseHumanizeText}
+          canUseGrammarFixFeature={canUseGrammarFix}
           documentStatus={document.status}
           getGrammarIssueLine={getIssueLineNumber}
           expanded

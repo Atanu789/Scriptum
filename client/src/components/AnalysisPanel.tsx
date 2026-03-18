@@ -23,6 +23,7 @@ interface Props {
   onAnalyze:             () => void;
   onHumanize?:           () => void;
   onGoPremium?:          () => void;
+  canUseGrammarFixFeature?: boolean;
   canUseHumanizeFeature?: boolean;
   onCancelAnalyze?:      () => void;
   onSave?:               () => void;
@@ -248,18 +249,24 @@ function GrammarIssueCard({
   issue,
   isDark,
   onApplyGrammarFix,
+  onGoPremium,
+  canUseGrammarFix,
   lineNumber,
 }: {
   issue: GrammarIssue;
   isDark: boolean;
   onApplyGrammarFix?: (issue: GrammarIssue, replacement: string) => void;
+  onGoPremium?: () => void;
+  canUseGrammarFix?: boolean;
   lineNumber?: number | null;
 }) {
   const [open, setOpen] = useState(false);
   const sev = (issue.severity ?? 'warning') as keyof typeof sevCfg;
   const { label, Icon: SevIcon, cls } = sevCfg[sev] ?? sevCfg.warning;
   const topReplacement = issue.replacements?.[0]?.trim();
-  const canQuickFix = !!onApplyGrammarFix && !!topReplacement && !issue.fixed;
+  const grammarFixEnabled = canUseGrammarFix ?? Boolean(onApplyGrammarFix);
+  const canQuickFix = grammarFixEnabled && !!onApplyGrammarFix && !!topReplacement && !issue.fixed;
+  const showPremiumFix = !grammarFixEnabled && !!onGoPremium && !issue.fixed;
   return (
     <div className={cn('rounded-xl border p-3',
       sev === 'error'      ? (isDark ? 'border-red-900/40 bg-red-950/20'    : 'border-red-100 bg-red-50/40')
@@ -297,6 +304,28 @@ function GrammarIssueCard({
             title={`Apply: ${topReplacement}`}
           >
             Fix
+            <span className="ml-1 rounded bg-emerald-500/70 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide">
+              Premium
+            </span>
+          </button>
+        )}
+        {showPremiumFix && (
+          <button
+            type="button"
+            onClick={onGoPremium}
+            className={cn(
+              'ml-2 inline-flex items-center rounded-md px-2 py-1 text-[10px] font-semibold transition-colors',
+              isDark
+                ? 'bg-amber-500 text-white hover:bg-amber-400'
+                : 'bg-amber-500 text-white hover:bg-amber-400',
+            )}
+            title="Upgrade to Premium to apply grammar fixes"
+          >
+            <Lock className="mr-1 h-3 w-3" />
+            Fix
+            <span className="ml-1 rounded bg-amber-400/80 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+              Premium
+            </span>
           </button>
         )}
       </div>
@@ -366,7 +395,7 @@ type TabId = 'overview' | 'integrity' | 'language' | 'tone';
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 function AnalysisPanel({
-  analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onGoPremium, canUseHumanizeFeature, onCancelAnalyze, onSave, documentStatus, expanded = false,
+  analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onGoPremium, canUseGrammarFixFeature, canUseHumanizeFeature, onCancelAnalyze, onSave, documentStatus, expanded = false,
   onApplySuggestion, onApplyGrammarFix, getGrammarIssueLine,
 }: Props) {
   const { theme } = useTheme();
@@ -399,6 +428,7 @@ function AnalysisPanel({
     : aiScore >= 0  ? 'Lower AI-pattern likelihood'
     : '—';
   const humanizeEnabled = canUseHumanizeFeature ?? Boolean(onHumanize);
+  const grammarFixEnabled = canUseGrammarFixFeature ?? Boolean(onApplyGrammarFix);
   const canHumanize = humanizeEnabled && !isAnalyzing && !isHumanizing && !!onHumanize && (humanizationSuggestions.length > 0 || aiScore >= 40);
 
   const sortedIssues = useMemo(() => {
@@ -673,7 +703,15 @@ function AnalysisPanel({
                   {humanizeEnabled
                     ? (isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />)
                     : <Lock className="h-4 w-4" />}
-                  {humanizeEnabled ? (isHumanizing ? 'Humanizing…' : 'Humanize') : 'Premium: Humanize Text'}
+                  {humanizeEnabled ? (isHumanizing ? 'Humanizing…' : 'Humanize') : 'Humanize Text'}
+                  <span
+                    className={cn(
+                      'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
+                      humanizeEnabled ? 'bg-white/20 text-white' : 'bg-amber-400/80 text-white',
+                    )}
+                  >
+                    Premium
+                  </span>
                   {!humanizeEnabled && <Crown className="h-4 w-4" />}
                 </button>
                 {humanizeEnabled && !canHumanize && (
@@ -799,6 +837,25 @@ function AnalysisPanel({
               </div>
             </div>
 
+            {!grammarFixEnabled && onGoPremium && (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={onGoPremium}
+                  className="w-full inline-flex items-center justify-center gap-2 rounded-xl bg-amber-500 px-4 py-2.5 text-sm font-semibold text-white hover:bg-amber-400 transition-all shadow-sm shadow-amber-500/20"
+                >
+                  <Lock className="h-4 w-4" /> Grammar Fix
+                  <span className="rounded bg-amber-400/80 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">
+                    Premium
+                  </span>
+                  <Crown className="h-4 w-4" />
+                </button>
+                <p className="mt-1.5 text-center text-[10px] text-amber-500">
+                  Grammar Fix is a Premium feature.
+                </p>
+              </div>
+            )}
+
             {issueCount === 0 ? (
               <div className="flex flex-col items-center gap-2 py-8 text-center">
                 <CheckCircle2 className="h-10 w-10 text-green-500" />
@@ -829,6 +886,8 @@ function AnalysisPanel({
                       issue={issue}
                       isDark={D}
                       onApplyGrammarFix={onApplyGrammarFix}
+                      onGoPremium={onGoPremium}
+                      canUseGrammarFix={grammarFixEnabled}
                       lineNumber={getGrammarIssueLine?.(issue) ?? null}
                     />
                   ))}
