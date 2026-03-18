@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { deepgramTokenLimiter } from '../middleware/rateLimiter';
+import { checkTTSNarrationAccess } from '../middleware/planAccess';
 import { generateTempKey, streamTTS } from '../services/deepgram';
 import { ApiResponse } from '../types';
 
@@ -35,6 +36,7 @@ router.get(
 router.post(
   '/tts',
   authenticate,
+  checkTTSNarrationAccess,
   async (req: Request, res: Response): Promise<void> => {
     const { text, model } = req.body as { text?: string; model?: string };
 

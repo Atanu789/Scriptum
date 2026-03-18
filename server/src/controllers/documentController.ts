@@ -4,6 +4,15 @@ import DocumentModel from '../models/Document';
 import { extractPlainTextFromHtml, htmlToStructuredModel, plainTextToEditorHtml, structureDocument } from '../services/documentStructure';
 import { sanitizeText, sanitizeMediaContent } from '../utils/sanitize';
 import { AuthenticatedRequest } from '../types';
+import { cleanExtractedText } from '../utils/textClean';
+
+function cleanZerosFromDocument(doc: any) {
+  if (!doc) return doc;
+  if (doc.cleanedText) doc.cleanedText = cleanExtractedText(doc.cleanedText).replace(/0+(?=[A-Za-z])/g, '');
+  if (doc.rawText) doc.rawText = cleanExtractedText(doc.rawText).replace(/0+(?=[A-Za-z])/g, '');
+  if (doc.editorHtml) doc.editorHtml = cleanExtractedText(doc.editorHtml).replace(/0+(?=[A-Za-z])/g, '');
+  return doc;
+}
 
 // ─── Get single document ──────────────────────────────────────────────────────
 
@@ -26,6 +35,7 @@ export const getDocument = async (
       _id: req.params.id,
       userId: req.user!.userId,
     });
+      cleanZerosFromDocument(doc);
 
     if (!doc) {
       res.status(404).json({ success: false, error: 'Document not found' });

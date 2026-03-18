@@ -7,6 +7,7 @@ import { extractFromWebsite } from '../services/webScraper';
 import { htmlToStructuredModel, structureDocument } from '../services/documentStructure';
 import { deleteFile, isMediaFile, DOC_SIZE_LIMIT } from '../utils/fileFilter';
 import { sanitizeMediaContent, sanitizeText } from '../utils/sanitize';
+import { cleanExtractedText } from '../utils/textClean';
 import { AuthenticatedRequest, ApiResponse, UploadResult } from '../types';
 
 const MEDIA_EXTENSIONS = new Set([
@@ -106,8 +107,8 @@ export const uploadFile = async (
     });
 
     // Sanitize extracted text to strip any embedded HTML/scripts
-    extracted.rawText = sanitizeText(extracted.rawText);
-    extracted.cleanedText = sanitizeText(extracted.cleanedText);
+    extracted.rawText = cleanExtractedText(sanitizeText(extracted.rawText));
+    extracted.cleanedText = cleanExtractedText(sanitizeText(extracted.cleanedText));
     extracted.editorHtml = sanitizeMediaContent(extracted.editorHtml);
 
     const structured = structureDocument(extracted.cleanedText, extracted.structuredSections);
@@ -179,8 +180,8 @@ export const uploadWebsite = async (
     const extracted = await extractFromWebsite(websiteUrl);
 
     // Sanitize scraped content aggressively — web pages may contain XSS payloads
-    extracted.rawText = sanitizeText(extracted.rawText);
-    extracted.cleanedText = sanitizeText(extracted.cleanedText);
+    extracted.rawText = cleanExtractedText(sanitizeText(extracted.rawText));
+    extracted.cleanedText = cleanExtractedText(sanitizeText(extracted.cleanedText));
     extracted.editorHtml = sanitizeMediaContent(extracted.editorHtml);
 
     const structured = structureDocument(extracted.cleanedText, extracted.structuredSections);

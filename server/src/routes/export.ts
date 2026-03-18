@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { authenticate } from '../middleware/auth';
 import { generalLimiter } from '../middleware/rateLimiter';
+import { checkExportAccess } from '../middleware/planAccess';
 import {
   exportPpt,
   exportPptValidation,
@@ -17,13 +18,13 @@ router.use(authenticate);
 router.use(generalLimiter);
 
 // POST /api/export/ppt
-router.post('/ppt', exportPptValidation, exportPpt);
+router.post('/ppt', checkExportAccess, exportPptValidation, exportPpt);
 
 // POST /api/export/pdf
-router.post('/pdf', exportPdfValidation, exportPdf);
+router.post('/pdf', checkExportAccess, exportPdfValidation, exportPdf);
 
 // POST /api/export/docx
-router.post('/docx', exportDocxValidation, exportDocx);
+router.post('/docx', checkExportAccess, exportDocxValidation, exportDocx);
 
 // POST /api/export/video
 router.post('/video', exportVideo);

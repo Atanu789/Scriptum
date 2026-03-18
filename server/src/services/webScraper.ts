@@ -2,6 +2,7 @@ import axios from 'axios';
 import * as cheerio from 'cheerio';
 import { ExtractedContent, DocumentSection } from '../types';
 import { htmlToStructuredModel } from './documentStructure';
+import { cleanExtractedText } from '../utils/textClean';
 
 /* ─────────────────────────────────────────────────────────────────────────────
    Noise selectors
@@ -56,9 +57,7 @@ const CONTENT_SELECTORS = [
 ───────────────────────────────────────────────────────────────────────────── */
 
 function cleanWhitespace(s: string): string {
-  return s.replace(/[ \t]+/g, ' ')
-          .replace(/\n{3,}/g, '\n\n')
-          .trim();
+  return cleanExtractedText(s);
 }
 
 function decodeEntities(s: string): string {

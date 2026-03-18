@@ -20,7 +20,8 @@ type Theme = 'light' | 'dark' | 'professional';
 export default function ExportPage() {
   const params = useParams<{ documentId: string }>();
   const { document, isLoading, error } = useDocument(params.documentId);
-  const { canUseExportPPT } = useSubscription();
+  const { isPremium, canUseExportPPT, canUseExportTrial } = useSubscription();
+  const canUseAnyExport = canUseExportPPT;
 
   const [pptOptions, setPptOptions] = useState({
     title: '',
@@ -43,7 +44,7 @@ export default function ExportPage() {
     getTitle().replace(/[^a-zA-Z0-9\s\-_]/g, '').trim().replace(/\s+/g, '_').slice(0, 60) + ext;
 
   const handleExportPpt = async () => {
-    if (!document || !canUseExportPPT) return;
+    if (!document || !canUseAnyExport) return;
     setIsExportingPpt(true);
     setPptDone(false);
     const id = toast.loading('Generating PowerPoint…');
@@ -64,7 +65,7 @@ export default function ExportPage() {
   };
 
   const handleExportPdf = async () => {
-    if (!document) return;
+    if (!document || !canUseAnyExport) return;
     setIsExportingPdf(true);
     setPdfDone(false);
     const id = toast.loading('Generating PDF…');
@@ -81,7 +82,7 @@ export default function ExportPage() {
   };
 
   const handleExportDocx = async () => {
-    if (!document) return;
+    if (!document || !canUseAnyExport) return;
     setIsExportingDocx(true);
     setDocxDone(false);
     const id = toast.loading('Generating Word document…');
@@ -152,6 +153,11 @@ export default function ExportPage() {
                   <Lock className="h-3 w-3" /> Premium
                 </span>
               )}
+              {!isPremium && canUseExportTrial && (
+                <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-emerald-300 bg-emerald-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-emerald-700 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300">
+                  1 Free Trial
+                </span>
+              )}
             </div>
 
             <div className="grid gap-4 sm:grid-cols-2">
@@ -196,10 +202,10 @@ export default function ExportPage() {
 
             <button
               onClick={handleExportPpt}
-              disabled={isExportingPpt || !canUseExportPPT}
+              disabled={isExportingPpt || !canUseAnyExport}
               className={cn('btn-primary', pptDone && 'bg-green-600 hover:bg-green-700')}
             >
-              {!canUseExportPPT ? (
+              {!canUseAnyExport ? (
                 <><Lock className="h-4 w-4" /> Go Premium to export .pptx</>
               ) : isExportingPpt ? (
                 <><Loader2 className="h-4 w-4 animate-spin" /> Generating…</>
@@ -210,7 +216,7 @@ export default function ExportPage() {
               )}
             </button>
 
-            {!canUseExportPPT && (
+            {!canUseAnyExport && (
               <Link
                 href="/pricing"
                 className="inline-flex items-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-3.5 py-2 text-sm font-semibold text-amber-700 transition-colors hover:bg-amber-100 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300 dark:hover:bg-amber-500/20"
@@ -251,13 +257,20 @@ export default function ExportPage() {
                 <h2 className="font-semibold text-slate-900 dark:text-white">PDF Document</h2>
                 <p className="text-sm text-slate-500">Clean, formatted PDF with title page and sections</p>
               </div>
+              {!canUseAnyExport && (
+                <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300">
+                  <Lock className="h-3 w-3" /> Premium
+                </span>
+              )}
             </div>
             <button
               onClick={handleExportPdf}
-              disabled={isExportingPdf}
+              disabled={isExportingPdf || !canUseAnyExport}
               className={cn('btn-primary', pdfDone && 'bg-green-600 hover:bg-green-700')}
             >
-              {isExportingPdf ? (
+              {!canUseAnyExport ? (
+                <><Lock className="h-3.5 w-3.5" /> Go Premium to export .pdf</>
+              ) : isExportingPdf ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
               ) : pdfDone ? (
                 <><CheckCircle2 className="h-3.5 w-3.5" /> Downloaded!</>
@@ -277,13 +290,20 @@ export default function ExportPage() {
                 <h2 className="font-semibold text-slate-900 dark:text-white">Word Document</h2>
                 <p className="text-sm text-slate-500">Structured DOCX with headings and formatted text</p>
               </div>
+              {!canUseAnyExport && (
+                <span className="ml-auto inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-100 px-2.5 py-0.5 text-[10px] font-bold uppercase tracking-widest text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300">
+                  <Lock className="h-3 w-3" /> Premium
+                </span>
+              )}
             </div>
             <button
               onClick={handleExportDocx}
-              disabled={isExportingDocx}
+              disabled={isExportingDocx || !canUseAnyExport}
               className={cn('btn-primary', docxDone && 'bg-green-600 hover:bg-green-700')}
             >
-              {isExportingDocx ? (
+              {!canUseAnyExport ? (
+                <><Lock className="h-3.5 w-3.5" /> Go Premium to export .docx</>
+              ) : isExportingDocx ? (
                 <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…</>
               ) : docxDone ? (
                 <><CheckCircle2 className="h-3.5 w-3.5" /> Downloaded!</>

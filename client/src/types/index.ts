@@ -27,6 +27,12 @@ export interface SubscriptionInfo {
   aiUsageThisMonth:     number;
   uploadUsageThisMonth: number;
   limits:               PlanLimits;
+  trials: {
+    ttsNarration: { used: boolean; available: boolean };
+    export: { used: boolean; available: boolean };
+    aiOverage: { used: boolean; available: boolean };
+    uploadOverage: { used: boolean; available: boolean };
+  };
 }
 
 export interface PaymentRecord {

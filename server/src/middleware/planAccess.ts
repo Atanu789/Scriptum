@@ -47,6 +47,52 @@ export function requireFeature(feature: FeatureKey) {
   };
 }
 
+export function requireFeatureWithOneTimeTrial(
+  feature: FeatureKey,
+  trialField:
+    | 'trialTtsNarrationUsed'
+    | 'trialExportUsed'
+) {
+  return async (req: AuthenticatedRequest, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const userId = req.user?.userId;
+      if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
+
+      const user = await User.findById(userId).select(`plan planExpiryDate ${trialField}`);
+      if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
+
+      const effectivePlan = resolveEffectivePlan(user.plan, user.planExpiryDate);
+      const limits = PLAN_LIMITS[effectivePlan];
+      const allowed = limits[feature];
+
+      if (allowed) {
+        next();
+        return;
+      }
+
+      const trialUsed = Boolean((user as unknown as Record<string, unknown>)[trialField]);
+      if (effectivePlan === 'free' && !trialUsed) {
+        (user as unknown as Record<string, unknown>)[trialField] = true;
+        await user.save();
+        next();
+        return;
+      }
+
+      res.status(403).json({
+        success: false,
+        error: `Feature '${feature}' requires a Pro plan. Upgrade at /pricing.`,
+        code: 'PLAN_UPGRADE_REQUIRED',
+        feature,
+        trialUsed,
+      });
+      return;
+    } catch (err) {
+      console.error('requireFeatureWithOneTimeTrial error:', err);
+      res.status(500).json({ success: false, error: 'Plan check failed' });
+    }
+  };
+}
+
 /**
  * Middleware — increments aiUsageThisMonth and enforces monthly AI quota.
  * Automatically resets the counter if a new calendar month has started.
@@ -61,7 +107,7 @@ export async function checkAIUsage(
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
     const user = await User.findById(userId).select(
-      'plan planExpiryDate aiUsageThisMonth aiUsageResetAt aiUsageLimitOverride'
+      'plan planExpiryDate aiUsageThisMonth aiUsageResetAt aiUsageLimitOverride trialAiOverageUsed'
     );
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
@@ -83,12 +129,21 @@ export async function checkAIUsage(
     const limit = overrideLimit !== null ? overrideLimit : planLimit;
 
     if (limit !== -1 && user.aiUsageThisMonth >= limit) {
+      if (effectivePlan === 'free' && !user.trialAiOverageUsed) {
+        user.aiUsageThisMonth += 1;
+        user.trialAiOverageUsed = true;
+        await user.save();
+        next();
+        return;
+      }
+
       res.status(429).json({
         success: false,
         error:   `Monthly AI analysis limit (${limit}) reached. Upgrade to Pro for more.`,
         code:    'AI_LIMIT_REACHED',
         usage:   user.aiUsageThisMonth,
         limit,
+        trialUsed: user.trialAiOverageUsed,
       });
       return;
     }
@@ -115,7 +170,7 @@ export async function checkUploadUsage(
     const userId = req.user?.userId;
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
-    const user = await User.findById(userId).select('plan planExpiryDate uploadUsageThisMonth uploadUsageLimitOverride');
+    const user = await User.findById(userId).select('plan planExpiryDate uploadUsageThisMonth uploadUsageLimitOverride trialUploadOverageUsed');
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
     const effectivePlan = resolveEffectivePlan(user.plan, user.planExpiryDate);
@@ -124,12 +179,21 @@ export async function checkUploadUsage(
     const limit = overrideLimit !== null ? overrideLimit : planLimit;
 
     if (limit !== -1 && user.uploadUsageThisMonth >= limit) {
+      if (effectivePlan === 'free' && !user.trialUploadOverageUsed) {
+        user.uploadUsageThisMonth += 1;
+        user.trialUploadOverageUsed = true;
+        await user.save();
+        next();
+        return;
+      }
+
       res.status(429).json({
         success: false,
         error:   `Monthly upload limit (${limit}) reached. Upgrade to Pro for higher limits.`,
         code:    'UPLOAD_LIMIT_REACHED',
         usage:   user.uploadUsageThisMonth,
         limit,
+        trialUsed: user.trialUploadOverageUsed,
       });
       return;
     }
@@ -143,6 +207,9 @@ export async function checkUploadUsage(
     res.status(500).json({ success: false, error: 'Upload quota check failed' });
   }
 }
+
+export const checkTTSNarrationAccess = requireFeatureWithOneTimeTrial('ttsNarration', 'trialTtsNarrationUsed');
+export const checkExportAccess = requireFeatureWithOneTimeTrial('exportPPT', 'trialExportUsed');
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 

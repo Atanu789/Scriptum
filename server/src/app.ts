@@ -30,6 +30,10 @@ const defaultOrigins = [
   'https://ultimoversio.vercel.app',
   'http://localhost:3000',
   'http://localhost:3001',
+  'http://localhost:3002',
+  'http://localhost:3003',
+  'http://localhost:3004',
+  'http://localhost:3005', // Allow dev ports that Next.js might auto-increment to
 ];
 
 // ─── Security & Parsing ──────────────────────────────────────────────────────

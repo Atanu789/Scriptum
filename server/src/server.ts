@@ -10,6 +10,7 @@ import path from 'path';
 validateEnv();
 
 const PORT = parseInt(process.env.PORT || '5000', 10);
+const MAX_PORT_ATTEMPTS = 10;
 
 // Ensure upload directory exists
 const uploadDir = path.join(__dirname, '..', process.env.UPLOAD_DIR || 'uploads');
@@ -25,11 +26,38 @@ const startServer = async (): Promise<void> => {
 
     const server = http.createServer(app);
 
-    server.listen(PORT, () => {
-      console.log(`🚀  Narrator API server running on port ${PORT}`);
-      console.log(`🌍  Environment: ${process.env.NODE_ENV}`);
-      console.log(`📍  Health check: http://localhost:${PORT}/health`);
-    });
+    const listenOnAvailablePort = (port: number, attempt = 1): void => {
+      const onListening = () => {
+        cleanup();
+        console.log(`🚀  Narrator API server running on port ${port}`);
+        console.log(`🌍  Environment: ${process.env.NODE_ENV}`);
+        console.log(`📍  Health check: http://localhost:${port}/health`);
+      };
+
+      const onError = (err: NodeJS.ErrnoException) => {
+        cleanup();
+
+        if (err.code === 'EADDRINUSE' && attempt < MAX_PORT_ATTEMPTS) {
+          const nextPort = port + 1;
+          console.warn(`⚠️  Port ${port} is in use, retrying on ${nextPort}...`);
+          listenOnAvailablePort(nextPort, attempt + 1);
+          return;
+        }
+
+        throw err;
+      };
+
+      const cleanup = () => {
+        server.off('listening', onListening);
+        server.off('error', onError);
+      };
+
+      server.once('listening', onListening);
+      server.once('error', onError);
+      server.listen(port);
+    };
+
+    listenOnAvailablePort(PORT);
 
     // ─── Graceful Shutdown ──────────────────────────────────────────────────
     const shutdown = (signal: string) => {

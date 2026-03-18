@@ -8,6 +8,7 @@ import {
   RefreshCw, Brain, Gauge, Sparkles, X, Bot, Shield,
   ScanSearch, Save, FileCheck2, Hash, Clock, BarChart3, Mic2,
   AlertOctagon, Eye, Activity, Wand2, Copy, Check, ArrowRight,
+  Crown, Lock,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '@/components/providers/ThemeProvider';
@@ -21,6 +22,8 @@ interface Props {
   analysisProgress?:     AnalysisProgress | null;
   onAnalyze:             () => void;
   onHumanize?:           () => void;
+  onGoPremium?:          () => void;
+  canUseHumanizeFeature?: boolean;
   onCancelAnalyze?:      () => void;
   onSave?:               () => void;
   onApplySuggestion?:    (original: string, replacement: string) => void;
@@ -363,7 +366,7 @@ type TabId = 'overview' | 'integrity' | 'language' | 'tone';
 // ─── Main Component ────────────────────────────────────────────────────────────
 
 function AnalysisPanel({
-  analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onCancelAnalyze, onSave, documentStatus, expanded = false,
+  analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onGoPremium, canUseHumanizeFeature, onCancelAnalyze, onSave, documentStatus, expanded = false,
   onApplySuggestion, onApplyGrammarFix, getGrammarIssueLine,
 }: Props) {
   const { theme } = useTheme();
@@ -395,7 +398,8 @@ function AnalysisPanel({
     : aiScore >= 40 ? 'Mixed AI/human pattern signals'
     : aiScore >= 0  ? 'Lower AI-pattern likelihood'
     : '—';
-  const canHumanize = !isAnalyzing && !isHumanizing && !!onHumanize && (humanizationSuggestions.length > 0 || aiScore >= 40);
+  const humanizeEnabled = canUseHumanizeFeature ?? Boolean(onHumanize);
+  const canHumanize = humanizeEnabled && !isAnalyzing && !isHumanizing && !!onHumanize && (humanizationSuggestions.length > 0 || aiScore >= 40);
 
   const sortedIssues = useMemo(() => {
     if (!analysis?.grammarIssues) return [];
@@ -650,26 +654,36 @@ function AnalysisPanel({
               AI likelihood estimate (not guaranteed). Different detectors can disagree significantly, so use this as guidance rather than proof.
             </p>
 
-            {onHumanize && (
+            {(onHumanize || onGoPremium) && (
               <div className="mt-3">
                 <button
-                  onClick={onHumanize}
-                  disabled={!canHumanize}
+                  onClick={humanizeEnabled ? onHumanize : onGoPremium}
+                  disabled={humanizeEnabled ? !canHumanize : false}
                   className={cn(
                     'w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
-                    canHumanize
+                    humanizeEnabled && canHumanize
                       ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500 hover:to-teal-500 shadow-sm'
+                      : !humanizeEnabled
+                      ? 'bg-amber-500 text-white hover:bg-amber-400 shadow-sm shadow-amber-500/20'
                       : D
                       ? 'cursor-not-allowed bg-slate-800 text-slate-500'
                       : 'cursor-not-allowed bg-slate-100 text-slate-400',
                   )}
                 >
-                  {isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />}
-                  {isHumanizing ? 'Humanizing…' : 'Humanize'}
+                  {humanizeEnabled
+                    ? (isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />)
+                    : <Lock className="h-4 w-4" />}
+                  {humanizeEnabled ? (isHumanizing ? 'Humanizing…' : 'Humanize') : 'Premium: Humanize Text'}
+                  {!humanizeEnabled && <Crown className="h-4 w-4" />}
                 </button>
-                {!canHumanize && (
+                {humanizeEnabled && !canHumanize && (
                   <p className="mt-1.5 text-center text-[10px] text-slate-500">
                     Re-run analysis first to generate AI-flagged passages.
+                  </p>
+                )}
+                {!humanizeEnabled && (
+                  <p className="mt-1.5 text-center text-[10px] text-amber-500">
+                    Humanize is a Premium feature.
                   </p>
                 )}
               </div>

@@ -96,6 +96,8 @@ const RENDER_CHUNK_TOKENS = 1200;
 // ─── Controls ─────────────────────────────────────────────────────────────────
 
 interface ControlsProps {
+  isPremium:       boolean;
+  hasNarrationTrial: boolean;
   readingMode:     'ai' | 'presenter';
   canUsePremiumAI: boolean;
   onGoPremium:     () => void;
@@ -119,6 +121,8 @@ interface ControlsProps {
 }
 
 function Controls({
+  isPremium,
+  hasNarrationTrial,
   canUsePremiumAI,
   onGoPremium,
   readingMode, onReadingModeChange,
@@ -148,6 +152,12 @@ function Controls({
         >
           Go Premium
         </button>
+      )}
+
+      {!isPremium && hasNarrationTrial && (
+        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+          Trial: 1 AI blob free
+        </span>
       )}
 
       {/* ── Mode toggle ───────────────────────────────────────── */}
@@ -193,7 +203,7 @@ function Controls({
           {isTTSLoading
             ? <Loader2    className="h-3.5 w-3.5 animate-spin" />
             : <Headphones className="h-3.5 w-3.5" />}
-          {isTTSLoading ? 'Loading…' : isTTSDone ? 'Replay' : 'Read Aloud'}
+          {isTTSLoading ? 'Loading…' : isTTSDone ? 'Replay' : !isPremium && hasNarrationTrial ? 'Try AI Narration' : 'Read Aloud'}
         </button>
       )}
 
@@ -331,7 +341,7 @@ function Controls({
 // ─── Main Engine ──────────────────────────────────────────────────────────────
 
 export default function TeleprompterEngine({ script, documentTitle }: TeleprompterEngineProps) {
-  const { canUseTeleprompterAI, canUseTTSNarration } = useSubscription();
+  const { isPremium, canUseNarrationTrial, canUseTeleprompterAI, canUseTTSNarration } = useSubscription();
   const canUsePremiumAI = canUseTeleprompterAI && canUseTTSNarration;
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -572,7 +582,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
   const handleReadingModeChange = useCallback((mode: 'ai' | 'presenter') => {
     if (mode === 'ai' && !canUsePremiumAI) {
-      setErrorMsg('AI narration is available on Pro plan. Upgrade to continue.');
+      setErrorMsg('Your free AI narration blob is used. Upgrade to Pro to continue AI narration.');
       return;
     }
     if (mode === readingMode) return;
@@ -592,7 +602,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       setReadingMode('presenter');
       setActiveMode('idle');
       setTTSStatus('idle');
-      setErrorMsg('AI narration is available on Pro plan.');
+      setErrorMsg('AI narration trial is exhausted. Upgrade to Pro to continue.');
     }
   }, [canUsePremiumAI, readingMode]);
 
@@ -657,6 +667,8 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
       {/* Controls */}
       <Controls
+        isPremium={isPremium}
+        hasNarrationTrial={canUseNarrationTrial}
         canUsePremiumAI={canUsePremiumAI}
         onGoPremium={() => { window.location.href = '/pricing'; }}
         readingMode={readingMode}

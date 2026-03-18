@@ -21,12 +21,14 @@ function normalizeListNumbering(text: string): string {
 
 function normalizeZeroWrappedWords(text: string): string {
   return text
-    // 0hello0 -> hello
-    .replace(/\b0+([A-Za-z][A-Za-z0-9'_-]*)0+\b/g, '$1')
-    // 0hello -> hello
-    .replace(/\b0+([A-Za-z][A-Za-z0-9'_-]*)\b/g, '$1')
-    // hello0 -> hello
-    .replace(/\b([A-Za-z][A-Za-z0-9'_-]*)0+\b/g, '$1');
+    .replace(/\u0000/g, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '')
+    // Remove standalone zero tokens before words: "0 Cellular" -> "Cellular".
+    .replace(/(^|\s)0+(?=\s+[A-Za-z])/g, '$1')
+    // Remove zero(s) before words, including punctuated forms like "(0Cellular".
+    .replace(/(^|[^A-Za-z0-9'])0+(?=[A-Za-z])/g, '$1')
+    // Remove trailing zero(s) after words, including punctuated forms like "Think0)".
+    .replace(/(?<=[A-Za-z])0+(?=($|[^A-Za-z0-9']))/g, '');
 }
 
 function toTeleprompterScript(input: string): string {
@@ -125,7 +127,7 @@ export default function TeleprompterPage() {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-[#07070f]">
-        <Loader2 className="h-7 w-7 animate-spin text-indigo-500" />
+        <Loader2 suppressHydrationWarning className="h-7 w-7 animate-spin text-indigo-500" />
       </div>
     );
   }
@@ -133,13 +135,13 @@ export default function TeleprompterPage() {
   if (error || !document) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4 bg-[#07070f] text-white">
-        <AlertCircle className="h-10 w-10 text-red-400" />
+        <AlertCircle suppressHydrationWarning className="h-10 w-10 text-red-400" />
         <p className="text-sm text-white/50">{error || 'Document not found'}</p>
         <Link
           href="/dashboard"
           className="inline-flex items-center gap-1.5 rounded-xl border border-white/[0.07] px-4 py-2 text-sm font-medium text-white/50 transition-colors hover:border-white/[0.12] hover:text-white/80"
         >
-          <ChevronLeft className="h-3.5 w-3.5" /> Dashboard
+          <ChevronLeft suppressHydrationWarning className="h-3.5 w-3.5" /> Dashboard
         </Link>
       </div>
     );
@@ -155,7 +157,7 @@ export default function TeleprompterPage() {
           href="/dashboard"
           className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/25 transition-colors hover:bg-white/[0.04] hover:text-white/50"
         >
-          <ChevronLeft className="h-3 w-3" /> Dashboard
+          <ChevronLeft suppressHydrationWarning className="h-3 w-3" /> Dashboard
         </Link>
 
         <div className="ml-auto flex items-center gap-2">

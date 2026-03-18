@@ -43,14 +43,19 @@ export function useSubscription() {
   }, [subscription]);
 
   const limits = subscription?.limits;
+  const trials = subscription?.trials;
+  const canUseNarrationTrial = Boolean(trials?.ttsNarration?.available);
+  const canUseExportTrial = Boolean(trials?.export?.available);
 
   return {
     subscription,
     isLoading,
     isPremium,
-    canUseTeleprompterAI: Boolean(isPremium && limits?.teleprompterAI),
-    canUseExportPPT: Boolean(isPremium && limits?.exportPPT),
-    canUseTTSNarration: Boolean(isPremium && limits?.ttsNarration),
+    canUseTeleprompterAI: Boolean((isPremium && limits?.teleprompterAI) || canUseNarrationTrial),
+    canUseExportPPT: Boolean((isPremium && limits?.exportPPT) || canUseExportTrial),
+    canUseTTSNarration: Boolean((isPremium && limits?.ttsNarration) || canUseNarrationTrial),
+    canUseExportTrial,
+    canUseNarrationTrial,
     canUseGrammarFix: Boolean(isPremium && limits?.grammarFix),
     canUseHumanizeText: Boolean(isPremium && limits?.humanizeText),
   };

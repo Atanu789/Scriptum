@@ -23,6 +23,12 @@ export interface IUser extends Document {
   aiUsageLimitOverride: number | null;
   uploadUsageLimitOverride: number | null;
 
+  // ── One-time free trials / overage grace ─────────────────────────────
+  trialTtsNarrationUsed: boolean;
+  trialExportUsed: boolean;
+  trialAiOverageUsed: boolean;
+  trialUploadOverageUsed: boolean;
+
   createdAt: Date;
   updatedAt: Date;
   comparePassword(candidatePassword: string): Promise<boolean>;
@@ -64,6 +70,12 @@ const userSchema = new Schema<IUser>(
     aiUsageResetAt:       { type: Date,   default: null },
     aiUsageLimitOverride: { type: Number, default: null },
     uploadUsageLimitOverride: { type: Number, default: null },
+
+    // ── One-time free trials / overage grace ───────────────────────────
+    trialTtsNarrationUsed:   { type: Boolean, default: false },
+    trialExportUsed:         { type: Boolean, default: false },
+    trialAiOverageUsed:      { type: Boolean, default: false },
+    trialUploadOverageUsed:  { type: Boolean, default: false },
   },
   {
     timestamps: true,

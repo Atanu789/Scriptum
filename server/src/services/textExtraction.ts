@@ -6,6 +6,7 @@ import axios from 'axios';
 import JSZip from 'jszip';
 import { createCanvas, createImageData } from '@napi-rs/canvas/node-canvas';
 import { htmlToStructuredModel, plainTextToEditorHtml } from './documentStructure';
+import { cleanExtractedText } from '../utils/textClean';
 import {
   ExtractedContent,
   DocumentSection,
@@ -20,13 +21,7 @@ import {
 // ─── Text Cleaning ─────────────────────────────────────────────────────────────
 
 function cleanText(raw: string): string {
-  return raw
-    .replace(/\r\n/g, '\n')            // Normalise line endings
-    .replace(/\r/g, '\n')
-    .replace(/[ \t]+/g, ' ')           // Collapse horizontal whitespace
-    .replace(/\n{3,}/g, '\n\n')        // Max two consecutive newlines
-    .replace(/^\s+|\s+$/g, '')         // Trim outer whitespace
-    .trim();
+  return cleanExtractedText(raw);
 }
 
 function countWords(text: string): number {

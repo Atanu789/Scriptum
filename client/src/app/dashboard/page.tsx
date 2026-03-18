@@ -371,12 +371,16 @@ export default function DashboardPage() {
   const totalWords  = textDocs.reduce((s, d) => s + (d.wordCount || 0), 0);
   const monthlyUploadLimit = subscription?.limits.uploadsPerMonth ?? 5;
   const monthlyAiLimit = subscription?.limits.aiUsagePerMonth ?? 5;
+  const hasUploadOverageTrial = Boolean(subscription?.trials?.uploadOverage?.available);
+  const hasAiOverageTrial = Boolean(subscription?.trials?.aiOverage?.available);
   const uploadUsed = subscription?.uploadUsageThisMonth ?? 0;
   const aiUsed = subscription?.aiUsageThisMonth ?? 0;
   const uploadRemaining = monthlyUploadLimit === -1 ? Infinity : Math.max(0, monthlyUploadLimit - uploadUsed);
   const aiRemaining = monthlyAiLimit === -1 ? Infinity : Math.max(0, monthlyAiLimit - aiUsed);
-  const uploadBlocked = monthlyUploadLimit !== -1 && uploadUsed >= monthlyUploadLimit;
-  const aiBlocked = monthlyAiLimit !== -1 && aiUsed >= monthlyAiLimit;
+  const uploadLimitReached = monthlyUploadLimit !== -1 && uploadUsed >= monthlyUploadLimit;
+  const aiLimitReached = monthlyAiLimit !== -1 && aiUsed >= monthlyAiLimit;
+  const uploadBlocked = uploadLimitReached && !hasUploadOverageTrial;
+  const aiBlocked = aiLimitReached && !hasAiOverageTrial;
 
   const stats = [
     {
@@ -458,6 +462,8 @@ export default function DashboardPage() {
                   : 'border-slate-200 bg-white text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70',
               )}>
                 Uploads {monthlyUploadLimit === -1 ? `${uploadUsed}/∞` : `${uploadUsed}/${monthlyUploadLimit}`}
+                {uploadLimitReached && hasUploadOverageTrial && ' · 1 free extra'}
+                {uploadBlocked && ' · Premium'}
               </div>
               <div className={cn(
                 'rounded-lg border px-2.5 py-1.5 text-[11px] font-medium',
@@ -466,6 +472,8 @@ export default function DashboardPage() {
                   : 'border-slate-200 bg-white text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70',
               )}>
                 AI {monthlyAiLimit === -1 ? `${aiUsed}/∞` : `${aiUsed}/${monthlyAiLimit}`}
+                {aiLimitReached && hasAiOverageTrial && ' · 1 free extra'}
+                {aiBlocked && ' · Premium'}
               </div>
               <button
                 onClick={() => { logout(); router.push('/'); }}

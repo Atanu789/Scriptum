@@ -233,7 +233,7 @@ export async function getSubscription(req: AuthenticatedRequest, res: Response):
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
     const user = await User.findById(userId).select(
-      'plan planStartDate planExpiryDate aiUsageThisMonth uploadUsageThisMonth aiUsageLimitOverride uploadUsageLimitOverride'
+      'plan planStartDate planExpiryDate aiUsageThisMonth uploadUsageThisMonth aiUsageLimitOverride uploadUsageLimitOverride trialTtsNarrationUsed trialExportUsed trialAiOverageUsed trialUploadOverageUsed'
     );
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
@@ -260,6 +260,24 @@ export async function getSubscription(req: AuthenticatedRequest, res: Response):
             typeof user.uploadUsageLimitOverride === 'number'
               ? user.uploadUsageLimitOverride
               : PLAN_LIMITS[user.plan].uploadsPerMonth,
+        },
+        trials: {
+          ttsNarration: {
+            used: user.trialTtsNarrationUsed,
+            available: user.plan === 'free' && !user.trialTtsNarrationUsed,
+          },
+          export: {
+            used: user.trialExportUsed,
+            available: user.plan === 'free' && !user.trialExportUsed,
+          },
+          aiOverage: {
+            used: user.trialAiOverageUsed,
+            available: user.plan === 'free' && !user.trialAiOverageUsed,
+          },
+          uploadOverage: {
+            used: user.trialUploadOverageUsed,
+            available: user.plan === 'free' && !user.trialUploadOverageUsed,
+          },
         },
       },
     });

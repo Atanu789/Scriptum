@@ -15,6 +15,23 @@ export interface Token {
   breaksBefore?: number;
 }
 
+function cleanTeleprompterToken(raw: string): string {
+  const withoutControls = raw
+    .replace(/\u0000/g, '')
+    .replace(/[\u200B-\u200D\uFEFF]/g, '');
+
+  // Drop pure zero artifacts (e.g. standalone "0" tokens between words).
+  if (/^0+$/.test(withoutControls)) return '';
+
+  if (!/[A-Za-z]/.test(withoutControls)) return withoutControls;
+
+  return withoutControls
+    // Remove zero(s) before words, including punctuated forms like "(0Cellular".
+    .replace(/(^|[^A-Za-z0-9'])0+(?=[A-Za-z])/g, '$1')
+    // Remove trailing zero(s) after words, including punctuated forms like "Think0)".
+    .replace(/(?<=[A-Za-z])0+(?=($|[^A-Za-z0-9']))/g, '');
+}
+
 // ─── Normalisation helper (also exported so useWordMatcher can reuse it) ──────
 
 export function normalizeWord(word: string): string {
@@ -46,10 +63,11 @@ export function useScriptTokens(script: string): Token[] {
     let match: RegExpExecArray | null;
 
     while ((match = matcher.exec(script)) !== null) {
-      const word = match[0];
+      const rawWord = match[0];
+      const word = cleanTeleprompterToken(rawWord);
       const before = script.slice(cursor, match.index);
       const breaksBefore = (before.match(/\n/g) || []).length;
-      cursor = match.index + word.length;
+      cursor = match.index + rawWord.length;
 
       const normalized = normalizeWord(word);
       if (!normalized) continue; // skip tokens that are purely punctuation / whitespace
