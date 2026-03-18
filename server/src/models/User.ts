@@ -20,6 +20,8 @@ export interface IUser extends Document {
   aiUsageThisMonth: number;
   uploadUsageThisMonth: number;
   aiUsageResetAt: Date | null;
+  aiUsageLimitOverride: number | null;
+  uploadUsageLimitOverride: number | null;
 
   createdAt: Date;
   updatedAt: Date;
@@ -60,6 +62,8 @@ const userSchema = new Schema<IUser>(
     aiUsageThisMonth:     { type: Number, default: 0 },
     uploadUsageThisMonth: { type: Number, default: 0 },
     aiUsageResetAt:       { type: Date,   default: null },
+    aiUsageLimitOverride: { type: Number, default: null },
+    uploadUsageLimitOverride: { type: Number, default: null },
   },
   {
     timestamps: true,

@@ -5,6 +5,8 @@ import { Request } from 'express';
 export interface JwtPayload {
   userId: string;
   email: string;
+  role?: 'user' | 'admin';
+  username?: string;
   iat?: number;
   exp?: number;
 }

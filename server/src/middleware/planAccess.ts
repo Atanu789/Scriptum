@@ -61,7 +61,7 @@ export async function checkAIUsage(
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
     const user = await User.findById(userId).select(
-      'plan planExpiryDate aiUsageThisMonth aiUsageResetAt'
+      'plan planExpiryDate aiUsageThisMonth aiUsageResetAt aiUsageLimitOverride'
     );
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
@@ -78,7 +78,9 @@ export async function checkAIUsage(
     }
 
     const effectivePlan = resolveEffectivePlan(user.plan, user.planExpiryDate);
-    const limit         = PLAN_LIMITS[effectivePlan].aiUsagePerMonth;
+    const planLimit = PLAN_LIMITS[effectivePlan].aiUsagePerMonth;
+    const overrideLimit = typeof user.aiUsageLimitOverride === 'number' ? user.aiUsageLimitOverride : null;
+    const limit = overrideLimit !== null ? overrideLimit : planLimit;
 
     if (limit !== -1 && user.aiUsageThisMonth >= limit) {
       res.status(429).json({
@@ -113,11 +115,13 @@ export async function checkUploadUsage(
     const userId = req.user?.userId;
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
-    const user = await User.findById(userId).select('plan planExpiryDate uploadUsageThisMonth');
+    const user = await User.findById(userId).select('plan planExpiryDate uploadUsageThisMonth uploadUsageLimitOverride');
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
     const effectivePlan = resolveEffectivePlan(user.plan, user.planExpiryDate);
-    const limit         = PLAN_LIMITS[effectivePlan].uploadsPerMonth;
+    const planLimit = PLAN_LIMITS[effectivePlan].uploadsPerMonth;
+    const overrideLimit = typeof user.uploadUsageLimitOverride === 'number' ? user.uploadUsageLimitOverride : null;
+    const limit = overrideLimit !== null ? overrideLimit : planLimit;
 
     if (limit !== -1 && user.uploadUsageThisMonth >= limit) {
       res.status(429).json({

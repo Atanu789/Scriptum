@@ -15,8 +15,22 @@ import exportRoutes from './routes/export';
 import userRoutes from './routes/user';
 import deepgramRoutes from './routes/deepgram';
 import paymentRoutes from './routes/payment';
+import adminRoutes from './routes/admin';
 
 const app: Application = express();
+
+const configuredOrigins = (process.env.CLIENT_URL || '')
+  .split(',')
+  .map((value) => value.trim())
+  .filter(Boolean);
+
+const defaultOrigins = [
+  'https://ultimoversio.com',
+  'https://www.ultimoversio.com',
+  'https://ultimoversio.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:3001',
+];
 
 // ─── Security & Parsing ──────────────────────────────────────────────────────
 app.use(
@@ -25,12 +39,7 @@ app.use(
   })
 );
 
-const allowedOrigins = [
-  "https://ultimoversio.com",
-  "https://www.ultimoversio.com",
-  "https://ultimoversio.vercel.app",
-  "http://localhost:3000"
-];
+const allowedOrigins = Array.from(new Set([...defaultOrigins, ...configuredOrigins]));
 
 app.use(
   cors({
@@ -44,7 +53,7 @@ app.use(
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With'],
+    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Admin-Action-Key'],
     maxAge: 86400, // Cache preflight for 24h
   })
 );
@@ -80,6 +89,7 @@ app.use('/api/export', exportRoutes);
 app.use('/api/user', userRoutes);
 app.use('/api/deepgram', deepgramRoutes);
 app.use('/api/payment', paymentRoutes);
+app.use('/api/admin', adminRoutes);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

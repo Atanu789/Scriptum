@@ -52,6 +52,39 @@ export interface AuthTokens {
   user: User;
 }
 
+export interface AdminAuthResult {
+  token: string;
+  username: string;
+}
+
+export interface AdminUserSummary {
+  id: string;
+  name: string;
+  email: string;
+  plan: Plan;
+  planStartDate: string | null;
+  planExpiryDate: string | null;
+  aiUsageThisMonth: number;
+  uploadUsageThisMonth: number;
+  aiUsageLimitOverride: number | null;
+  uploadUsageLimitOverride: number | null;
+  documentCount: number;
+  totalAnalyses: number;
+  totalGeminiCalls: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AdminOverview {
+  totalUsers: number;
+  proUsers: number;
+  freeUsers: number;
+  totalDocuments: number;
+  totalPayments: number;
+  totalRevenueINR: number;
+  totalAnalyses: number;
+}
+
 // ─── Document ────────────────────────────────────────────────────────────────
 
 export interface NarrationSegment {

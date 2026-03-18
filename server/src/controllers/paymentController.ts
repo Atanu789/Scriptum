@@ -79,6 +79,11 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
     });
   } catch (err) {
     console.error('createOrder error:', err);
+    const message = err instanceof Error ? err.message : 'Failed to create payment order';
+    if (message.toLowerCase().includes('razorpay credentials not configured')) {
+      res.status(503).json({ success: false, error: 'Payment gateway is not configured' });
+      return;
+    }
     res.status(500).json({ success: false, error: 'Failed to create payment order' });
   }
 }
@@ -228,7 +233,7 @@ export async function getSubscription(req: AuthenticatedRequest, res: Response):
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
     const user = await User.findById(userId).select(
-      'plan planStartDate planExpiryDate aiUsageThisMonth uploadUsageThisMonth'
+      'plan planStartDate planExpiryDate aiUsageThisMonth uploadUsageThisMonth aiUsageLimitOverride uploadUsageLimitOverride'
     );
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
@@ -245,7 +250,17 @@ export async function getSubscription(req: AuthenticatedRequest, res: Response):
         isActive,
         aiUsageThisMonth:      user.aiUsageThisMonth,
         uploadUsageThisMonth:  user.uploadUsageThisMonth,
-        limits:                PLAN_LIMITS[user.plan],
+        limits: {
+          ...PLAN_LIMITS[user.plan],
+          aiUsagePerMonth:
+            typeof user.aiUsageLimitOverride === 'number'
+              ? user.aiUsageLimitOverride
+              : PLAN_LIMITS[user.plan].aiUsagePerMonth,
+          uploadsPerMonth:
+            typeof user.uploadUsageLimitOverride === 'number'
+              ? user.uploadUsageLimitOverride
+              : PLAN_LIMITS[user.plan].uploadsPerMonth,
+        },
       },
     });
   } catch (err) {

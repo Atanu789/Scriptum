@@ -5,6 +5,9 @@ import axios, {
 } from 'axios';
 import {
   ApiResponse,
+  AdminAuthResult,
+  AdminOverview,
+  AdminUserSummary,
   AuthTokens,
   Document,
   DocumentSummary,
@@ -329,6 +332,135 @@ export const paymentApi = {
   redeem: async (code: string): Promise<{ plan: string; planExpiryDate: string; message: string }> => {
     const { data } = await api.post<ApiResponse<{ plan: string; planExpiryDate: string; message: string }>>('/payment/redeem', { code });
     return unwrap(data);
+  },
+};
+
+// ─── Admin ───────────────────────────────────────────────────────────────────
+
+async function adminRequest<T>(
+  path: string,
+  init: RequestInit = {},
+  adminToken?: string,
+): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...(init.headers as Record<string, string> | undefined),
+  };
+
+  if (adminToken) {
+    headers.Authorization = `Bearer ${adminToken}`;
+  }
+
+  const response = await fetch(`${BASE_URL}/api/admin${path}`, {
+    ...init,
+    headers,
+  });
+
+  const data = (await response.json()) as ApiResponse<T>;
+  if (!response.ok || !data.success) {
+    throw new Error(data.error || 'Admin request failed');
+  }
+
+  return data.data as T;
+}
+
+export const adminApi = {
+  login: async (payload: { username: string; password: string }): Promise<AdminAuthResult> => {
+    return adminRequest<AdminAuthResult>('/login', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  overview: async (token: string): Promise<AdminOverview> => {
+    return adminRequest<AdminOverview>('/overview', { method: 'GET' }, token);
+  },
+
+  listUsers: async (
+    token: string,
+    params?: { q?: string; page?: number; limit?: number },
+  ): Promise<{ users: AdminUserSummary[]; total: number; page: number; limit: number; totalPages: number }> => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set('q', params.q);
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+
+    const rawResponse = await fetch(`${BASE_URL}/api/admin/users${qs.toString() ? `?${qs.toString()}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    const json = (await rawResponse.json()) as ApiResponse<AdminUserSummary[]> & {
+      page?: number;
+      limit?: number;
+      total?: number;
+      totalPages?: number;
+    };
+
+    if (!rawResponse.ok || !json.success) {
+      throw new Error(json.error || 'Failed to fetch admin users');
+    }
+
+    return {
+      users: (json.data || []).map((user) => ({
+        ...user,
+        plan: user.plan === 'pro' ? 'pro' : 'free',
+        planStartDate: user.planStartDate ?? null,
+        planExpiryDate: user.planExpiryDate ?? null,
+        aiUsageThisMonth: Number(user.aiUsageThisMonth || 0),
+        uploadUsageThisMonth: Number(user.uploadUsageThisMonth || 0),
+        aiUsageLimitOverride:
+          typeof user.aiUsageLimitOverride === 'number' ? user.aiUsageLimitOverride : null,
+        uploadUsageLimitOverride:
+          typeof user.uploadUsageLimitOverride === 'number' ? user.uploadUsageLimitOverride : null,
+        documentCount: Number(user.documentCount || 0),
+        totalAnalyses: Number(user.totalAnalyses || 0),
+        totalGeminiCalls: Number(user.totalGeminiCalls || 0),
+      })),
+      total: json.total || 0,
+      page: json.page || 1,
+      limit: json.limit || 25,
+      totalPages: json.totalPages || 1,
+    };
+  },
+
+  updateUser: async (
+    token: string,
+    actionKey: string,
+    userId: string,
+    payload: {
+      plan?: 'free' | 'pro';
+      planDays?: number;
+      aiUsageLimitOverride?: number | null;
+      uploadUsageLimitOverride?: number | null;
+      resetUsage?: boolean;
+      reason: string;
+    },
+  ): Promise<AdminUserSummary> => {
+    return adminRequest<AdminUserSummary>(`/users/${userId}`, {
+      method: 'PATCH',
+      headers: {
+        'x-admin-action-key': actionKey,
+      },
+      body: JSON.stringify(payload),
+    }, token);
+  },
+
+  deleteUser: async (
+    token: string,
+    actionKey: string,
+    userId: string,
+    reason: string,
+  ): Promise<{ userId: string; documentsDeleted: number; paymentsDeleted: number; usagesDeleted: number }> => {
+    return adminRequest<{ userId: string; documentsDeleted: number; paymentsDeleted: number; usagesDeleted: number }>(`/users/${userId}`, {
+      method: 'DELETE',
+      headers: {
+        'x-admin-action-key': actionKey,
+      },
+      body: JSON.stringify({ reason }),
+    }, token);
+  },
+
+  auditLogs: async (token: string): Promise<any[]> => {
+    return adminRequest<any[]>('/audit-logs', { method: 'GET' }, token);
   },
 };
 

@@ -11,6 +11,8 @@ export interface Token {
   normalized: string;
   /** Position of this token in the flat tokens array */
   index: number;
+  /** Number of newline characters before this token in the original script */
+  breaksBefore?: number;
 }
 
 // ─── Normalisation helper (also exported so useWordMatcher can reuse it) ──────
@@ -36,15 +38,22 @@ export function useScriptTokens(script: string): Token[] {
   return useMemo<Token[]>(() => {
     if (!script) return [];
 
-    const raw = script.split(/\s+/);
     const tokens: Token[] = [];
     let index = 0;
 
-    for (const word of raw) {
-      if (!word) continue;
+    let cursor = 0;
+    const matcher = /\S+/g;
+    let match: RegExpExecArray | null;
+
+    while ((match = matcher.exec(script)) !== null) {
+      const word = match[0];
+      const before = script.slice(cursor, match.index);
+      const breaksBefore = (before.match(/\n/g) || []).length;
+      cursor = match.index + word.length;
+
       const normalized = normalizeWord(word);
       if (!normalized) continue; // skip tokens that are purely punctuation / whitespace
-      tokens.push({ original: word, normalized, index });
+      tokens.push({ original: word, normalized, index, breaksBefore });
       index++;
     }
 

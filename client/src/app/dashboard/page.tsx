@@ -18,6 +18,7 @@ import {
   AlertTriangle, TrendingUp, Sparkles,
   Search, SlidersHorizontal, ArrowUpRight,
   Zap, Globe, Crown, LogOut,
+  Shield,
   Image as ImageIcon, Video, Music,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -205,7 +206,7 @@ function DocRow({ doc, isLast, deletingId, onDelete }: DocRowProps) {
 
       {/* Actions — visible on hover */}
       <div
-        className="relative z-10 flex-shrink-0 flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity"
+        className="relative z-10 flex-shrink-0 flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -226,11 +227,12 @@ function DocRow({ doc, isLast, deletingId, onDelete }: DocRowProps) {
           onClick={(e) => onDelete(e, doc._id, doc.originalFileName)}
           disabled={deletingId === doc._id}
           title="Delete"
-          className="rounded-lg p-2 text-slate-300 dark:text-white/20 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors disabled:opacity-30"
+          className="inline-flex items-center gap-1 rounded-lg p-2 text-slate-500 dark:text-white/35 hover:text-red-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10 transition-colors disabled:opacity-30"
         >
           {deletingId === doc._id
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
             : <Trash2 className="h-3.5 w-3.5" />}
+          <span className="text-[10px] font-semibold sm:hidden">Delete</span>
         </button>
       </div>
     </li>
@@ -302,7 +304,7 @@ function MediaCard({ doc, deletingId, onDelete }: MediaCardProps) {
 
       {/* Delete button */}
       <button
-        className="absolute top-2 right-2 flex h-6 w-6 items-center justify-center rounded-md bg-black/50 text-white opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-500 disabled:opacity-40"
+        className="absolute top-2 right-2 flex h-7 min-w-7 items-center justify-center rounded-md bg-black/50 px-1.5 text-white opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity hover:bg-red-500 disabled:opacity-40"
         onClick={(e) => onDelete(e, doc._id, doc.originalFileName)}
         disabled={deletingId === doc._id}
         title="Delete"
@@ -472,6 +474,13 @@ export default function DashboardPage() {
                 <LogOut className="h-3.5 w-3.5" />
                 Logout
               </button>
+              <Link
+                href="/admin"
+                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70 dark:hover:bg-white/[0.07]"
+              >
+                <Shield className="h-3.5 w-3.5" />
+                Admin
+              </Link>
             </div>
             <Link
               href={uploadBlocked ? '/pricing' : '/upload'}

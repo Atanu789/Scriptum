@@ -62,18 +62,26 @@ const ScriptRenderer = memo(function ScriptRenderer({
       style={{ fontSize: `${fontSize}px` }}
       tabIndex={-1}
     >
-      <p className="mx-auto max-w-3xl select-none" aria-live="off">
+      <div className="mx-auto max-w-3xl select-none" aria-live="off">
         {tokens.map((token) => (
-          <span
-            key={token.index}
-            data-token-index={token.index}
-            data-sentence-index={sentenceIndexByToken[token.index] ?? 0}
-            className="tp-token mr-[0.28em] inline-block"
-          >
-            {token.original}
-          </span>
+          <React.Fragment key={token.index}>
+            {token.breaksBefore && token.breaksBefore > 0 && (
+              <>
+                {Array.from({ length: token.breaksBefore }).map((_, idx) => (
+                  <br key={`br-${token.index}-${idx}`} />
+                ))}
+              </>
+            )}
+            <span
+              data-token-index={token.index}
+              data-sentence-index={sentenceIndexByToken[token.index] ?? 0}
+              className="tp-token mr-[0.28em] inline-block align-baseline"
+            >
+              {token.original}
+            </span>
+          </React.Fragment>
         ))}
-      </p>
+      </div>
     </div>
   );
 });

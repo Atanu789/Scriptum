@@ -7,6 +7,13 @@ const Razorpay = require('razorpay') as new (opts: { key_id: string; key_secret:
 import crypto from 'crypto';
 import { Plan } from '../models/User';
 
+function safeCompareHex(expected: string, provided: string): boolean {
+  const expectedBuf = Buffer.from(expected, 'hex');
+  const providedBuf = Buffer.from(provided, 'hex');
+  if (expectedBuf.length !== providedBuf.length) return false;
+  return crypto.timingSafeEqual(expectedBuf, providedBuf);
+}
+
 // ─── Plan config ──────────────────────────────────────────────────────────────
 
 export const PLAN_PRICES_PAISE: Record<Exclude<Plan, 'free'>, number> = {
@@ -79,7 +86,7 @@ export function verifyRazorpaySignature(
 
   const body     = `${razorpayOrderId}|${razorpayPaymentId}`;
   const expected = crypto.createHmac('sha256', secret).update(body).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(razorpaySignature));
+  return safeCompareHex(expected, razorpaySignature);
 }
 
 // ─── Verify webhook signature ─────────────────────────────────────────────────
@@ -89,5 +96,5 @@ export function verifyWebhookSignature(rawBody: string, signature: string): bool
   if (!secret) throw new Error('RAZORPAY_WEBHOOK_SECRET not set');
 
   const expected = crypto.createHmac('sha256', secret).update(rawBody).digest('hex');
-  return crypto.timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  return safeCompareHex(expected, signature);
 }
