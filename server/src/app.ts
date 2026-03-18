@@ -19,9 +19,12 @@ import adminRoutes from './routes/admin';
 
 const app: Application = express();
 
+app.use(cors());
+app.options('*', cors());
+
 const configuredOrigins = (process.env.CLIENT_URL || '')
   .split(',')
-  .map((value) => value.trim())
+  .map(v => v.trim())
   .filter(Boolean);
 
 const defaultOrigins = [
@@ -29,11 +32,6 @@ const defaultOrigins = [
   'https://www.ultimoversio.com',
   'https://ultimoversio.vercel.app',
   'http://localhost:3000',
-  'http://localhost:3001',
-  'http://localhost:3002',
-  'http://localhost:3003',
-  'http://localhost:3004',
-  'http://localhost:3005', // Allow dev ports that Next.js might auto-increment to
 ];
 
 // ─── Security & Parsing ──────────────────────────────────────────────────────
@@ -43,22 +41,23 @@ app.use(
   })
 );
 
-const allowedOrigins = Array.from(new Set([...defaultOrigins, ...configuredOrigins]));
+const allowedOrigins = [...new Set([...defaultOrigins, ...configuredOrigins])];
 
 app.use(
   cors({
     origin: (origin, callback) => {
-      // Allow requests with no origin (e.g. server-to-server, curl)
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-      } else {
-        callback(new Error(`Origin ${origin} not allowed by CORS`));
+      if (!origin) return callback(null, true);
+
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
       }
+
+      console.log('❌ CORS blocked:', origin);
+      return callback(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'X-Admin-Action-Key'],
-    maxAge: 86400, // Cache preflight for 24h
+    allowedHeaders: ['Content-Type', 'Authorization'],
   })
 );
 
