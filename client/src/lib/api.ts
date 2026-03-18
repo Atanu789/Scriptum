@@ -310,13 +310,24 @@ export const paymentApi = {
     return unwrap(data);
   },
 
-  createOrder: async (plan: string): Promise<{
+  createOrder: async (plan: string, discountCode?: string): Promise<{
     orderId: string;
     amount: number;
     currency: string;
     keyId: string;
+    originalAmount?: number;
+    discountPaise?: number;
+    discountPercent?: number;
   }> => {
-    const { data } = await api.post<ApiResponse<{ orderId: string; amount: number; currency: string; keyId: string }>>('/payment/create-order', { plan });
+    const { data } = await api.post<ApiResponse<{
+      orderId: string;
+      amount: number;
+      currency: string;
+      keyId: string;
+      originalAmount?: number;
+      discountPaise?: number;
+      discountPercent?: number;
+    }>>('/payment/create-order', { plan, discountCode });
     return unwrap(data);
   },
 

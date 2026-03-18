@@ -41,7 +41,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
     const userId = req.user?.userId;
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
-    const { plan } = req.body as { plan: string };
+    const { plan, discountCode } = req.body as { plan: string; discountCode?: string };
     if (!plan || !['pro'].includes(plan)) {
       res.status(400).json({ success: false, error: 'Invalid plan. Supported: pro' });
       return;
@@ -56,7 +56,36 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    const order = await createRazorpayOrder(plan as Exclude<Plan, 'free'>, userId);
+    const baseAmount = PLAN_PRICES_PAISE[plan as Exclude<Plan, 'free'>];
+    const configuredCode = (process.env.PRO_DISCOUNT_CODE || '').trim();
+    const configuredPercentRaw = Number.parseInt(process.env.PRO_DISCOUNT_PERCENT || '10', 10);
+    const configuredPercent = Number.isFinite(configuredPercentRaw)
+      ? Math.max(0, Math.min(100, configuredPercentRaw))
+      : 10;
+
+    const normalizedProvidedCode = (discountCode || '').trim().toUpperCase();
+    const normalizedConfiguredCode = configuredCode.toUpperCase();
+    const hasValidDiscountCode =
+      normalizedProvidedCode.length > 0 &&
+      normalizedConfiguredCode.length > 0 &&
+      normalizedProvidedCode === normalizedConfiguredCode;
+
+    const discountPaise = hasValidDiscountCode
+      ? Math.round((baseAmount * configuredPercent) / 100)
+      : 0;
+    const finalAmount = Math.max(100, baseAmount - discountPaise);
+
+    const order = await createRazorpayOrder(plan as Exclude<Plan, 'free'>, userId, {
+      amountPaise: finalAmount,
+      notes: hasValidDiscountCode
+        ? {
+            discountCode: normalizedProvidedCode,
+            discountPercent: String(configuredPercent),
+            discountPaise: String(discountPaise),
+            originalAmountPaise: String(baseAmount),
+          }
+        : undefined,
+    });
 
     // Persist a pending payment record
     await Payment.create({
@@ -75,6 +104,9 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
         amount:   order.amount,
         currency: order.currency,
         keyId:    process.env.RAZORPAY_KEY_ID,
+        originalAmount: baseAmount,
+        discountPaise,
+        discountPercent: hasValidDiscountCode ? configuredPercent : 0,
       },
     });
   } catch (err) {

@@ -114,6 +114,7 @@ export default function PricingPage() {
   const [paying, setPaying] = useState(false);
   const [redeeming, setRedeeming] = useState(false);
   const [redeemCode, setRedeemCode] = useState('');
+  const [promoCode, setPromoCode] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -155,7 +156,7 @@ export default function PricingPage() {
       const loaded = await loadRazorpayScript();
       if (!loaded) throw new Error('Could not load payment SDK. Check your internet connection.');
 
-      const order = await paymentApi.createOrder('pro');
+      const order = await paymentApi.createOrder('pro', promoCode.trim() || undefined);
 
       await new Promise<void>((resolve, reject) => {
         const rz = new window.Razorpay({
@@ -367,6 +368,20 @@ export default function PricingPage() {
                 </div>
 
                 <p className="mb-3 text-xs text-slate-500 dark:text-white/35">{plan.description}</p>
+
+                {isPro && (
+                  <div className="mb-3 space-y-1">
+                    <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/35">
+                      Promo code (optional)
+                    </label>
+                    <input
+                      value={promoCode}
+                      onChange={(e) => setPromoCode(e.target.value)}
+                      placeholder="Enter promo code for Pro"
+                      className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition-colors focus:border-indigo-400 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/80 dark:focus:border-indigo-500/50"
+                    />
+                  </div>
+                )}
 
                 <ul className="mb-4 flex flex-1 flex-col gap-1.5">
                   <PlanFeature included label={`Uploads: ${plan.limits.uploadsPerMonth === -1 ? 'Unlimited' : `${plan.limits.uploadsPerMonth}/month`}`} />

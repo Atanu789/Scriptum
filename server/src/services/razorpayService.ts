@@ -60,15 +60,19 @@ function getRazorpayInstance(): InstanceType<typeof Razorpay> {
 
 // ─── Create order ─────────────────────────────────────────────────────────────
 
-export async function createRazorpayOrder(plan: Exclude<Plan, 'free'>, userId: string) {
-  const amount = PLAN_PRICES_PAISE[plan];
+export async function createRazorpayOrder(
+  plan: Exclude<Plan, 'free'>,
+  userId: string,
+  opts?: { amountPaise?: number; notes?: Record<string, string> },
+) {
+  const amount = opts?.amountPaise ?? PLAN_PRICES_PAISE[plan];
   const rp = getRazorpayInstance();
 
   const order = await rp.orders.create({
     amount,
     currency: 'INR',
     receipt: `rcpt_${userId.slice(-8)}_${Date.now()}`,
-    notes: { plan, userId },
+    notes: { plan, userId, ...(opts?.notes ?? {}) },
   });
 
   return { orderId: order.id, amount, currency: order.currency };
