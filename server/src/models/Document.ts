@@ -157,6 +157,8 @@ export interface IDocument extends Document {
   aiReasoning:        string | null;
   humanizationTips:   string[];
   humanizationSuggestions: Array<{ original: string; suggestion: string; reason: string }>;
+  lastHumanizeOriginalText: string | null;
+  lastHumanizeMode: 'conservative' | 'balanced' | 'aggressive' | null;
   analysisRunAt:      Date | null;
   status: 'pending' | 'processing' | 'analyzed' | 'ready';
   createdAt: Date;
@@ -265,6 +267,9 @@ const documentSchema = new Schema<IDocument>(
       type: [
         new Schema(
           {
+            sentenceIndex: { type: Number },
+            originalSentence: { type: String },
+            rewrittenSentence: { type: String },
             original:   { type: String },
             suggestion: { type: String },
             reason:     { type: String },
@@ -273,6 +278,12 @@ const documentSchema = new Schema<IDocument>(
         ),
       ],
       default: [],
+    },
+    lastHumanizeOriginalText: { type: String, default: null },
+    lastHumanizeMode: {
+      type: String,
+      enum: ['conservative', 'balanced', 'aggressive'],
+      default: null,
     },
     analysisRunAt: { type: Date, default: null },
     status: {

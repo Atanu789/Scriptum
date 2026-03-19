@@ -3,9 +3,16 @@ import { param, validationResult } from 'express-validator';
 import crypto from 'crypto';
 import DocumentModel from '../models/Document';
 import { analyzeDocument as runAnalysis } from '../services/aiAnalysis';
-import { analyzeAIScore, humanizeTextContent } from '../services/ai/aiScoreAnalyzer';
+import {
+  analyzeAIScore,
+  generateSentenceRewriteSuggestions,
+  lengthSimilarity,
+  rewriteSingleSentenceWithMode,
+  splitIntoSentences,
+  validateSentenceRewrite,
+} from '../services/ai/aiScoreAnalyzer';
 import { htmlToStructuredModel, plainTextToEditorHtml, structureDocument } from '../services/documentStructure';
-import { AuthenticatedRequest } from '../types';
+import { AuthenticatedRequest, HumanizeMode } from '../types';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 
@@ -13,42 +20,21 @@ function hashText(text: string): string {
   return crypto.createHash('sha256').update(text).digest('hex').slice(0, 16);
 }
 
-function applyReplacementOnce(source: string, original: string, replacement: string): {
-  text: string;
-  applied: boolean;
-} {
-  if (!original.trim() || !replacement.trim()) return { text: source, applied: false };
-
-  const exactIdx = source.indexOf(original);
-  if (exactIdx >= 0) {
-    return {
-      text: source.slice(0, exactIdx) + replacement + source.slice(exactIdx + original.length),
-      applied: true,
-    };
+function resolveHumanizeMode(mode: unknown): HumanizeMode {
+  if (mode === 'conservative' || mode === 'balanced' || mode === 'aggressive') {
+    return mode;
   }
+  return 'balanced';
+}
 
-  const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const insensitive = new RegExp(escaped, 'i');
-  if (insensitive.test(source)) {
-    return {
-      text: source.replace(insensitive, replacement),
-      applied: true,
-    };
-  }
-
-  // Fuzzy match: normalize whitespace gaps so small formatting differences still match.
-  const compact = original.trim().split(/\s+/).map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
-  if (compact) {
-    const loose = new RegExp(compact, 'i');
-    if (loose.test(source)) {
-      return {
-        text: source.replace(loose, replacement),
-        applied: true,
-      };
-    }
-  }
-
-  return { text: source, applied: false };
+function rebuildTextFromSentences(sentences: string[]): string {
+  return sentences
+    .map((s) => s.trim())
+    .filter(Boolean)
+    .join(' ')
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
 }
 
 export const analyzeDocumentValidation = [
@@ -221,55 +207,70 @@ export const humanizeDetectedText = async (
       return;
     }
 
-    let suggestions = (doc.humanizationSuggestions ?? []).filter((s) =>
-      s && typeof s.original === 'string' && typeof s.suggestion === 'string' && s.original.trim() && s.suggestion.trim()
-    );
-
-    // If no cached suggestions exist, generate a fresh AI-pass first.
-    if (suggestions.length === 0) {
-      const aiPass = await analyzeAIScore(sourceText);
-      suggestions = (aiPass.humanizationSuggestions ?? []).map((s) => ({
-        original: s.original,
-        suggestion: s.suggestion,
-        reason: s.reason,
-      }));
-      doc.aiScore = aiPass.aiScore;
-      doc.aiReasoning = aiPass.aiReasoning;
-      doc.humanizationTips = aiPass.humanizationTips;
-      doc.humanizationSuggestions = suggestions;
-    }
-
-    if (suggestions.length === 0) {
-      res.status(400).json({ success: false, error: 'No AI-like sections were flagged to humanize' });
+    const mode = resolveHumanizeMode((req.body as { mode?: unknown })?.mode);
+    const originalText = sourceText;
+    const originalSentences = splitIntoSentences(sourceText);
+    if (originalSentences.length === 0) {
+      res.status(400).json({ success: false, error: 'Unable to split document into sentences' });
       return;
     }
 
-    let humanizedText = sourceText;
+    const rewrittenSentences = [...originalSentences];
+    const rewrittenIndices = new Set<number>();
     const appliedRewrites: Array<{ original: string; replacement: string }> = [];
+    const similaritySamples: number[] = [];
 
-    for (const item of suggestions) {
-      const next = applyReplacementOnce(humanizedText, item.original, item.suggestion);
-      if (next.applied) {
-        humanizedText = next.text;
-        appliedRewrites.push({ original: item.original, replacement: item.suggestion });
+    const indexedSuggestions = await generateSentenceRewriteSuggestions(originalSentences, mode);
+    for (const item of indexedSuggestions) {
+      const idx = item.sentenceIndex;
+      if (idx < 0 || idx >= rewrittenSentences.length) continue;
+
+      const originalSentence = originalSentences[idx];
+      const rewrittenSentence = item.rewrittenSentence;
+      if (!validateSentenceRewrite(originalSentence, rewrittenSentence, mode)) continue;
+
+      rewrittenSentences[idx] = rewrittenSentence;
+      rewrittenIndices.add(idx);
+      appliedRewrites.push({ original: originalSentence, replacement: rewrittenSentence });
+      similaritySamples.push(lengthSimilarity(originalSentence, rewrittenSentence));
+    }
+
+    // If targeted suggestions are too sparse, rewrite the rest sentence-by-sentence (no full-document rewrite fallback).
+    const expectedRewrites = Math.max(1, Math.floor(originalSentences.length * 0.35));
+    if (rewrittenIndices.size < expectedRewrites) {
+      for (let i = 0; i < originalSentences.length; i += 1) {
+        if (rewrittenIndices.has(i)) continue;
+        const rewritten = await rewriteSingleSentenceWithMode(originalSentences[i], mode);
+        if (!validateSentenceRewrite(originalSentences[i], rewritten, mode)) continue;
+        if (rewritten.trim() === originalSentences[i].trim()) continue;
+
+        rewrittenSentences[i] = rewritten;
+        rewrittenIndices.add(i);
+        appliedRewrites.push({ original: originalSentences[i], replacement: rewritten });
+        similaritySamples.push(lengthSimilarity(originalSentences[i], rewritten));
       }
     }
 
-    const minExpected = Math.max(1, Math.floor(suggestions.length * 0.4));
-    if (appliedRewrites.length < minExpected) {
-      // If targeted replacements fail too often, do a full humanization rewrite fallback.
-      const fallbackHumanized = await humanizeTextContent(sourceText);
-      if (fallbackHumanized && fallbackHumanized.trim().length > 0) {
-        // Light second pass improves cadence and removes residual repetition.
-        const polishedHumanized = await humanizeTextContent(fallbackHumanized);
-        humanizedText = polishedHumanized?.trim().length ? polishedHumanized : fallbackHumanized;
+    // Final sentence-level validation: never allow empty or non-text sentence output.
+    for (let i = 0; i < rewrittenSentences.length; i += 1) {
+      const candidate = rewrittenSentences[i]?.trim();
+      if (!candidate || !/[A-Za-z0-9]/.test(candidate)) {
+        rewrittenSentences[i] = originalSentences[i];
       }
+    }
+
+    const humanizedText = rebuildTextFromSentences(rewrittenSentences);
+    if (!humanizedText || humanizedText.length < Math.max(20, Math.floor(sourceText.length * 0.4))) {
+      res.status(500).json({ success: false, error: 'Humanization output validation failed' });
+      return;
     }
 
     doc.cleanedText = humanizedText;
     doc.editorHtml = plainTextToEditorHtml(humanizedText);
     doc.editorModel = htmlToStructuredModel(doc.editorHtml);
     doc.structuredContent = structureDocument(humanizedText);
+    doc.lastHumanizeOriginalText = originalText;
+    doc.lastHumanizeMode = mode;
 
     // Immediately re-analyze so the user gets an updated AI likelihood after humanization.
     doc.status = 'processing';
@@ -296,11 +297,22 @@ export const humanizeDetectedText = async (
 
     await doc.save();
 
+    const totalSentences = originalSentences.length;
+    const rewrittenPercent = Math.round((rewrittenIndices.size / Math.max(1, totalSentences)) * 100);
+    const averageLengthSimilarity = similaritySamples.length > 0
+      ? Math.round((similaritySamples.reduce((sum, n) => sum + n, 0) / similaritySamples.length) * 100) / 100
+      : 1;
+
     res.json({
       success: true,
       data: {
         documentId: doc._id.toString(),
         appliedCount: appliedRewrites.length,
+        totalSentences,
+        rewrittenPercent,
+        averageLengthSimilarity,
+        mode,
+        originalText,
         appliedRewrites,
         cleanedText: doc.cleanedText,
         analysis: {

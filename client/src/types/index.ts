@@ -254,10 +254,15 @@ export interface ToneResult {
 }
 
 export interface HumanizationSuggestion {
+  sentenceIndex?: number;
+  originalSentence?: string;
+  rewrittenSentence?: string;
   original:   string;
   suggestion: string;
   reason:     string;
 }
+
+export type HumanizeMode = 'conservative' | 'balanced' | 'aggressive';
 
 export interface AnalysisProgress {
   step:  number;
@@ -288,6 +293,11 @@ export interface AnalysisResult {
 export interface HumanizeResult {
   documentId: string;
   appliedCount: number;
+  totalSentences?: number;
+  rewrittenPercent?: number;
+  averageLengthSimilarity?: number;
+  mode?: HumanizeMode;
+  originalText?: string;
   appliedRewrites: Array<{ original: string; replacement: string }>;
   cleanedText: string;
   analysis?: {

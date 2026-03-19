@@ -1,8 +1,6 @@
 import { AnalysisResult } from '../types';
 import { checkGrammar, computeGrammarScore } from './grammarCheck';
 import { analyzeAIScore } from './ai/aiScoreAnalyzer';
-import { analyzeTone } from './ai/toneAnalyzer';
-import { detectClaims } from './ai/claimDetector';
 import { analyzeReadability, detectLongSentences } from './ai/readabilityAnalyzer';
 
 const MIN_CHARS = 50;
@@ -18,10 +16,8 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
     throw new Error(`Text too long (max ${MAX_CHARS} chars)`);
   }
 
-  const [aiResult, toneResult, claimFlags, readability, grammarIssues] = await Promise.all([
+  const [aiResult, readability, grammarIssues] = await Promise.all([
     analyzeAIScore(text),
-    analyzeTone(text),
-    detectClaims(text),
     Promise.resolve(analyzeReadability(text)),
     checkGrammar(text.slice(0, MAX_GRAMMAR_CHARS))
   ]);
@@ -34,7 +30,7 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
     aiReasoning: aiResult.aiReasoning,
     humanizationTips: aiResult.humanizationTips,
     humanizationSuggestions: aiResult.humanizationSuggestions,
-    claimFlags,
+    claimFlags: aiResult.claimFlags,
     grammarIssues,
     grammarScore,
     readabilityScore: readability.score,
@@ -44,7 +40,7 @@ export async function analyzeDocument(text: string): Promise<AnalysisResult> {
     longSentences,
     wordCount: readability.wordCount,
     sentenceCount: readability.sentenceCount,
-    tone: toneResult,
+    tone: aiResult.tone,
     analyzedAt: new Date()
   };
 }
