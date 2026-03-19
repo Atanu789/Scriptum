@@ -18,7 +18,11 @@ import { documentApi } from '@/lib/api';
 import { DocumentSummary, GrammarIssue } from '@/types';
 import toast from 'react-hot-toast';
 import { exportFile, importFileToHtml, toMarkdown, uid } from '@/components/problem-editor/utils';
-import sanitizeHtml from 'sanitize-html';
+import { normalizeEditorHtml, htmlToPlainText } from '@/editor/sanitize';
+import { SavedSelection, restoreSelection as restoreEditorSelection, saveSelection as saveEditorSelection } from '@/editor/selection';
+import { applyCommand as applyExecCommand } from '@/editor/commands';
+import { replaceInBlocks } from '@/editor/aiReplace';
+import { applyImageWrapperLayout, buildImageWrapperHtml, ensureImageWrappers } from '@/editor/imageHandler';
 
 interface LocalVersionSnapshot {
   id: string;
@@ -151,90 +155,12 @@ function replaceByOffset(
   return true;
 }
 
-function replaceFirstTextOccurrence(container: HTMLElement, original: string, replacement: string): boolean {
-  const target = original.trim();
-  if (!target) return false;
-
-  const walker = window.document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
-  let node = walker.nextNode();
-  while (node) {
-    const textNode = node as Text;
-    const source = textNode.data;
-    const idx = source.toLowerCase().indexOf(target.toLowerCase());
-    if (idx >= 0) {
-      const range = window.document.createRange();
-      range.setStart(textNode, idx);
-      range.setEnd(textNode, idx + target.length);
-      range.deleteContents();
-      range.insertNode(window.document.createTextNode(replacement));
-      return true;
-    }
-    node = walker.nextNode();
-  }
-  return false;
-}
-
 function wrapMediaHtml(url: string, alt: string, options?: { align?: 'left' | 'center' | 'right'; width?: number; padding?: number }): string {
-  const align = options?.align ?? 'center';
-  const width = Math.max(20, Math.min(100, options?.width ?? 70));
-  const padding = Math.max(0, Math.min(32, options?.padding ?? 8));
-  const safeUrl = url.replace(/"/g, '%22');
-  const safeAlt = alt.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-  return `<div class="editor-media-block" data-align="${align}" data-width="${width}" data-padding="${padding}"><img src="${safeUrl}" alt="${safeAlt}" draggable="true" /></div>`;
+  return buildImageWrapperHtml(url, alt, options);
 }
 
 function sanitizeAndNormalizeEditorHtml(input: string): string {
-  const sanitized = sanitizeHtml(input || '', {
-    allowedTags: [
-      'p', 'br', 'div', 'span', 'b', 'strong', 'i', 'em', 'u', 'a',
-      'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'blockquote', 'pre', 'code',
-      'img', 'video', 'audio', 'source', 'figure', 'figcaption', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'hr',
-    ],
-    allowedAttributes: {
-      a: ['href', 'target', 'rel'],
-      img: ['src', 'alt', 'draggable'],
-      video: ['src', 'controls'],
-      audio: ['src', 'controls'],
-      source: ['src', 'type'],
-      div: ['class', 'data-align', 'data-width', 'data-padding'],
-      '*': ['class'],
-    },
-    allowedClasses: {
-      div: ['editor-media-block'],
-    },
-    allowedSchemesByTag: {
-      img: ['http', 'https', 'data'],
-      a: ['http', 'https', 'mailto', 'tel'],
-      source: ['http', 'https'],
-      video: ['http', 'https'],
-      audio: ['http', 'https'],
-    },
-    disallowedTagsMode: 'discard',
-    parser: { lowerCaseTags: true },
-    transformTags: {
-      div: (tagName, attribs) => {
-        if (attribs.class === 'editor-media-block') {
-          return { tagName, attribs };
-        }
-        return { tagName: 'p', attribs: {} };
-      },
-      br: () => ({ tagName: 'br', attribs: {} }),
-      '*': (tagName, attribs) => {
-        const cleaned = { ...attribs };
-        delete cleaned.style;
-        return { tagName, attribs: cleaned };
-      },
-    },
-    textFilter: (text) => text.replace(/\u00A0/g, ' '),
-  });
-
-  const normalized = sanitized
-    .replace(/<div><br\s*\/?><\/div>/gi, '<p><br></p>')
-    .replace(/<br\s*\/?>(\s*<br\s*\/?>)+/gi, '</p><p>')
-    .replace(/<p>\s*<\/p>/gi, '<p><br></p>')
-    .replace(/^(?!\s*<(p|h[1-4]|ul|ol|blockquote|pre|table|figure|div)\b)/i, '<p>$&</p>');
-
-  return normalized.trim() || '<p><br></p>';
+  return normalizeEditorHtml(input);
 }
 
 function countWords(text: string): number {
@@ -350,7 +276,7 @@ export default function EditorPage() {
   // ������ contentEditable ref & init ���������������������������������������������������������������������������������������������������������������������������������
   const editorRef = useRef<HTMLDivElement>(null);
   const gutterRef = useRef<HTMLDivElement>(null);
-  const selectionRangeRef = useRef<Range | null>(null);
+  const selectionRangeRef = useRef<SavedSelection | null>(null);
   const inputDebounceRef = useRef<number | null>(null);
   const isApplyingStateRef = useRef(false);
   const lastLoadedSignatureRef = useRef<string>('');
@@ -408,21 +334,14 @@ export default function EditorPage() {
   const saveSelectionRange = useCallback(() => {
     const el = editorRef.current;
     if (!el) return;
-    const selection = window.getSelection();
-    if (!selection || selection.rangeCount === 0) return;
-    const range = selection.getRangeAt(0);
-    if (!el.contains(range.startContainer) || !el.contains(range.endContainer)) return;
-    selectionRangeRef.current = range.cloneRange();
+    selectionRangeRef.current = saveEditorSelection(el);
   }, []);
 
   const restoreSelectionRange = useCallback(() => {
     const el = editorRef.current;
     const saved = selectionRangeRef.current;
-    if (!el || !saved) return;
-    const selection = window.getSelection();
-    if (!selection) return;
-    selection.removeAllRanges();
-    selection.addRange(saved);
+    if (!el) return;
+    restoreEditorSelection(el, saved);
   }, []);
 
   const commitEditorHtml = useCallback((nextRawHtml: string, options?: { restoreSelection?: boolean }) => {
@@ -445,28 +364,13 @@ export default function EditorPage() {
   const prepareEditorImages = useCallback(() => {
     const editor = editorRef.current;
     if (!editor) return;
+    ensureImageWrappers(editor);
     editor.querySelectorAll('img').forEach((img) => {
-      if (img.closest('.editor-media-block')) {
-        img.setAttribute('draggable', 'true');
-        img.classList.add('editor-image-draggable');
-        return;
-      }
-
-      const wrapper = window.document.createElement('div');
-      wrapper.className = 'editor-media-block';
-      wrapper.dataset.align = 'center';
-      wrapper.dataset.width = '70';
-      wrapper.dataset.padding = '8';
-
-      img.parentNode?.insertBefore(wrapper, img);
-      wrapper.appendChild(img);
-      img.setAttribute('draggable', 'true');
       img.classList.add('editor-image-draggable');
-      img.style.maxWidth = '100%';
-      img.style.height = 'auto';
-      img.style.display = 'block';
-      img.style.margin = '0';
-      img.style.borderRadius = '8px';
+      img.addEventListener('error', () => {
+        const parent = img.closest('.image-wrapper');
+        if (parent) parent.remove();
+      }, { once: true });
     });
   }, []);
 
@@ -524,16 +428,14 @@ export default function EditorPage() {
     const widthPct = next.widthPct ?? imageWidthPct;
     const paddingPx = next.paddingPx ?? imagePaddingPx;
 
-    const wrapper = img.closest('.editor-media-block') as HTMLDivElement | null;
+    const wrapper = img.closest('.image-wrapper') as HTMLDivElement | null;
     if (!wrapper) return;
 
-    wrapper.dataset.align = align;
-    wrapper.dataset.width = String(Math.max(20, Math.min(100, widthPct)));
-    wrapper.dataset.padding = String(Math.max(0, Math.min(32, paddingPx)));
-
-    img.style.maxWidth = '100%';
-    img.style.width = '100%';
-    img.style.borderRadius = '8px';
+    applyImageWrapperLayout(img, {
+      align,
+      width: Math.max(20, Math.min(100, widthPct)),
+      padding: Math.max(0, Math.min(32, paddingPx)),
+    });
 
     if (wrap && (align === 'left' || align === 'right')) {
       wrapper.style.float = align;
@@ -602,8 +504,7 @@ export default function EditorPage() {
     }
     if (html) {
       editorRef.current.focus();
-      // eslint-disable-next-line deprecation/deprecation
-      window.document.execCommand('insertHTML', false, html);
+      applyCommand('insertHTML', html);
       prepareEditorImages();
       setIsDirty(true);
       commitEditorHtml(editorRef.current?.innerHTML || '<p><br></p>', { restoreSelection: true });
@@ -621,8 +522,7 @@ export default function EditorPage() {
       return;
     }
     editorRef.current.focus();
-    // eslint-disable-next-line deprecation/deprecation
-    window.document.execCommand('insertHTML', false, wrapMediaHtml(safe, 'Inserted image'));
+    applyCommand('insertHTML', wrapMediaHtml(safe, 'Inserted image'));
     prepareEditorImages();
     setIsDirty(true);
     commitEditorHtml(editorRef.current?.innerHTML || '<p><br></p>', { restoreSelection: true });
@@ -751,7 +651,7 @@ export default function EditorPage() {
       nextHeight = Math.max(48, Math.min(state.maxHeight, nextHeight));
     }
 
-    const wrapper = state.img.closest('.editor-media-block') as HTMLDivElement | null;
+    const wrapper = state.img.closest('.image-wrapper') as HTMLDivElement | null;
     if (wrapper && editorRef.current) {
       const parentWidth = editorRef.current.clientWidth || 1;
       const widthPct = Math.max(20, Math.min(100, Math.round((nextWidth / parentWidth) * 100)));
@@ -878,7 +778,7 @@ export default function EditorPage() {
     const dx = e.key === 'ArrowLeft' ? -step : e.key === 'ArrowRight' ? step : 0;
     const dy = e.key === 'ArrowUp' ? -step : e.key === 'ArrowDown' ? step : 0;
 
-    const wrapper = img.closest('.editor-media-block') as HTMLDivElement | null;
+    const wrapper = img.closest('.image-wrapper') as HTMLDivElement | null;
     if (!wrapper) return;
     wrapper.style.position = 'relative';
     const currentLeft = parsePxStyle(wrapper.style.left, 0);
@@ -902,11 +802,13 @@ export default function EditorPage() {
 
   const applyCommand = useCallback((command: string, value?: string) => {
     if (!editorRef.current) return;
-    saveSelectionRange();
-    editorRef.current.focus();
-    restoreSelectionRange();
-    // eslint-disable-next-line deprecation/deprecation
-    window.document.execCommand(command, false, value);
+    applyExecCommand({
+      container: editorRef.current,
+      command,
+      value,
+      before: saveSelectionRange,
+      after: restoreSelectionRange,
+    });
     prepareEditorImages();
     commitEditorHtml(editorRef.current.innerHTML, { restoreSelection: true });
     recalcEditorMetrics();
@@ -1057,8 +959,7 @@ export default function EditorPage() {
     }
     if (html) {
       editorRef.current.focus();
-      // eslint-disable-next-line deprecation/deprecation
-      window.document.execCommand('insertHTML', false, html);
+      applyCommand('insertHTML', html);
       prepareEditorImages();
       setIsDirty(true);
       commitEditorHtml(editorRef.current?.innerHTML || '<p><br></p>', { restoreSelection: true });
@@ -1069,9 +970,10 @@ export default function EditorPage() {
   const handleApplySuggestion = useCallback((original: string, replacement: string) => {
     if (!editorRef.current) return;
     const beforeText = editorRef.current.innerText || '';
-    const applied = replaceFirstTextOccurrence(editorRef.current, original, replacement);
-    if (applied) {
-      commitEditorHtml(editorRef.current.innerHTML, { restoreSelection: true });
+    const replaced = replaceInBlocks(editorRef.current.innerHTML, original, replacement);
+    if (replaced.applied) {
+      editorRef.current.innerHTML = replaced.html;
+      commitEditorHtml(replaced.html, { restoreSelection: true });
       setIsDirty(true);
       const afterText = editorRef.current.innerText || '';
       setCompareSnapshot({
@@ -1115,11 +1017,12 @@ export default function EditorPage() {
     // Fallback: try replacing the first occurrence from issue context snippet.
     const contextText = (issue.context || '').replace(/^\.\.\.|\.\.\.$/g, '').trim();
     if (contextText) {
-      const applied = replaceFirstTextOccurrence(editorRef.current, contextText, replacement);
-      if (applied) {
+      const replaced = replaceInBlocks(editorRef.current.innerHTML, contextText, replacement);
+      if (replaced.applied) {
+        editorRef.current.innerHTML = replaced.html;
         setIsDirty(true);
         recalcEditorMetrics();
-        commitEditorHtml(editorRef.current.innerHTML, { restoreSelection: true });
+        commitEditorHtml(replaced.html, { restoreSelection: true });
         const key = grammarIssueKey(issue);
         setPendingFixedGrammarIssueKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
         const text = editorRef.current.innerText;
@@ -1139,7 +1042,7 @@ export default function EditorPage() {
   }, [commitEditorHtml, recalcEditorMetrics]);
 
   const handleHumanizeAction = useCallback(async () => {
-    const beforeText = editorRef.current?.innerText || doc?.cleanedText || '';
+    const beforeText = htmlToPlainText(editorHtml || editorRef.current?.innerHTML || doc?.cleanedText || '');
     const result = await humanize();
     if (!result || !editorRef.current) return;
 
@@ -1155,7 +1058,7 @@ export default function EditorPage() {
       before: beforeText,
       after: afterText,
     });
-  }, [doc?.cleanedText, humanize, recalcEditorMetrics]);
+  }, [doc?.cleanedText, editorHtml, humanize, recalcEditorMetrics]);
 
   const getIssueLineNumber = useCallback((issue: GrammarIssue) => {
     if (!Number.isInteger(issue.offset)) return null;
@@ -1559,7 +1462,7 @@ export default function EditorPage() {
                   '[&_hr]:my-8 [&_hr]:border-slate-200 [&_hr]:dark:border-zinc-700',
                   // media
                   '[&_img]:max-w-full [&_img]:rounded-lg [&_img]:my-4',
-                  '[&_.editor-media-block]:my-2 [&_.editor-media-block]:w-[70%] [&_.editor-media-block]:max-w-full [&_.editor-media-block]:relative [&_.editor-media-block]:clear-both',
+                  '[&_.image-wrapper]:my-2 [&_.image-wrapper]:w-[70%] [&_.image-wrapper]:max-w-full [&_.image-wrapper]:relative [&_.image-wrapper]:clear-both',
                   '[&_video]:max-w-full [&_video]:rounded-lg [&_video]:my-4',
                   '[&_audio]:w-full [&_audio]:my-4',
                   '[&_figure]:my-6',
