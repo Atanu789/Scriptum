@@ -124,7 +124,7 @@ export default function UploadPage() {
   ];
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-start overflow-hidden px-4 pb-32 pt-16">
+    <div className="relative flex min-h-screen flex-col items-center justify-start overflow-hidden px-4 pb-24 pt-12 sm:pt-16">
       {/* Ambient glow */}
       <div
         aria-hidden
@@ -137,7 +137,7 @@ export default function UploadPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
-        className="w-full max-w-xl"
+        className="w-full max-w-2xl"
       >
         {/* Back link */}
         <div className="mb-6">
@@ -152,14 +152,14 @@ export default function UploadPage() {
 
         {/* Heading */}
         <div className="mb-8 text-center">
-          <h1 className="text-3xl font-bold text-slate-900 dark:text-white">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
             Upload Content
           </h1>
-          <p className="mt-2 text-sm text-slate-500">
+          <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
             Upload a document, image, audio / video, or scrape any blog or article
           </p>
           <div className={cn(
-            'mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-medium',
+            'mt-3 inline-flex items-center gap-2 rounded-full border px-3 py-1.5 text-xs font-medium',
             uploadBlocked
               ? 'border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-300'
               : 'border-slate-200 bg-white text-slate-600 dark:border-white/10 dark:bg-white/5 dark:text-slate-300',
@@ -171,18 +171,18 @@ export default function UploadPage() {
         </div>
 
         <MeteorCard meteors={6} className="w-full">
-          <div className="space-y-6 p-2">
+          <div className="space-y-6 p-3 sm:p-5">
 
             {/* Mode tabs */}
-            <div className="flex gap-1 rounded-xl bg-slate-100 p-1 dark:bg-white/5">
+            <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-white/10 dark:bg-white/5">
               {tabs.map((t) => (
                 <button
                   key={t.id}
                   onClick={() => { setMode(t.id); setFile(null); setError(null); }}
                   className={cn(
-                    'flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] font-medium transition-all',
+                    'flex min-h-[42px] items-center justify-center gap-1.5 rounded-lg py-2 text-[13px] font-medium transition-all',
                     mode === t.id
-                      ? 'bg-white text-slate-900 shadow-sm dark:bg-white/10 dark:text-white'
+                      ? 'bg-white text-slate-900 shadow-soft dark:bg-white/10 dark:text-white'
                       : 'text-slate-500 hover:text-slate-800 dark:text-slate-400 dark:hover:text-white',
                   )}
                 >
@@ -206,9 +206,9 @@ export default function UploadPage() {
                   file={file}
                   disabled={isUploading}
                 />
-                <div className="flex flex-wrap items-center justify-center gap-4">
+                <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
                   {DOCUMENT_PILLS.map((f) => (
-                    <div key={f.label} className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <div key={f.label} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
                       <f.icon className={cn('h-3.5 w-3.5', f.color)} />
                       {f.label}
                     </div>
@@ -228,15 +228,15 @@ export default function UploadPage() {
                   file={file}
                   disabled={isUploading}
                 />
-                <div className="flex flex-wrap items-center justify-center gap-4">
+                <div className="flex flex-wrap items-center justify-center gap-3 sm:gap-4">
                   {MEDIA_PILLS.map((f) => (
-                    <div key={f.label} className="flex items-center gap-1.5 text-xs text-slate-400">
+                    <div key={f.label} className="flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs text-slate-500 dark:border-white/10 dark:bg-white/5 dark:text-slate-300">
                       <f.icon className={cn('h-3.5 w-3.5', f.color)} />
                       {f.label}
                     </div>
                   ))}
                 </div>
-                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 dark:border-indigo-500/15 dark:bg-indigo-950/15">
+                <div className="rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2.5 dark:border-indigo-500/20 dark:bg-indigo-950/25">
                   <p className="text-[11px] text-indigo-700 dark:text-indigo-300 leading-relaxed">
                     <span className="font-semibold">Tip:</span> Images and videos are stored as media attachments. You can embed them anywhere in the document editor.
                   </p>
@@ -292,7 +292,7 @@ export default function UploadPage() {
                   ))}
                 </div>
 
-                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/15 dark:bg-amber-950/15">
+                <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 dark:border-amber-500/20 dark:bg-amber-950/25">
                   <p className="text-[11px] text-amber-700 dark:text-amber-400 leading-relaxed">
                     <span className="font-semibold">Note:</span> Pages behind a login, paywall, or that require JavaScript may not extract correctly.
                   </p>
@@ -347,12 +347,12 @@ export default function UploadPage() {
             )}
 
             {uploadBlocked && (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/20 dark:bg-amber-950/20 dark:text-amber-300">
+              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-700 dark:border-amber-500/20 dark:bg-amber-950/25 dark:text-amber-300">
                 Upload limit reached for your current plan.
                 <button
                   type="button"
                   onClick={() => router.push('/pricing')}
-                  className="ml-2 inline-flex items-center gap-1 rounded-md bg-amber-500 px-2 py-1 text-xs font-semibold text-white hover:bg-amber-400"
+                  className="ml-2 inline-flex min-h-[32px] items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-400"
                 >
                   Go Premium <ArrowRight className="h-3.5 w-3.5" />
                 </button>

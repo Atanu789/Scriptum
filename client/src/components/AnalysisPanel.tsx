@@ -101,7 +101,7 @@ function ProgressScreen({ progress, onCancel, isDark }: { progress: AnalysisProg
     'Running Gemini editorial analysis', 'Computing readability', 'Detecting long sentences', 'Finalising',
   ];
   return (
-    <div className={cn('rounded-2xl border p-6 flex flex-col items-center gap-6', isDark ? 'bg-[#0f0f1a] border-indigo-900/40' : 'bg-white border-indigo-100')}>
+     <div className="card-premium p-8 flex flex-col items-center gap-8">
       <div className="relative h-[120px] w-[120px]">
         <svg className="w-full h-full -rotate-90" viewBox="0 0 120 120">
           <circle cx="60" cy="60" r={r} fill="none" strokeWidth="8" stroke={isDark ? '#1e1b4b' : '#e0e7ff'} />

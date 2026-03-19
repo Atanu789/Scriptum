@@ -235,7 +235,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
           <div className="text-right">
             <p
               className={cn(
-                'max-w-[200px] truncate text-xs font-medium',
+                'max-w-[140px] truncate text-xs font-medium sm:max-w-[220px]',
                 isDark ? 'text-white/40' : 'text-gray-400',
               )}
             >
@@ -350,7 +350,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
         {/* ── Controls bar ──────────────────────────────────────────────── */}
         <div
           className={cn(
-            'relative z-30 flex shrink-0 items-center justify-between gap-2 border-t px-4 py-3',
+            'relative z-30 flex shrink-0 items-center justify-between gap-2 border-t px-2 py-2 sm:px-4 sm:py-3',
             isDark
               ? 'border-white/[0.07] bg-[#111113]/90 backdrop-blur-xl'
               : 'border-gray-200/80 bg-white/90 backdrop-blur-xl',
@@ -362,7 +362,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
             <Link
               href={`/editor/${documentId}`}
               className={cn(
-                'flex shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all',
+                'flex min-h-[40px] shrink-0 items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-medium transition-all',
                 isDark
                   ? 'text-white/50 hover:bg-white/8 hover:text-white'
                   : 'text-gray-400 hover:bg-gray-100 hover:text-gray-800',
@@ -374,11 +374,11 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
           </div>
 
           {/* Center: reset · play/pause · voice indicator */}
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-2 sm:gap-3">
             <button
               onClick={reset}
               className={cn(
-                'rounded-lg p-2 transition-all',
+                'min-h-[40px] min-w-[40px] rounded-lg p-2 transition-all',
                 isDark
                   ? 'text-white/40 hover:bg-white/8 hover:text-white'
                   : 'text-gray-400 hover:bg-gray-100 hover:text-gray-800',
@@ -391,7 +391,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
             <button
               onClick={toggle}
               className={cn(
-                'flex h-12 w-12 items-center justify-center rounded-full shadow-lg transition-all active:scale-95',
+                'flex h-11 w-11 sm:h-12 sm:w-12 items-center justify-center rounded-full shadow-lg transition-all active:scale-95',
                 isPlaying
                   ? isDark
                     ? 'bg-white text-gray-900 hover:bg-white/90'
@@ -411,7 +411,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
             <button
               onClick={toggleSyncMode}
               className={cn(
-                'flex items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-all',
+                'flex min-h-[40px] items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-all',
                 isSyncMode
                   ? isDark
                     ? 'bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-500/25'
@@ -438,13 +438,13 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
           </div>
 
           {/* Right: speed · font · mirror · theme */}
-          <div className="flex shrink-0 items-center gap-3">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
             {/* Speed */}
             <div className="flex items-center gap-1">
               <Gauge className={cn('h-3.5 w-3.5 shrink-0', isDark ? 'text-white/25' : 'text-gray-300')} />
               <button
                 onClick={() => setSpeed(speed - 1)}
-                className={cn('rounded p-1', isDark ? 'text-white/40 hover:bg-white/8' : 'text-gray-400 hover:bg-gray-100')}
+                className={cn('min-h-[30px] min-w-[30px] rounded p-1', isDark ? 'text-white/40 hover:bg-white/8' : 'text-gray-400 hover:bg-gray-100')}
               >
                 <Minus className="h-3 w-3" />
               </button>
@@ -453,7 +453,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
               </span>
               <button
                 onClick={() => setSpeed(speed + 1)}
-                className={cn('rounded p-1', isDark ? 'text-white/40 hover:bg-white/8' : 'text-gray-400 hover:bg-gray-100')}
+                className={cn('min-h-[30px] min-w-[30px] rounded p-1', isDark ? 'text-white/40 hover:bg-white/8' : 'text-gray-400 hover:bg-gray-100')}
               >
                 <Plus className="h-3 w-3" />
               </button>
@@ -464,7 +464,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
               <span className={cn('select-none text-xs font-medium', isDark ? 'text-white/25' : 'text-gray-300')}>Aa</span>
               <button
                 onClick={() => setFontSize(fontSize - 2)}
-                className={cn('rounded p-1', isDark ? 'text-white/40 hover:bg-white/8' : 'text-gray-400 hover:bg-gray-100')}
+                className={cn('min-h-[30px] min-w-[30px] rounded p-1', isDark ? 'text-white/40 hover:bg-white/8' : 'text-gray-400 hover:bg-gray-100')}
               >
                 <Minus className="h-3 w-3" />
               </button>
@@ -473,7 +473,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
               </span>
               <button
                 onClick={() => setFontSize(fontSize + 2)}
-                className={cn('rounded p-1', isDark ? 'text-white/40 hover:bg-white/8' : 'text-gray-400 hover:bg-gray-100')}
+                className={cn('min-h-[30px] min-w-[30px] rounded p-1', isDark ? 'text-white/40 hover:bg-white/8' : 'text-gray-400 hover:bg-gray-100')}
               >
                 <Plus className="h-3 w-3" />
               </button>
@@ -483,7 +483,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
             <button
               onClick={toggleMirror}
               className={cn(
-                'rounded-lg p-2 transition-all',
+                'min-h-[40px] min-w-[40px] rounded-lg p-2 transition-all',
                 mirror
                   ? isDark ? 'bg-yellow-500/15 text-yellow-400' : 'bg-amber-100 text-amber-600'
                   : isDark ? 'text-white/40 hover:bg-white/8 hover:text-white' : 'text-gray-400 hover:bg-gray-100',
@@ -497,7 +497,7 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
             <button
               onClick={() => setTheme(isDark ? 'light' : 'dark')}
               className={cn(
-                'rounded-lg p-2 transition-all',
+                'min-h-[40px] min-w-[40px] rounded-lg p-2 transition-all',
                 isDark
                   ? 'text-white/40 hover:bg-white/8 hover:text-white'
                   : 'text-gray-400 hover:bg-gray-100 hover:text-gray-800',

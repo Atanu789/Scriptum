@@ -56,14 +56,14 @@ export function EditorToolbar({
   const markButton = (active: boolean) =>
     `rounded-lg border px-2 py-1 text-xs transition ${
       active
-        ? 'border-blue-500 bg-blue-50 text-blue-700 dark:border-blue-400 dark:bg-blue-950/40 dark:text-blue-200'
-        : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800'
+         ? 'border-indigo-500 bg-indigo-50 text-indigo-700 dark:border-indigo-400 dark:bg-indigo-950/30 dark:text-indigo-200'
+         : 'border-slate-200 bg-white text-slate-600 hover:bg-slate-100 active:bg-slate-200 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 dark:active:bg-slate-700'
     }`;
 
   return (
-    <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200/80 bg-white/90 px-3 py-2 shadow-sm dark:border-slate-700 dark:bg-slate-900/85">
+     <div className="flex flex-wrap items-center gap-2 rounded-xl border border-slate-200 bg-white/95 px-4 py-2.5 shadow-soft dark:border-slate-700 dark:bg-slate-900/90 backdrop-blur-sm">
       <select
-        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+         className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium dark:border-slate-700 dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
         value={fontFamily}
         onChange={(e) => {
           onFontFamilyChange(e.target.value);
@@ -78,7 +78,7 @@ export function EditorToolbar({
       </select>
 
       <select
-        className="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs dark:border-slate-700 dark:bg-slate-900"
+         className="rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-medium dark:border-slate-700 dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-600 transition-colors focus:outline-none focus:ring-2 focus:ring-indigo-500/20"
         value={fontSize}
         onChange={(e) => {
           onFontSizeChange(e.target.value);

@@ -152,20 +152,20 @@ export default function TeleprompterPage() {
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#07070f]">
       {/* Back nav */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.04] bg-[#07070f] px-4 py-2">
+      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] bg-[#07070f]/95 px-3 py-2.5 backdrop-blur-sm sm:px-4">
         <Link
           href="/dashboard"
-          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs text-white/25 transition-colors hover:bg-white/[0.04] hover:text-white/50"
+          className="inline-flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-white/35 transition-colors hover:bg-white/[0.06] hover:text-white/70"
         >
           <ChevronLeft suppressHydrationWarning className="h-3 w-3" /> Dashboard
         </Link>
 
-        <div className="ml-auto flex items-center gap-2">
-          <label className="text-[11px] text-white/40">Import document</label>
+        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
+          <label className="hidden text-[11px] text-white/40 sm:inline">Import document</label>
           <select
             value={selectedDocId}
             onChange={(e) => setSelectedDocId(e.target.value)}
-            className="max-w-[220px] rounded-md border border-white/10 bg-white/[0.04] px-2 py-1 text-xs text-white/80 focus:border-indigo-500/50 focus:outline-none"
+            className="min-h-[36px] w-full sm:w-[240px] rounded-md border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs text-white/80 focus:border-indigo-500/60 focus:outline-none"
           >
             {availableDocs.map((doc) => (
               <option key={doc._id} value={doc._id} className="bg-[#0f1020] text-white">
@@ -180,7 +180,7 @@ export default function TeleprompterPage() {
               }
             }}
             disabled={!selectedDocId || selectedDocId === params.documentId}
-            className="rounded-md border border-indigo-500/30 bg-indigo-500/20 px-2.5 py-1 text-xs font-semibold text-indigo-300 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
+            className="min-h-[36px] rounded-md border border-indigo-500/30 bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-300 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Import
           </button>
