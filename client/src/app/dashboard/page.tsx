@@ -424,7 +424,7 @@ export default function DashboardPage() {
   return (
     <div className="min-h-screen">
 
-      <main className="relative mx-auto max-w-5xl px-4 pt-12 pb-16 sm:px-6">
+      <main className="relative mx-auto max-w-7xl px-4 pt-10 pb-16 sm:px-6 lg:px-8 sm:pt-12">
 
         {/* Top indigo glow */}
         <div
@@ -442,7 +442,7 @@ export default function DashboardPage() {
               </span>
               <span className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400">Workspace</span>
             </div>
-            <h1 className="text-[28px] font-extrabold tracking-tight text-slate-900 dark:text-white leading-none">
+            <h1 className="text-2xl sm:text-3xl font-extrabold tracking-tight text-slate-900 dark:text-white leading-none break-words">
               {isLoading ? 'Loading…' : `Hello, ${firstName}`}
             </h1>
             <p className="mt-1.5 text-sm text-slate-500 dark:text-white/35">
@@ -493,7 +493,7 @@ export default function DashboardPage() {
             <Link
               href={uploadBlocked ? '/pricing' : '/upload'}
               className={cn(
-                'group inline-flex min-h-[42px] items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.97]',
+                'group inline-flex min-h-[42px] w-full sm:w-auto items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all active:scale-[0.97]',
                 uploadBlocked
                   ? 'bg-amber-500 text-white shadow-lg shadow-amber-500/25 hover:bg-amber-400 hover:shadow-lg hover:shadow-amber-500/30'
                   : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-500 hover:shadow-lg hover:shadow-indigo-500/30 hover:-translate-y-0.5',
@@ -518,7 +518,7 @@ export default function DashboardPage() {
         </div>
 
         {/* ── Stats row ───────────────────────────────────────────────── */}
-        <div className="mb-5 grid grid-cols-2 gap-4 sm:gap-6 lg:gap-8 sm:grid-cols-4">
+        <div className="mb-5 grid grid-cols-1 gap-4 sm:grid-cols-2 sm:gap-6 lg:grid-cols-4 lg:gap-8">
           {isLoading
             ? Array.from({ length: 4 }).map((_, i) => <StatSkeleton key={i} />)
             : stats.map((s) => (
@@ -647,7 +647,7 @@ export default function DashboardPage() {
               {!query && (
                 <Link
                   href="/upload"
-                  className="inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-500 transition-all hover:-translate-y-0.5"
+                  className="inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white shadow-lg shadow-indigo-500/25 hover:bg-indigo-500 transition-all hover:-translate-y-0.5"
                 >
                   <Plus className="h-4 w-4" /> Upload your first document
                 </Link>
@@ -698,7 +698,7 @@ export default function DashboardPage() {
               <span className="text-xs font-semibold text-slate-500 dark:text-white/40">{mediaDocs.length} item{mediaDocs.length !== 1 ? 's' : ''}</span>
             </div>
 
-            <div className="grid grid-cols-2 gap-5 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5">
               {mediaDocs.map((doc) => (
                 <MediaCard
                   key={doc._id}

@@ -55,7 +55,8 @@ export default function LoginPage() {
 
   return (
     <div className="flex min-h-screen items-center justify-center px-4 py-12">
-      <div className="flex w-full max-w-4xl gap-8 lg:gap-14">
+      <div className="max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+      <div className="flex w-full max-w-4xl mx-auto flex-col gap-8 lg:flex-row lg:gap-14">
 
         {/* â”€â”€ Left branding â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
         <motion.div
@@ -72,7 +73,7 @@ export default function LoginPage() {
           </div>
 
           <div className="space-y-3">
-            <h1 className="text-4xl font-bold leading-tight text-slate-900 dark:text-white">
+            <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold leading-tight text-slate-900 dark:text-white break-words">
               Your AI-powered<br />
               <span className="bg-gradient-to-r from-indigo-500 to-violet-500 bg-clip-text text-transparent">
                 content studio
@@ -198,6 +199,7 @@ export default function LoginPage() {
             </div>
           </MeteorCard>
         </motion.div>
+      </div>
       </div>
     </div>
   );
