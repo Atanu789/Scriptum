@@ -347,6 +347,16 @@ export default function AdminPage() {
     { key: 'settings', label: 'Settings', icon: Settings },
   ];
 
+  const switchSection = useCallback((nextSection: SectionKey) => {
+    setSection(nextSection);
+    if (nextSection === 'users') setUsersPage(1);
+    if (nextSection === 'logs') setLogsPage(1);
+    if (nextSection !== 'users' && nextSection !== 'logs') {
+      setSearchInput('');
+      setSearchTerm('');
+    }
+  }, []);
+
   if (!token) {
     return (
       <div className="mx-auto flex min-h-screen max-w-md items-center px-4 py-12">
@@ -407,15 +417,7 @@ export default function AdminPage() {
               return (
                 <button
                   key={item.key}
-                  onClick={() => {
-                    setSection(item.key);
-                    if (item.key === 'users') setUsersPage(1);
-                    if (item.key === 'logs') setLogsPage(1);
-                    if (item.key !== 'users' && item.key !== 'logs') {
-                      setSearchInput('');
-                      setSearchTerm('');
-                    }
-                  }}
+                  onClick={() => switchSection(item.key)}
                   className={`flex w-full items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition ${
                     active
                       ? 'bg-indigo-600 text-white shadow'
@@ -431,6 +433,24 @@ export default function AdminPage() {
         </aside>
 
         <main className="min-w-0 flex-1">
+          <div className="mb-3 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm backdrop-blur md:hidden dark:border-white/10 dark:bg-[#0b0b18]/80">
+            <label htmlFor="admin-mobile-section" className="mb-1 block text-xs font-semibold uppercase tracking-wide text-slate-500">
+              Section
+            </label>
+            <select
+              id="admin-mobile-section"
+              value={section}
+              onChange={(e) => switchSection(e.target.value as SectionKey)}
+              className="h-10 w-full rounded-lg border border-slate-300 bg-white px-3 text-sm dark:border-white/20 dark:bg-black/20"
+            >
+              {sidebarItems.map((item) => (
+                <option key={item.key} value={item.key}>
+                  {item.label}
+                </option>
+              ))}
+            </select>
+          </div>
+
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-white/90 p-3 shadow-sm backdrop-blur dark:border-white/10 dark:bg-[#0b0b18]/80">
             <div className="flex min-w-[250px] flex-1 items-center gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2 dark:border-white/10 dark:bg-white/5">
               <Search className="h-4 w-4 text-slate-400" />
