@@ -16,6 +16,7 @@ import userRoutes from './routes/user';
 import deepgramRoutes from './routes/deepgram';
 import paymentRoutes from './routes/payment';
 import adminRoutes from './routes/admin';
+import reportBugRoutes from './routes/reportBug';
 
 const app: Application = express();
 
@@ -93,6 +94,7 @@ app.use('/api/user', userRoutes);
 app.use('/api/deepgram', deepgramRoutes);
 app.use('/api/payment', paymentRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/report-bug', reportBugRoutes);
 
 // ─── 404 Handler ─────────────────────────────────────────────────────────────
 app.use((_req: Request, res: Response) => {

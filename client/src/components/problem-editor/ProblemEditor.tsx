@@ -71,8 +71,13 @@ export function ProblemEditor() {
         types: ['heading', 'paragraph'],
       }),
       Link.configure({
-        openOnClick: false,
+        openOnClick: true,
         autolink: true,
+        HTMLAttributes: {
+          class: 'text-blue-500 underline',
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        },
       }),
       Image.configure({
         allowBase64: true,

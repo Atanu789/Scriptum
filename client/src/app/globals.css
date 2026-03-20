@@ -455,6 +455,15 @@
   margin: 0.65rem 0;
 }
 
+.problem-editor-content a {
+  color: rgb(37 99 235);
+  text-decoration: underline;
+}
+
+.dark .problem-editor-content a {
+  color: rgb(96 165 250);
+}
+
 .problem-editor-content ul,
 .problem-editor-content ol {
   margin: 0.65rem 0;

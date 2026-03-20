@@ -157,6 +157,11 @@ export default function LoginPage() {
                       {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
                   </div>
+                  <div className="mt-2 text-right">
+                    <Link href="/forgot-password" className="text-xs font-medium text-indigo-600 hover:text-indigo-500 dark:text-indigo-400">
+                      Forgot Password?
+                    </Link>
+                  </div>
                 </div>
 
                 <ShimmerButton type="submit" disabled={isLoading} className="mt-2">

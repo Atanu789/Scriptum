@@ -78,6 +78,18 @@ export default function Navbar() {
 
         {/* User area */}
         <div className="hidden items-center gap-1.5 md:flex">
+          <a
+            href="mailto:atanugm8@gmail.com,gdnvision360@gmail.com?subject=Contact%20Sales"
+            className="rounded-lg border border-slate-200/80 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600 dark:border-white/[0.08] dark:text-white/70 dark:hover:border-indigo-500/50 dark:hover:text-indigo-300"
+          >
+            Contact Sales
+          </a>
+          <a
+            href="mailto:atanugm8@gmail.com,gdnvision360@gmail.com?subject=Contact%20Us"
+            className="rounded-lg border border-slate-200/80 px-3 py-1.5 text-xs font-semibold text-slate-600 transition hover:border-indigo-300 hover:text-indigo-600 dark:border-white/[0.08] dark:text-white/70 dark:hover:border-indigo-500/50 dark:hover:text-indigo-300"
+          >
+            Contact Us
+          </a>
           {user && (
             <div className="flex items-center gap-2 rounded-lg border border-slate-200/70 bg-slate-50/70 px-2.5 py-1 dark:border-slate-700/70 dark:bg-slate-900/60">
               <UserAvatar name={user.name} />
@@ -119,6 +131,18 @@ export default function Navbar() {
       {mobileOpen && (
         <div className="border-t border-slate-200/70 bg-white/95 px-4 pb-4 dark:border-slate-800/70 dark:bg-slate-950/95 md:hidden">
           <nav className="mt-3 space-y-1">
+            <a
+              href="mailto:atanugm8@gmail.com,gdnvision360@gmail.com?subject=Contact%20Sales"
+              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Contact Sales
+            </a>
+            <a
+              href="mailto:atanugm8@gmail.com,gdnvision360@gmail.com?subject=Contact%20Us"
+              className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50 dark:text-slate-300 dark:hover:bg-slate-800"
+            >
+              Contact Us
+            </a>
             {NAV_ITEMS.map((item) => (
               <Link
                 key={item.href}

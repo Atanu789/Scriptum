@@ -459,12 +459,20 @@ export default function PricingPage() {
                     Current plan
                   </div>
                 ) : isCustom ? (
-                  <Link
-                    href="mailto:sales@ultimoversio.com?subject=Custom%20Plan%20Inquiry"
-                    className="rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.08] dark:text-white/70 dark:hover:bg-white/[0.05]"
-                  >
-                    Contact sales
-                  </Link>
+                  <div className="space-y-2">
+                    <a
+                      href="mailto:atanugm8@gmail.com,gdnvision360@gmail.com?subject=Custom%20Plan%20Inquiry"
+                      className="block rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.08] dark:text-white/70 dark:hover:bg-white/[0.05]"
+                    >
+                      Contact sales
+                    </a>
+                    <a
+                      href="mailto:atanugm8@gmail.com,gdnvision360@gmail.com?subject=Contact%20Us"
+                      className="block rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.08] dark:text-white/70 dark:hover:bg-white/[0.05]"
+                    >
+                      Contact us
+                    </a>
+                  </div>
                 ) : isPro ? (
                   <button
                     onClick={handleUpgrade}

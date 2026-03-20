@@ -54,6 +54,8 @@ export function LivePreview({ html }: Props) {
       }
     });
 
+    output = output.replace(/<a\s+/g, '<a target="_blank" rel="noopener noreferrer" class="text-blue-500 underline" ');
+
     return output;
   }, [html]);
 

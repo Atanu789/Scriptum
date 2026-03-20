@@ -89,6 +89,7 @@ export interface AdminOverview {
   totalUsers: number;
   activeUsersLast7Days: number;
   proUsers: number;
+  activeSubscriptions: number;
   freeUsers: number;
   totalDocuments: number;
   totalPayments: number;

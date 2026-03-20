@@ -307,6 +307,12 @@ export default function AdminPage() {
         trend: metrics.trends.proSharePct,
       },
       {
+        label: 'Active Subscriptions',
+        value: formatCompact(metrics.activeSubscriptions),
+        icon: Crown,
+        trend: metrics.trends.proSharePct,
+      },
+      {
         label: 'Total Revenue',
         value: formatCurrency(metrics.totalRevenueINR),
         icon: DollarSign,

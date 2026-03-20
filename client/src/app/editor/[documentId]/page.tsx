@@ -613,6 +613,16 @@ export default function EditorPage() {
 
   const handleEditorClick = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const t = e.target as HTMLElement;
+    if (t && t.tagName === 'A') {
+      const href = (t as HTMLAnchorElement).getAttribute('href') || '';
+      const shouldOpen = e.metaKey || e.ctrlKey;
+      if (shouldOpen && href) {
+        e.preventDefault();
+        window.open(href, '_blank', 'noopener,noreferrer');
+        return;
+      }
+    }
+
     if (t && t.tagName === 'IMG') {
       saveSelectionRange();
       const img = t as HTMLImageElement;
@@ -1451,7 +1461,7 @@ export default function EditorPage() {
                   '[&_strong]:font-bold [&_b]:font-bold',
                   '[&_em]:italic [&_i]:italic',
                   '[&_u]:underline [&_u]:underline-offset-2',
-                  '[&_a]:text-indigo-600 [&_a]:dark:text-indigo-400 [&_a]:underline [&_a]:underline-offset-2',
+                  '[&_a]:text-blue-600 [&_a]:dark:text-blue-400 [&_a]:underline [&_a]:underline-offset-2',
                   // blockquote
                   '[&_blockquote]:border-l-4 [&_blockquote]:border-indigo-300 [&_blockquote]:dark:border-indigo-600 [&_blockquote]:pl-4 [&_blockquote]:my-5 [&_blockquote]:italic [&_blockquote]:text-slate-500 [&_blockquote]:dark:text-zinc-400',
                   // code

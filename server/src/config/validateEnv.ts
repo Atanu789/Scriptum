@@ -20,6 +20,11 @@ const OPTIONAL_VARS = [
   { key: 'RAZORPAY_KEY_ID',         warn: 'Payments will be unavailable — set Razorpay credentials' },
   { key: 'RAZORPAY_KEY_SECRET',     warn: 'Payment verification will fail — set RAZORPAY_KEY_SECRET' },
   { key: 'RAZORPAY_WEBHOOK_SECRET', warn: 'Webhook signature verification will fail — set RAZORPAY_WEBHOOK_SECRET' },
+  { key: 'SMTP_HOST',               warn: 'Email sending will be unavailable (forgot password, payment receipts, bug reports)' },
+  { key: 'SMTP_USER',               warn: 'Email sending will be unavailable (forgot password, payment receipts, bug reports)' },
+  { key: 'SMTP_PASS',               warn: 'Email sending will be unavailable (forgot password, payment receipts, bug reports)' },
+  { key: 'MAIL_FROM',               warn: 'Outbound emails will not have a configured from address' },
+  { key: 'CLIENT_APP_URL',          warn: 'Password reset links will default to CLIENT_URL / localhost' },
 ] as const;
 
 export function validateEnv(): void {

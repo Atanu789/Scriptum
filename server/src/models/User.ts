@@ -8,6 +8,8 @@ export interface IUser extends Document {
   email: string;
   password: string;
   name: string;
+  resetPasswordToken: string | null;
+  resetPasswordExpiresAt: Date | null;
 
   // ── Subscription ───────────────────────────────────────────────────────
   plan: Plan;
@@ -56,6 +58,8 @@ const userSchema = new Schema<IUser>(
       trim: true,
       maxlength: [100, 'Name cannot exceed 100 characters'],
     },
+    resetPasswordToken:   { type: String, default: null, select: false },
+    resetPasswordExpiresAt:{ type: Date, default: null, select: false },
 
     // ── Subscription ─────────────────────────────────────────────────────
     plan:                { type: String, enum: ['free', 'pro'], default: 'free' },

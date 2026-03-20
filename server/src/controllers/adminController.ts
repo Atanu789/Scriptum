@@ -81,6 +81,7 @@ async function buildAdminMetrics() {
     totalUsers,
     proUsers,
     freeUsers,
+    activeSubscriptions,
     activeUsersLast7Days,
     totalDocuments,
     totalRevenueAgg,
@@ -94,6 +95,7 @@ async function buildAdminMetrics() {
     User.countDocuments(),
     User.countDocuments({ plan: 'pro' }),
     User.countDocuments({ plan: 'free' }),
+    User.countDocuments({ plan: 'pro', planExpiryDate: { $gt: now } }),
     User.countDocuments({ updatedAt: { $gte: sevenDaysAgo } }),
     DocumentModel.countDocuments(),
     Payment.aggregate<{ total: number }>([
@@ -133,6 +135,7 @@ async function buildAdminMetrics() {
     totalUsers,
     activeUsersLast7Days,
     proUsers,
+    activeSubscriptions,
     freeUsers,
     totalDocuments,
     totalRevenueINR,
@@ -304,7 +307,7 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
 export const getOverview = async (_req: Request, res: Response): Promise<void> => {
   try {
     const metrics = await buildAdminMetrics();
-    const totalPayments = await Payment.countDocuments();
+    const totalPayments = await Payment.countDocuments({ status: 'captured' });
 
     res.json({
       success: true,

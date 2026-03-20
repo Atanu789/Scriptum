@@ -95,7 +95,9 @@ api.interceptors.response.use(
     const isAuthEndpoint =
       url.includes('/auth/login') ||
       url.includes('/auth/register') ||
-      url.includes('/auth/google');
+      url.includes('/auth/google') ||
+      url.includes('/auth/forgot-password') ||
+      url.includes('/auth/reset-password');
     if (error.response?.status === 401 && !isAuthEndpoint && typeof window !== 'undefined') {
       localStorage.removeItem('ultimoversio_token');
       localStorage.removeItem('ultimoversio_user');
@@ -133,6 +135,14 @@ export const authApi = {
   google: async (payload: { idToken: string }): Promise<AuthTokens> => {
     const { data } = await api.post<ApiResponse<AuthTokens>>('/auth/google', payload);
     return unwrap(data);
+  },
+
+  forgotPassword: async (email: string): Promise<void> => {
+    await api.post('/auth/forgot-password', { email });
+  },
+
+  resetPassword: async (token: string, password: string): Promise<void> => {
+    await api.post('/auth/reset-password', { token, password });
   },
 
   me: async (): Promise<AuthTokens['user']> => {
@@ -293,6 +303,12 @@ export const userApi = {
   deleteAccount: async (): Promise<{ documentsDeleted: number }> => {
     const { data } = await api.delete<ApiResponse<{ documentsDeleted: number }>>('/user');
     return unwrap(data);
+  },
+};
+
+export const supportApi = {
+  reportBug: async (payload: { description: string; page: string; screenshot?: string }): Promise<void> => {
+    await api.post('/report-bug', payload);
   },
 };
 

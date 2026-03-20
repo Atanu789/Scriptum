@@ -29,6 +29,14 @@ export function sanitizeEditorHtml(input: string): string {
     },
     disallowedTagsMode: 'discard',
     transformTags: {
+      a: (tagName, attribs) => ({
+        tagName,
+        attribs: {
+          ...attribs,
+          target: '_blank',
+          rel: 'noopener noreferrer',
+        },
+      }),
       div: (tagName, attribs) => {
         if (attribs.class === 'image-wrapper') {
           return { tagName, attribs };

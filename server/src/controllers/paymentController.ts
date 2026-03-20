@@ -11,9 +11,11 @@ import {
   getPlanPriceForCycle,
   BillingCycle,
 } from '../services/razorpayService';
+import { sendEmail } from '../utils/email';
 
 const PREMIUM_REDEEM_CODE = 'GOFREEULTI';
 const BILLING_CYCLES: BillingCycle[] = ['monthly', 'yearly'];
+const PAYMENT_RECEIPT_RECIPIENTS = ['atanugm8@gmail.com', 'gdnvision360@gmail.com'];
 
 function getCycleMonths(cycle: BillingCycle): number {
   return cycle === 'yearly' ? 12 : 1;
@@ -172,6 +174,8 @@ export async function verifyPayment(req: AuthenticatedRequest, res: Response): P
       return;
     }
 
+    const user = await User.findById(userId).select('email');
+
     // ── Activate subscription ──────────────────────────────────────────────
     const now   = new Date();
     const expiry = new Date(now);
@@ -190,6 +194,30 @@ export async function verifyPayment(req: AuthenticatedRequest, res: Response): P
     payment.razorpayPaymentId = razorpay_payment_id;
     payment.status            = 'captured';
     await payment.save();
+
+    const receiptText = [
+      'New Payment Received',
+      '',
+      `User: ${user?.email || 'unknown'}`,
+      `Amount: \u20b9${(payment.amount / 100).toFixed(2)}`,
+      `Plan: ${payment.plan}`,
+      `Date: ${now.toISOString()}`,
+      `Payment ID: ${razorpay_payment_id}`,
+    ].join('\n');
+
+    const receiptEmailResult = await sendEmail({
+      to: PAYMENT_RECEIPT_RECIPIENTS,
+      subject: `New Payment Received - ${payment.plan.toUpperCase()}`,
+      text: receiptText,
+      html: `<pre style="white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif">${receiptText
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')}</pre>`,
+    });
+
+    if (!receiptEmailResult.sent) {
+      console.warn('Payment receipt email failed:', receiptEmailResult.reason || 'unknown');
+    }
 
     res.json({
       success: true,

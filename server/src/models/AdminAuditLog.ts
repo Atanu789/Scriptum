@@ -51,9 +51,6 @@ const adminAuditLogSchema = new Schema<IAdminAuditLog>(
   { timestamps: false }
 );
 
-// TTL index: auto-delete logs after 90 days
-adminAuditLogSchema.index({ timestamp: 1 }, { expireAfterSeconds: 7776000 });
-
 const AdminAuditLog: Model<IAdminAuditLog> = mongoose.model<IAdminAuditLog>('AdminAuditLog', adminAuditLogSchema);
 
 export default AdminAuditLog;
