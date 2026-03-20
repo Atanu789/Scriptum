@@ -20,9 +20,7 @@ import reportBugRoutes from './routes/reportBug';
 
 const app: Application = express();
 
-app.use(cors());
-app.options('*', cors());
-
+// ─── Allowed Origins Setup ───────────────────────────────────────────────────
 const configuredOrigins = (process.env.CLIENT_URL || '')
   .split(',')
   .map(v => v.trim())
@@ -35,30 +33,38 @@ const defaultOrigins = [
   'http://localhost:3000',
 ];
 
-// ─── Security & Parsing ──────────────────────────────────────────────────────
-app.use(
-  helmet({
-    crossOriginResourcePolicy: { policy: 'cross-origin' },
-  })
-);
+const allowedOrigins = [
+  'https://ultimoversio.com',
+  'https://www.ultimoversio.com',
+  'https://ultimoversio.vercel.app',
+];
 
-const allowedOrigins = [...new Set([...defaultOrigins, ...configuredOrigins])];
-
+// ─── CORS (FINAL FIX) ────────────────────────────────────────────────────────
 app.use(
   cors({
     origin: (origin, callback) => {
+      console.log("🌍 Incoming origin:", origin);
+
       if (!origin) return callback(null, true);
 
       if (allowedOrigins.includes(origin)) {
-        return callback(null, true);
+        console.log("✅ Allowed:", origin);
+        return callback(null, origin);
       }
 
-      console.log('❌ CORS blocked:', origin);
+      console.log("❌ Blocked:", origin);
       return callback(new Error(`CORS blocked: ${origin}`));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
+  })
+);
+
+// ─── Security & Parsing ──────────────────────────────────────────────────────
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
 
@@ -70,10 +76,10 @@ if (process.env.NODE_ENV !== 'test') {
   app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 }
 
-// ─── Static file serving for uploads ─────────────────────────────────────────
+// ─── Static file serving ─────────────────────────────────────────────────────
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
-// ─── Health check ─────────────────────────────────────────────────────────────
+// ─── Health check ────────────────────────────────────────────────────────────
 app.get('/health', (_req: Request, res: Response) => {
   res.json({
     success: true,
@@ -83,7 +89,7 @@ app.get('/health', (_req: Request, res: Response) => {
   });
 });
 
-// ─── API Routes ───────────────────────────────────────────────────────────────
+// ─── API Routes ──────────────────────────────────────────────────────────────
 app.use('/api/auth', authRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/document', documentRoutes);
@@ -106,30 +112,35 @@ app.use((_req: Request, res: Response) => {
 });
 
 // ─── Global Error Handler ─────────────────────────────────────────────────────
-app.use((err: Error & { status?: number; code?: string }, _req: Request, res: Response, _next: NextFunction) => {
-  console.error('Unhandled error:', err);
+app.use(
+  (err: Error & { status?: number; code?: string }, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('Unhandled error:', err);
 
-  // CORS errors
-  if (err.message?.includes('not allowed by CORS')) {
-    return res.status(403).json({ success: false, error: 'CORS: Origin not allowed' });
-  }
+    if (err.message?.includes('CORS blocked')) {
+      return res.status(403).json({
+        success: false,
+        error: 'CORS: Origin not allowed',
+      });
+    }
 
-  // Multer errors
-  if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({
+    if (err.code === 'LIMIT_FILE_SIZE') {
+      return res.status(413).json({
+        success: false,
+        error: `File too large. Maximum size is ${process.env.MAX_FILE_SIZE_MB || 5}MB`,
+      });
+    }
+
+    const status = err.status || 500;
+
+    const response: ApiResponse = {
       success: false,
-      error: `File too large. Maximum size is ${process.env.MAX_FILE_SIZE_MB || 5}MB`,
-    });
+      error: process.env.NODE_ENV === 'production'
+        ? 'Internal server error'
+        : err.message,
+    };
+
+    return res.status(status).json(response);
   }
-
-  const status = err.status || 500;
-  const response: ApiResponse = {
-    success: false,
-    error: process.env.NODE_ENV === 'production' ? 'Internal server error' : err.message,
-  };
-
-  return res.status(status).json(response);
-});
+);
 
 export default app;
-
