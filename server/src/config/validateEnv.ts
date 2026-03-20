@@ -17,7 +17,6 @@ const OPTIONAL_VARS = [
   { key: 'GOOGLE_CLIENT_ID',        warn: 'Google sign-in will be unavailable' },
   { key: 'ADMIN_USERNAME',          warn: 'Admin dashboard login will be unavailable' },
   { key: 'ADMIN_PASSWORD',          warn: 'Admin dashboard login will be unavailable' },
-  { key: 'ADMIN_ACTION_KEY',        warn: 'Sensitive admin actions (patch/delete) will fail' },
   { key: 'RAZORPAY_KEY_ID',         warn: 'Payments will be unavailable — set Razorpay credentials' },
   { key: 'RAZORPAY_KEY_SECRET',     warn: 'Payment verification will fail — set RAZORPAY_KEY_SECRET' },
   { key: 'RAZORPAY_WEBHOOK_SECRET', warn: 'Webhook signature verification will fail — set RAZORPAY_WEBHOOK_SECRET' },

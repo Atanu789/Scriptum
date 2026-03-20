@@ -21,11 +21,11 @@ interface AdminUserPatchBody {
   aiUsageLimitOverride?: number | null;
   uploadUsageLimitOverride?: number | null;
   resetUsage?: boolean;
-  reason: string;
+  reason?: string;
 }
 
 interface AdminDeleteBody {
-  reason: string;
+  reason?: string;
 }
 
 export const adminLoginValidation = [
@@ -39,6 +39,13 @@ export const listUsersValidation = [
   query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
 ];
 
+export const getAuditLogsValidation = [
+  query('q').optional().trim().isLength({ max: 120 }),
+  query('action').optional().trim().isLength({ min: 1, max: 60 }),
+  query('page').optional().isInt({ min: 1 }).toInt(),
+  query('limit').optional().isInt({ min: 1, max: 100 }).toInt(),
+];
+
 export const patchUserValidation = [
   param('id').isMongoId().withMessage('Invalid user ID'),
   body('plan').optional().isIn(['free', 'pro']).withMessage('Plan must be free or pro'),
@@ -46,13 +53,100 @@ export const patchUserValidation = [
   body('aiUsageLimitOverride').optional({ nullable: true }).isInt({ min: -1, max: 100000 }).withMessage('aiUsageLimitOverride must be -1 to 100000').toInt(),
   body('uploadUsageLimitOverride').optional({ nullable: true }).isInt({ min: -1, max: 100000 }).withMessage('uploadUsageLimitOverride must be -1 to 100000').toInt(),
   body('resetUsage').optional().isBoolean().withMessage('resetUsage must be boolean').toBoolean(),
-  body('reason').trim().isLength({ min: 5, max: 240 }).withMessage('reason must be 5-240 characters'),
+  body('reason').optional().trim().isLength({ min: 5, max: 240 }).withMessage('reason must be 5-240 characters'),
 ];
 
 export const deleteUserValidation = [
   param('id').isMongoId().withMessage('Invalid user ID'),
-  body('reason').trim().isLength({ min: 5, max: 240 }).withMessage('reason must be 5-240 characters'),
+  body('reason').optional().trim().isLength({ min: 5, max: 240 }).withMessage('reason must be 5-240 characters'),
 ];
+
+function pctDelta(current: number, previous: number): number {
+  if (previous === 0) return current === 0 ? 0 : 100;
+  return Number((((current - previous) / previous) * 100).toFixed(1));
+}
+
+async function buildAdminMetrics() {
+  const now = new Date();
+  const sevenDaysAgo = new Date(now);
+  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+  const thirtyDaysAgo = new Date(now);
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+
+  const sixtyDaysAgo = new Date(now);
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60);
+
+  const [
+    totalUsers,
+    proUsers,
+    freeUsers,
+    activeUsersLast7Days,
+    totalDocuments,
+    totalRevenueAgg,
+    monthlyRevenueAgg,
+    current30dRevenueAgg,
+    previous30dRevenueAgg,
+    current30dUsers,
+    previous30dUsers,
+    totalAnalysesResult,
+  ] = await Promise.all([
+    User.countDocuments(),
+    User.countDocuments({ plan: 'pro' }),
+    User.countDocuments({ plan: 'free' }),
+    User.countDocuments({ updatedAt: { $gte: sevenDaysAgo } }),
+    DocumentModel.countDocuments(),
+    Payment.aggregate<{ total: number }>([
+      { $match: { status: 'captured' } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]),
+    Payment.aggregate<{ total: number }>([
+      { $match: { status: 'captured', createdAt: { $gte: thirtyDaysAgo } } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]),
+    Payment.aggregate<{ total: number }>([
+      { $match: { status: 'captured', createdAt: { $gte: thirtyDaysAgo } } },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]),
+    Payment.aggregate<{ total: number }>([
+      {
+        $match: {
+          status: 'captured',
+          createdAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo },
+        },
+      },
+      { $group: { _id: null, total: { $sum: '$amount' } } },
+    ]),
+    User.countDocuments({ createdAt: { $gte: thirtyDaysAgo } }),
+    User.countDocuments({ createdAt: { $gte: sixtyDaysAgo, $lt: thirtyDaysAgo } }),
+    UsageModel.aggregate<{ total: number }>([
+      { $group: { _id: null, total: { $sum: '$totalAnalyses' } } },
+    ]),
+  ]);
+
+  const totalRevenueINR = (totalRevenueAgg[0]?.total || 0) / 100;
+  const monthlyRevenueINR = (monthlyRevenueAgg[0]?.total || 0) / 100;
+  const current30dRevenue = (current30dRevenueAgg[0]?.total || 0) / 100;
+  const previous30dRevenue = (previous30dRevenueAgg[0]?.total || 0) / 100;
+
+  return {
+    totalUsers,
+    activeUsersLast7Days,
+    proUsers,
+    freeUsers,
+    totalDocuments,
+    totalRevenueINR,
+    monthlyRevenueINR,
+    totalAnalyses: totalAnalysesResult[0]?.total || 0,
+    revenuePerUserINR: totalUsers ? Number((totalRevenueINR / totalUsers).toFixed(2)) : 0,
+    trends: {
+      userGrowth30dPct: pctDelta(current30dUsers, previous30dUsers),
+      revenueGrowth30dPct: pctDelta(current30dRevenue, previous30dRevenue),
+      proSharePct: totalUsers ? Number(((proUsers / totalUsers) * 100).toFixed(1)) : 0,
+      activeSharePct: totalUsers ? Number(((activeUsersLast7Days / totalUsers) * 100).toFixed(1)) : 0,
+    },
+  };
+}
 
 function mapOverride(value?: number | null): number | null | undefined {
   if (value === undefined) return undefined;
@@ -141,22 +235,41 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
     const userIds = users.map((u) => u._id);
 
     const [docCounts, usageRows] = await Promise.all([
-      DocumentModel.aggregate<{ _id: string; count: number }>([
+      DocumentModel.aggregate<{ _id: string; count: number; lastDocActivityAt: Date | null }>([
         { $match: { userId: { $in: userIds } } },
-        { $group: { _id: '$userId', count: { $sum: 1 } } },
+        {
+          $group: {
+            _id: '$userId',
+            count: { $sum: 1 },
+            lastDocActivityAt: { $max: '$updatedAt' },
+          },
+        },
       ]),
       UsageModel.find({ userId: { $in: userIds } })
-        .select('userId totalAnalyses totalGeminiCalls')
+        .select('userId totalAnalyses totalGeminiCalls updatedAt')
         .lean(),
     ]);
 
-    const docMap = new Map(docCounts.map((d) => [String(d._id), d.count]));
+    const docMap = new Map(docCounts.map((d) => [String(d._id), d]));
     const usageMap = new Map(usageRows.map((u) => [String(u.userId), u]));
+    const activeThreshold = new Date();
+    activeThreshold.setDate(activeThreshold.getDate() - 7);
 
     res.json({
       success: true,
       data: users.map((user) => {
         const usage = usageMap.get(String(user._id));
+        const docStats = docMap.get(String(user._id));
+        const lastActivityCandidates = [
+          user.updatedAt ? new Date(user.updatedAt).getTime() : 0,
+          usage?.updatedAt ? new Date(usage.updatedAt).getTime() : 0,
+          docStats?.lastDocActivityAt ? new Date(docStats.lastDocActivityAt).getTime() : 0,
+        ].filter((v) => Number.isFinite(v) && v > 0);
+
+        const lastActiveAt = lastActivityCandidates.length
+          ? new Date(Math.max(...lastActivityCandidates))
+          : null;
+
         return {
           id: user._id,
           name: user.name,
@@ -168,9 +281,11 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
           uploadUsageThisMonth: user.uploadUsageThisMonth,
           aiUsageLimitOverride: user.aiUsageLimitOverride,
           uploadUsageLimitOverride: user.uploadUsageLimitOverride,
-          documentCount: docMap.get(String(user._id)) || 0,
+          documentCount: docStats?.count || 0,
           totalAnalyses: usage?.totalAnalyses || 0,
           totalGeminiCalls: usage?.totalGeminiCalls || 0,
+          lastActiveAt,
+          status: lastActiveAt && lastActiveAt >= activeThreshold ? 'active' : 'inactive',
           createdAt: user.createdAt,
           updatedAt: user.updatedAt,
         };
@@ -188,44 +303,119 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
 
 export const getOverview = async (_req: Request, res: Response): Promise<void> => {
   try {
-    const [
-      totalUsers,
-      proUsers,
-      freeUsers,
-      totalDocuments,
-      totalPayments,
-      totalCapturedAmount,
-      totalAnalysesResult,
-    ] = await Promise.all([
-      User.countDocuments(),
-      User.countDocuments({ plan: 'pro' }),
-      User.countDocuments({ plan: 'free' }),
-      DocumentModel.countDocuments(),
-      Payment.countDocuments(),
-      Payment.aggregate<{ total: number }>([
-        { $match: { status: 'captured' } },
-        { $group: { _id: null, total: { $sum: '$amount' } } },
-      ]),
-      UsageModel.aggregate<{ total: number }>([
-        { $group: { _id: null, total: { $sum: '$totalAnalyses' } } },
-      ]),
-    ]);
+    const metrics = await buildAdminMetrics();
+    const totalPayments = await Payment.countDocuments();
 
     res.json({
       success: true,
       data: {
-        totalUsers,
-        proUsers,
-        freeUsers,
-        totalDocuments,
+        ...metrics,
+        totalUsers: metrics.totalUsers,
+        proUsers: metrics.proUsers,
+        freeUsers: metrics.freeUsers,
+        totalDocuments: metrics.totalDocuments,
         totalPayments,
-        totalRevenueINR: (totalCapturedAmount[0]?.total || 0) / 100,
-        totalAnalyses: totalAnalysesResult[0]?.total || 0,
+        totalRevenueINR: metrics.totalRevenueINR,
+        totalAnalyses: metrics.totalAnalyses,
       },
     });
   } catch (err) {
     console.error('Admin overview error:', err);
     res.status(500).json({ success: false, error: 'Failed to fetch admin overview' });
+  }
+};
+
+export const getMetrics = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await buildAdminMetrics();
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('Admin metrics error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch admin metrics' });
+  }
+};
+
+export const getRevenue = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+
+    const [capturedAgg, monthAgg, planAgg, usersCount, monthlySeries] = await Promise.all([
+      Payment.aggregate<{ total: number }>([
+        { $match: { status: 'captured' } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      Payment.aggregate<{ total: number }>([
+        { $match: { status: 'captured', createdAt: { $gte: monthStart } } },
+        { $group: { _id: null, total: { $sum: '$amount' } } },
+      ]),
+      User.aggregate<{ _id: string; count: number }>([
+        { $group: { _id: '$plan', count: { $sum: 1 } } },
+      ]),
+      User.countDocuments(),
+      Payment.aggregate<{ _id: { year: number; month: number }; totalAmount: number; payments: number }>([
+        {
+          $match: {
+            status: 'captured',
+            createdAt: { $gte: start },
+          },
+        },
+        {
+          $group: {
+            _id: {
+              year: { $year: '$createdAt' },
+              month: { $month: '$createdAt' },
+            },
+            totalAmount: { $sum: '$amount' },
+            payments: { $sum: 1 },
+          },
+        },
+      ]),
+    ]);
+
+    const totalRevenueINR = (capturedAgg[0]?.total || 0) / 100;
+    const monthlyRevenueINR = (monthAgg[0]?.total || 0) / 100;
+    const planDistribution = {
+      free: planAgg.find((p) => p._id === 'free')?.count || 0,
+      pro: planAgg.find((p) => p._id === 'pro')?.count || 0,
+    };
+
+    const seriesMap = new Map(
+      monthlySeries.map((item) => [
+        `${item._id.year}-${item._id.month}`,
+        {
+          revenueINR: Number((item.totalAmount / 100).toFixed(2)),
+          payments: item.payments,
+        },
+      ])
+    );
+
+    const monthlyRevenue = Array.from({ length: 12 }).map((_, idx) => {
+      const dt = new Date(now.getFullYear(), now.getMonth() - (11 - idx), 1);
+      const key = `${dt.getFullYear()}-${dt.getMonth() + 1}`;
+      const matched = seriesMap.get(key);
+      return {
+        key,
+        label: dt.toLocaleString('en-US', { month: 'short' }),
+        revenueINR: matched?.revenueINR || 0,
+        payments: matched?.payments || 0,
+      };
+    });
+
+    res.json({
+      success: true,
+      data: {
+        totalRevenueINR: Number(totalRevenueINR.toFixed(2)),
+        monthlyRevenueINR: Number(monthlyRevenueINR.toFixed(2)),
+        revenuePerUserINR: usersCount ? Number((totalRevenueINR / usersCount).toFixed(2)) : 0,
+        subscriptionDistribution: planDistribution,
+        monthlyRevenue,
+      },
+    });
+  } catch (err) {
+    console.error('Admin revenue error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch admin revenue' });
   }
 };
 
@@ -303,7 +493,8 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
     else if (aiOverride !== undefined) action = 'set_ai_limit';
     else if (uploadOverride !== undefined) action = 'set_upload_limit';
 
-    const adminUsername = (req as any).decodedToken?.username || 'unknown';
+    const adminUsername = (req as any).user?.username || 'unknown';
+    const auditReason = reason?.trim() || 'No reason provided';
     const changes = {
       plan: plan ?? null,
       planDays: planDays ?? null,
@@ -318,7 +509,7 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
         action,
         targetUserId: user._id,
         targetUserEmail: user.email,
-        reason,
+        reason: auditReason,
         changes,
       });
     } catch (auditErr) {
@@ -374,14 +565,15 @@ export const deleteUserByAdmin = async (req: Request, res: Response): Promise<vo
     ]);
 
     // Log audit trail
-    const adminUsername = (req as any).decodedToken?.username || 'unknown';
+    const adminUsername = (req as any).user?.username || 'unknown';
+    const auditReason = reason?.trim() || 'No reason provided';
     try {
       await AdminAuditLog.create({
         adminUsername,
         action: 'delete_user',
         targetUserId: userBeforeDelete._id,
         targetUserEmail: userBeforeDelete.email,
-        reason,
+        reason: auditReason,
         changes: {
           documentsDeleted: docResult.deletedCount,
           paymentsDeleted: paymentResult.deletedCount,
@@ -409,16 +601,47 @@ export const deleteUserByAdmin = async (req: Request, res: Response): Promise<vo
   }
 };
 
-export const getAuditLogs = async (_req: Request, res: Response): Promise<void> => {
+export const getAuditLogs = async (req: Request, res: Response): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(422).json({ success: false, error: errors.array()[0].msg });
+    return;
+  }
+
   try {
-    const logs = await AdminAuditLog.find()
+    const q = (req.query.q as string | undefined)?.trim();
+    const action = (req.query.action as string | undefined)?.trim();
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 20);
+
+    const filter: Record<string, any> = {};
+    if (action && action !== 'all') {
+      filter.action = action;
+    }
+    if (q) {
+      filter.$or = [
+        { adminUsername: { $regex: q, $options: 'i' } },
+        { targetUserEmail: { $regex: q, $options: 'i' } },
+        { reason: { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    const [logs, total] = await Promise.all([
+      AdminAuditLog.find(filter)
       .sort({ timestamp: -1 })
-      .limit(50)
-      .lean();
+      .skip((page - 1) * limit)
+      .limit(limit)
+      .lean(),
+      AdminAuditLog.countDocuments(filter),
+    ]);
 
     res.json({
       success: true,
       data: logs,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
     });
   } catch (err) {
     console.error('Admin audit logs error:', err);

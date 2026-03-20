@@ -77,18 +77,55 @@ export interface AdminUserSummary {
   documentCount: number;
   totalAnalyses: number;
   totalGeminiCalls: number;
+  lastActiveAt: string | null;
+  status: 'active' | 'inactive';
   createdAt: string;
   updatedAt: string;
 }
 
 export interface AdminOverview {
   totalUsers: number;
+  activeUsersLast7Days: number;
   proUsers: number;
   freeUsers: number;
   totalDocuments: number;
   totalPayments: number;
   totalRevenueINR: number;
+  monthlyRevenueINR: number;
+  revenuePerUserINR: number;
   totalAnalyses: number;
+  trends: {
+    userGrowth30dPct: number;
+    revenueGrowth30dPct: number;
+    proSharePct: number;
+    activeSharePct: number;
+  };
+}
+
+export type AdminMetrics = Omit<AdminOverview, 'totalPayments'>;
+
+export interface AdminRevenue {
+  totalRevenueINR: number;
+  monthlyRevenueINR: number;
+  revenuePerUserINR: number;
+  subscriptionDistribution: {
+    free: number;
+    pro: number;
+  };
+  monthlyRevenue: Array<{
+    key: string;
+    label: string;
+    revenueINR: number;
+    payments: number;
+  }>;
+}
+
+export interface AdminAuditLogItem {
+  adminUsername: string;
+  action: string;
+  targetUserEmail: string;
+  reason: string;
+  timestamp: string;
 }
 
 // ─── Document ────────────────────────────────────────────────────────────────

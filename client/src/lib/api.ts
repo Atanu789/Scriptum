@@ -5,8 +5,11 @@ import axios, {
 } from 'axios';
 import {
   ApiResponse,
+  AdminAuditLogItem,
   AdminAuthResult,
+  AdminMetrics,
   AdminOverview,
+  AdminRevenue,
   AdminUserSummary,
   AuthTokens,
   Document,
@@ -387,6 +390,14 @@ export const adminApi = {
     return adminRequest<AdminOverview>('/overview', { method: 'GET' }, token);
   },
 
+  metrics: async (token: string): Promise<AdminMetrics> => {
+    return adminRequest<AdminMetrics>('/metrics', { method: 'GET' }, token);
+  },
+
+  revenue: async (token: string): Promise<AdminRevenue> => {
+    return adminRequest<AdminRevenue>('/revenue', { method: 'GET' }, token);
+  },
+
   listUsers: async (
     token: string,
     params?: { q?: string; page?: number; limit?: number },
@@ -425,6 +436,8 @@ export const adminApi = {
         documentCount: Number(user.documentCount || 0),
         totalAnalyses: Number(user.totalAnalyses || 0),
         totalGeminiCalls: Number(user.totalGeminiCalls || 0),
+        lastActiveAt: user.lastActiveAt ?? null,
+        status: user.status === 'active' ? 'active' : 'inactive',
       })),
       total: json.total || 0,
       page: json.page || 1,
@@ -435,7 +448,6 @@ export const adminApi = {
 
   updateUser: async (
     token: string,
-    actionKey: string,
     userId: string,
     payload: {
       plan?: 'free' | 'pro';
@@ -443,35 +455,58 @@ export const adminApi = {
       aiUsageLimitOverride?: number | null;
       uploadUsageLimitOverride?: number | null;
       resetUsage?: boolean;
-      reason: string;
+      reason?: string;
     },
   ): Promise<AdminUserSummary> => {
     return adminRequest<AdminUserSummary>(`/users/${userId}`, {
       method: 'PATCH',
-      headers: {
-        'x-admin-action-key': actionKey,
-      },
       body: JSON.stringify(payload),
     }, token);
   },
 
   deleteUser: async (
     token: string,
-    actionKey: string,
     userId: string,
-    reason: string,
+    reason?: string,
   ): Promise<{ userId: string; documentsDeleted: number; paymentsDeleted: number; usagesDeleted: number }> => {
     return adminRequest<{ userId: string; documentsDeleted: number; paymentsDeleted: number; usagesDeleted: number }>(`/users/${userId}`, {
       method: 'DELETE',
-      headers: {
-        'x-admin-action-key': actionKey,
-      },
-      body: JSON.stringify({ reason }),
+      body: JSON.stringify({ reason: reason || undefined }),
     }, token);
   },
 
-  auditLogs: async (token: string): Promise<any[]> => {
-    return adminRequest<any[]>('/audit-logs', { method: 'GET' }, token);
+  auditLogs: async (
+    token: string,
+    params?: { q?: string; action?: string; page?: number; limit?: number },
+  ): Promise<{ logs: AdminAuditLogItem[]; page: number; limit: number; total: number; totalPages: number }> => {
+    const qs = new URLSearchParams();
+    if (params?.q) qs.set('q', params.q);
+    if (params?.action) qs.set('action', params.action);
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+
+    const rawResponse = await fetch(`${BASE_URL}/api/admin/audit-logs${qs.toString() ? `?${qs.toString()}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const json = (await rawResponse.json()) as ApiResponse<AdminAuditLogItem[]> & {
+      page?: number;
+      limit?: number;
+      total?: number;
+      totalPages?: number;
+    };
+
+    if (!rawResponse.ok || !json.success) {
+      throw new Error(json.error || 'Failed to fetch admin audit logs');
+    }
+
+    return {
+      logs: json.data || [],
+      page: json.page || 1,
+      limit: json.limit || 20,
+      total: json.total || 0,
+      totalPages: json.totalPages || 1,
+    };
   },
 };
 
