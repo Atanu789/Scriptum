@@ -55,24 +55,39 @@ export function useScriptTokens(script: string): Token[] {
   return useMemo<Token[]>(() => {
     if (!script) return [];
 
+    const normalizedScript = script
+      .replace(/\r\n/g, '\n')
+      .replace(/\r/g, '\n');
+
+    const lines = normalizedScript.split('\n');
     const tokens: Token[] = [];
-    let index = 0;
+    let pendingBreaks = 0;
 
-    let cursor = 0;
-    const matcher = /\S+/g;
-    let match: RegExpExecArray | null;
+    for (let lineIndex = 0; lineIndex < lines.length; lineIndex++) {
+      if (lineIndex > 0) pendingBreaks += 1;
 
-    while ((match = matcher.exec(script)) !== null) {
-      const rawWord = match[0];
-      const word = cleanTeleprompterToken(rawWord);
-      const before = script.slice(cursor, match.index);
-      const breaksBefore = (before.match(/\n/g) || []).length;
-      cursor = match.index + rawWord.length;
+      const line = lines[lineIndex] ?? '';
+      if (!line.trim()) continue;
 
-      const normalized = normalizeWord(word);
-      if (!normalized) continue; // skip tokens that are purely punctuation / whitespace
-      tokens.push({ original: word, normalized, index, breaksBefore });
-      index++;
+      const words = line.match(/\S+/g) || [];
+      for (let wordIndex = 0; wordIndex < words.length; wordIndex++) {
+        const word = cleanTeleprompterToken(words[wordIndex]);
+        const normalized = normalizeWord(word);
+        if (!normalized) continue;
+
+        const token: Token = {
+          original: word,
+          normalized,
+          index: tokens.length,
+        };
+
+        if (wordIndex === 0 && pendingBreaks > 0) {
+          token.breaksBefore = pendingBreaks;
+          pendingBreaks = 0;
+        }
+
+        tokens.push(token);
+      }
     }
 
     return tokens;

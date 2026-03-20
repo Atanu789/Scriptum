@@ -393,6 +393,12 @@
   color: rgba(255,255,255,0.82);
 }
 
+.tp-token::before,
+.tp-token::after {
+  content: none !important;
+  display: none !important;
+}
+
 .tp-token.tp-spoken {
   color: rgba(255,255,255,0.52);
 }

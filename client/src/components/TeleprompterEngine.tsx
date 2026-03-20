@@ -67,24 +67,27 @@ const ScriptRenderer = memo(function ScriptRenderer({
       tabIndex={-1}
     >
       <div className="mx-auto max-w-3xl select-none" aria-live="off">
-        {visibleTokens.map((token) => (
-          <React.Fragment key={token.index}>
-            {token.breaksBefore && token.breaksBefore > 0 && (
-              <>
-                {Array.from({ length: token.breaksBefore }).map((_, idx) => (
-                  <br key={`br-${token.index}-${idx}`} />
-                ))}
-              </>
-            )}
-            <span
-              data-token-index={token.index}
-              data-sentence-index={sentenceIndexByToken[token.index] ?? 0}
-              className="tp-token mr-[0.28em] inline-block align-baseline"
-            >
-              {token.original}
-            </span>
-          </React.Fragment>
-        ))}
+        {visibleTokens.map((token) => {
+  return (
+    <React.Fragment key={token.index}>
+      {token.breaksBefore && token.breaksBefore > 0 && (
+        <>
+          {Array.from({ length: token.breaksBefore }).map((_, idx) => (
+            <br key={`br-${token.index}-${idx}`} />
+          ))}
+        </>
+      )}
+
+      <span
+        data-token-index={token.index}
+        data-sentence-index={sentenceIndexByToken[token.index] ?? 0}
+        className="tp-token mr-[0.28em] inline-block align-baseline"
+      >
+        {token.original}
+      </span>
+    </React.Fragment>
+  );
+})}
       </div>
     </div>
   );
@@ -369,7 +372,12 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   useEffect(() => { activeModeRef.current     = activeMode; },  [activeMode]);
 
   // ── Tokenise ───────────────────────────────────────────────────────────────
-  const tokens = useScriptTokens(script);
+  const cleanedScript = useMemo(() => {
+    return script
+      .replace(/\u0000/g, '')
+      .replace(/(^|\s)0+(?=[A-Za-z])/g, '$1');
+  }, [script]);
+  const tokens = useScriptTokens(cleanedScript);
 
   const sentenceIndexByToken = useMemo(() => {
     if (tokens.length === 0) return [] as number[];
