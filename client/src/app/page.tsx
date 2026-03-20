@@ -267,7 +267,7 @@ function FeaturesSection() {
             <p className="mt-1.5 text-sm leading-relaxed text-slate-500 dark:text-white/35">
               AI narration, TTS playback, presenter mic-sync, smooth auto-scroll, and fullscreen delivery controls.
             </p>
-            <div className="mt-4 grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div className="mt-4 grid grid-cols-3 gap-2">
               {[
                 { label: 'AI + TTS', icon: 'AI' },
                 { label: 'Mic sync', icon: 'MIC' },
@@ -299,7 +299,7 @@ const STEPS = [
 
 function StepsStrip() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-12">
+    <div className="mx-auto max-w-6xl px-5 pb-12 sm:px-8">
       <div className="rounded-2xl border border-slate-200 bg-white/60 dark:border-white/[0.07] dark:bg-white/[0.02] backdrop-blur-sm overflow-hidden">
         <div className="grid grid-cols-2 divide-x divide-y divide-slate-200 dark:divide-white/[0.06] sm:grid-cols-4 sm:divide-y-0">
           {STEPS.map(({ n, icon: Icon, title, desc }) => (
@@ -376,8 +376,7 @@ const PRICING: PricingTier[] = [
 
 function PricingSection() {
   return (
-    <section id="pricing" className="relative pb-14">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+    <section id="pricing" className="relative px-5 pb-14 sm:px-8">
       <div className="mx-auto max-w-4xl">
         {/* Label row */}
         <div className="mb-6 flex items-center gap-3">
@@ -389,7 +388,7 @@ function PricingSection() {
           <span className="text-sm font-semibold text-slate-500 dark:text-white/30">Simple, transparent</span>
         </div>
 
-        <div className="grid grid-cols-1 items-stretch gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid items-stretch gap-3 sm:grid-cols-3">
           {PRICING.map(({ icon: Icon, name, price, period, description, features, cta, href, highlight, badge }) => (
             <CometCard
               key={name}
@@ -457,7 +456,6 @@ function PricingSection() {
           All plans include SSL, GDPR compliance and no-commitment cancellation.
         </p>
       </div>
-      </div>
     </section>
   );
 }
@@ -467,8 +465,7 @@ function PricingSection() {
 â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */
 function CtaSection() {
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pb-14">
-      <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-4xl px-5 pb-14 sm:px-8">
       <VortexBackground compact className="rounded-2xl">
         <MeteorCard meteors={18} className="overflow-hidden bg-white/75 dark:bg-slate-950/55">
           <div className="flex flex-col items-center gap-4 px-6 py-10 text-center sm:flex-row sm:text-left sm:gap-8 sm:px-10 sm:py-8">
@@ -485,7 +482,7 @@ function CtaSection() {
             </div>
             <Link
               href="/register"
-              className="group flex-shrink-0 inline-flex w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/25 transition-all hover:bg-indigo-500 hover:-translate-y-0.5 active:scale-[0.97]"
+              className="group flex-shrink-0 inline-flex items-center gap-2 rounded-xl bg-indigo-600 px-5 py-2.5 text-sm font-semibold text-white shadow-md shadow-indigo-500/25 transition-all hover:bg-indigo-500 hover:-translate-y-0.5 active:scale-[0.97]"
             >
               Create free account
               <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover:translate-x-0.5" />
@@ -493,7 +490,6 @@ function CtaSection() {
           </div>
         </MeteorCard>
       </VortexBackground>
-      </div>
     </div>
   );
 }

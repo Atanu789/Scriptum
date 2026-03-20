@@ -274,9 +274,8 @@ export default function PricingPage() {
     .concat(customPlan);
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-indigo-50 via-white to-violet-50 py-8 text-slate-900 dark:from-[#090b17] dark:via-[#0d1021] dark:to-[#130e1f] dark:text-white">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="mx-auto max-w-6xl space-y-4 sm:space-y-6">
+    <main className="min-h-screen bg-gradient-to-b from-indigo-50 via-white to-violet-50 px-4 py-8 text-slate-900 dark:from-[#090b17] dark:via-[#0d1021] dark:to-[#130e1f] dark:text-white">
+      <div className="mx-auto max-w-6xl space-y-6">
         
 
         <div className="mx-auto inline-flex items-center gap-1 rounded-full border border-slate-200 bg-white p-1 text-xs shadow-sm dark:border-white/[0.12] dark:bg-white/[0.05]">
@@ -335,14 +334,14 @@ export default function PricingPage() {
               )}
             </div>
 
-            <div className="flex flex-col gap-3 sm:flex-row">
+            <div className="flex gap-3">
               <UsageMeter label="AI analyses" used={sub.aiUsageThisMonth} limit={sub.limits.aiUsagePerMonth} />
               <UsageMeter label="Uploads" used={sub.uploadUsageThisMonth} limit={sub.limits.uploadsPerMonth} />
             </div>
           </div>
         )}
 
-        <div className="grid grid-cols-1 items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid items-stretch gap-4 sm:grid-cols-3">
           {displayPlans.map((plan) => {
             const isCurrent = effectivePlan === plan.id;
             const isPro = plan.id === 'pro';
@@ -414,7 +413,7 @@ export default function PricingPage() {
                   )}
                 </div>
 
-                <p className="mb-3 text-xs text-slate-500 dark:text-white/35 break-words">{plan.description}</p>
+                <p className="mb-3 text-xs text-slate-500 dark:text-white/35">{plan.description}</p>
 
                 {isPro && (
                   <div className="mb-3 space-y-1">
@@ -462,7 +461,7 @@ export default function PricingPage() {
                 ) : isCustom ? (
                   <Link
                     href="mailto:sales@ultimoversio.com?subject=Custom%20Plan%20Inquiry"
-                    className="w-full rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 sm:w-auto dark:border-white/[0.08] dark:text-white/70 dark:hover:bg-white/[0.05]"
+                    className="rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.08] dark:text-white/70 dark:hover:bg-white/[0.05]"
                   >
                     Contact sales
                   </Link>
@@ -470,7 +469,7 @@ export default function PricingPage() {
                   <button
                     onClick={handleUpgrade}
                     disabled={paying}
-                    className="w-full rounded-lg bg-gradient-to-r from-indigo-500 to-violet-500 px-3 py-2 text-center text-xs font-bold text-white transition duration-300 hover:scale-105 hover:from-indigo-400 hover:to-violet-400 sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
+                    className="rounded-lg bg-gradient-to-r from-indigo-500 to-violet-500 px-3 py-2 text-center text-xs font-bold text-white transition duration-300 hover:scale-105 hover:from-indigo-400 hover:to-violet-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {paying ? 'Processing...' : '🚀 Upgrade to Pro'}
                   </button>
@@ -517,7 +516,7 @@ export default function PricingPage() {
             <button
               onClick={handleRedeem}
               disabled={redeeming || !redeemCode.trim()}
-              className="h-10 w-full rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
+              className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
             >
               {redeeming ? 'Applying...' : 'Redeem'}
             </button>
@@ -615,7 +614,6 @@ export default function PricingPage() {
         <p className="text-center text-[11px] text-slate-400 dark:text-white/25">
           Need procurement support, GST invoice, or bulk onboarding? Use Custom plan and we will help you set up.
         </p>
-        </div>
       </div>
     </main>
   );

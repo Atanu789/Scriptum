@@ -137,9 +137,8 @@ export default function UploadPage() {
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45 }}
-        className="w-full max-w-7xl px-4 sm:px-6 lg:px-8"
+        className="w-full max-w-2xl"
       >
-        <div className="mx-auto w-full max-w-2xl">
         {/* Back link */}
         <div className="mb-6">
           <a
@@ -153,7 +152,7 @@ export default function UploadPage() {
 
         {/* Heading */}
         <div className="mb-8 text-center">
-          <h1 className="text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight text-slate-900 dark:text-white break-words">
+          <h1 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white sm:text-4xl">
             Upload Content
           </h1>
           <p className="mt-2 text-sm leading-relaxed text-slate-500 dark:text-slate-400">
@@ -175,7 +174,7 @@ export default function UploadPage() {
           <div className="space-y-6 p-3 sm:p-5">
 
             {/* Mode tabs */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-white/10 dark:bg-white/5">
+            <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1 dark:border-white/10 dark:bg-white/5">
               {tabs.map((t) => (
                 <button
                   key={t.id}
@@ -353,7 +352,7 @@ export default function UploadPage() {
                 <button
                   type="button"
                   onClick={() => router.push('/pricing')}
-                  className="ml-0 mt-2 inline-flex min-h-[32px] w-full sm:ml-2 sm:mt-0 sm:w-auto items-center justify-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-400"
+                  className="ml-2 inline-flex min-h-[32px] items-center gap-1 rounded-md bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-400"
                 >
                   Go Premium <ArrowRight className="h-3.5 w-3.5" />
                 </button>
@@ -373,7 +372,6 @@ export default function UploadPage() {
             </ShimmerButton>
           </div>
         </MeteorCard>
-        </div>
       </motion.div>
     </div>
   );

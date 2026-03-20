@@ -1099,7 +1099,7 @@ export default function EditorPage() {
     <div className="flex min-h-screen flex-col">
       {/* Editor toolbar */}
       <div className="sticky top-0 z-10 border-b border-slate-200 bg-white/80 backdrop-blur dark:border-zinc-800 dark:bg-zinc-950/80">
-        <div className="mx-auto flex max-w-7xl flex-wrap items-center gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-2.5 sm:px-6">
           <Link href="/dashboard" className="btn-ghost p-2">
             <ChevronLeft className="h-4 w-4" />
           </Link>
@@ -1129,7 +1129,7 @@ export default function EditorPage() {
             </button>
           </div>
 
-          <div className="flex w-full items-center gap-2 overflow-x-auto pb-1 md:w-auto md:pb-0">
+          <div className="flex items-center gap-2">
             <input
               ref={importInputRef}
               type="file"
@@ -1270,7 +1270,7 @@ export default function EditorPage() {
       </div>
 
       {/* Two-column layout */}
-      <div className="animate-page-in mx-auto flex w-full max-w-7xl flex-1 flex-col gap-6 px-4 py-6 sm:px-6 lg:flex-row lg:px-8">
+      <div className="animate-page-in mx-auto flex w-full max-w-7xl flex-1 gap-6 px-4 py-6 sm:px-6">
         {/* Left ��� Editor */}
         <div className={cn('flex flex-1 flex-col', activeTab === 'analysis' && 'hidden md:flex')}>
           <div className="card flex flex-1 flex-col p-0 overflow-hidden">

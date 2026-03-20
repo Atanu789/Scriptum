@@ -62,11 +62,11 @@ const ScriptRenderer = memo(function ScriptRenderer({
   return (
     <div
       ref={containerRef}
-      className="relative h-full overflow-y-auto px-4 py-10 sm:px-6 sm:py-14 leading-[1.9] text-lg sm:text-xl md:text-2xl focus:outline-none"
+      className="relative h-full overflow-y-auto px-6 py-14 leading-[1.9] focus:outline-none"
       style={{ fontSize: `${fontSize}px` }}
       tabIndex={-1}
     >
-      <div className="mx-auto max-w-full sm:max-w-3xl break-words select-none" aria-live="off">
+      <div className="mx-auto max-w-3xl select-none" aria-live="off">
         {visibleTokens.map((token) => {
   return (
     <React.Fragment key={token.index}>
@@ -164,13 +164,13 @@ function Controls({
       )}
 
       {/* ── Mode toggle ───────────────────────────────────────── */}
-      <div className="inline-flex w-full sm:w-auto items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+      <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
         <button
           disabled={!canUsePremiumAI}
           onClick={() => onReadingModeChange('ai')}
           title={!canUsePremiumAI ? 'Available on Pro plan' : 'AI Narration mode'}
           className={cn(
-            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors w-full sm:w-auto',
+            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
             isAIMode ? 'bg-indigo-600 text-white' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/80',
             !canUsePremiumAI && 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-white/60',
           )}
@@ -180,7 +180,7 @@ function Controls({
         <button
           onClick={() => onReadingModeChange('presenter')}
           className={cn(
-            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors w-full sm:w-auto',
+            'rounded-lg px-3 py-1.5 text-xs font-semibold transition-colors',
             isPresenterMode ? 'bg-emerald-600 text-white' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/80',
           )}
         >
@@ -331,9 +331,9 @@ function Controls({
       </div>
 
       {/* ── Reset ──────────────────────────────────────────────── */}
-      <div className="ml-auto w-full sm:w-auto">
+      <div className="ml-auto">
         <button onClick={onReset} title="Reset to beginning"
-          className="rounded-xl p-2 text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-all active:scale-[0.97] w-full sm:w-auto">
+          className="rounded-xl p-2 text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-all active:scale-[0.97]">
           <RotateCcw className="h-3.5 w-3.5" />
         </button>
       </div>
