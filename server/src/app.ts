@@ -33,33 +33,45 @@ const defaultOrigins = [
   'http://localhost:3000',
 ];
 
-const allowedOrigins = [
-  'https://ultimoversio.com',
-  'https://www.ultimoversio.com',
-  'https://ultimoversio.vercel.app',
-];
+const allowedOrigins = [...new Set([...defaultOrigins, ...configuredOrigins])];
 
-// ─── CORS (FINAL FIX) ────────────────────────────────────────────────────────
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      console.log("🌍 Incoming origin:", origin);
+// normalize helper
+const normalizeOrigin = (origin: string) => origin.replace(/\/$/, '');
 
-      if (!origin) return callback(null, true);
+// ─── CORS (FINAL STABLE VERSION) ─────────────────────────────────────────────
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    console.log('🌍 Incoming origin:', origin);
 
-      if (allowedOrigins.includes(origin)) {
-        console.log("✅ Allowed:", origin);
-        return callback(null, origin);
-      }
+    if (!origin) return callback(null, true);
 
-      console.log("❌ Blocked:", origin);
-      return callback(new Error(`CORS blocked: ${origin}`));
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
+    const normalizedOrigin = normalizeOrigin(origin);
+
+    const isAllowed = allowedOrigins.some(
+      (o) => normalizeOrigin(o) === normalizedOrigin
+    );
+
+    if (isAllowed) {
+      console.log('✅ Allowed:', origin);
+      return callback(null, origin); // IMPORTANT
+    }
+
+    console.log('❌ Blocked:', origin);
+    return callback(new Error(`CORS blocked: ${origin}`));
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',   // ✅ FIXED
+    'Accept',
+    'Origin'
+  ],
+};
+
+app.use(cors(corsOptions));
+app.options('*', cors(corsOptions)); // ✅ IMPORTANT (preflight)
 
 // ─── Security & Parsing ──────────────────────────────────────────────────────
 app.use(
@@ -126,7 +138,7 @@ app.use(
     if (err.code === 'LIMIT_FILE_SIZE') {
       return res.status(413).json({
         success: false,
-        error: `File too large. Maximum size is ${process.env.MAX_FILE_SIZE_MB || 5}MB`,
+        error: `File too large. Max size: ${process.env.MAX_FILE_SIZE_MB || 5}MB`,
       });
     }
 
@@ -134,9 +146,10 @@ app.use(
 
     const response: ApiResponse = {
       success: false,
-      error: process.env.NODE_ENV === 'production'
-        ? 'Internal server error'
-        : err.message,
+      error:
+        process.env.NODE_ENV === 'production'
+          ? 'Internal server error'
+          : err.message,
     };
 
     return res.status(status).json(response);
