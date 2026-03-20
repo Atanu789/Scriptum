@@ -8,9 +8,16 @@ import {
   verifyWebhookSignature,
   PLAN_LIMITS,
   PLAN_PRICES_PAISE,
+  getPlanPriceForCycle,
+  BillingCycle,
 } from '../services/razorpayService';
 
 const PREMIUM_REDEEM_CODE = 'GOFREEULTI';
+const BILLING_CYCLES: BillingCycle[] = ['monthly', 'yearly'];
+
+function getCycleMonths(cycle: BillingCycle): number {
+  return cycle === 'yearly' ? 12 : 1;
+}
 
 // ─── GET /api/payment/plans ───────────────────────────────────────────────────
 
@@ -41,11 +48,18 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
     const userId = req.user?.userId;
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
-    const { plan, discountCode } = req.body as { plan: string; discountCode?: string };
+    const { plan, discountCode, billingCycle } = req.body as {
+      plan: string;
+      discountCode?: string;
+      billingCycle?: BillingCycle;
+    };
     if (!plan || !['pro'].includes(plan)) {
       res.status(400).json({ success: false, error: 'Invalid plan. Supported: pro' });
       return;
     }
+
+    const normalizedBillingCycle: BillingCycle =
+      billingCycle && BILLING_CYCLES.includes(billingCycle) ? billingCycle : 'monthly';
 
     const user = await User.findById(userId);
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
@@ -56,7 +70,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    const baseAmount = PLAN_PRICES_PAISE[plan as Exclude<Plan, 'free'>];
+    const baseAmount = getPlanPriceForCycle(plan as Exclude<Plan, 'free'>, normalizedBillingCycle);
     const configuredCode = (process.env.PRO_DISCOUNT_CODE || '').trim();
     const configuredPercentRaw = Number.parseInt(process.env.PRO_DISCOUNT_PERCENT || '10', 10);
     const configuredPercent = Number.isFinite(configuredPercentRaw)
@@ -77,20 +91,24 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
 
     const order = await createRazorpayOrder(plan as Exclude<Plan, 'free'>, userId, {
       amountPaise: finalAmount,
-      notes: hasValidDiscountCode
-        ? {
+      notes: {
+        billingCycle: normalizedBillingCycle,
+        ...(hasValidDiscountCode
+          ? {
             discountCode: normalizedProvidedCode,
             discountPercent: String(configuredPercent),
             discountPaise: String(discountPaise),
             originalAmountPaise: String(baseAmount),
           }
-        : undefined,
+          : {}),
+      },
     });
 
     // Persist a pending payment record
     await Payment.create({
       userId:           userId,
       plan,
+      billingCycle:     normalizedBillingCycle,
       amount:           order.amount,
       currency:         order.currency,
       razorpayOrderId:  order.orderId,
@@ -107,6 +125,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
         originalAmount: baseAmount,
         discountPaise,
         discountPercent: hasValidDiscountCode ? configuredPercent : 0,
+        billingCycle: normalizedBillingCycle,
       },
     });
   } catch (err) {
@@ -156,7 +175,7 @@ export async function verifyPayment(req: AuthenticatedRequest, res: Response): P
     // ── Activate subscription ──────────────────────────────────────────────
     const now   = new Date();
     const expiry = new Date(now);
-    expiry.setDate(expiry.getDate() + 30);
+    expiry.setMonth(expiry.getMonth() + getCycleMonths(payment.billingCycle ?? 'monthly'));
 
     await User.findByIdAndUpdate(userId, {
       plan:                payment.plan,
@@ -236,6 +255,7 @@ export async function redeemCode(req: AuthenticatedRequest, res: Response): Prom
     await Payment.create({
       userId,
       plan: 'pro',
+      billingCycle: 'monthly',
       amount: 0,
       currency: 'INR',
       razorpayOrderId: `redeem_${userId.slice(-8)}_${Date.now()}`,

@@ -22,6 +22,7 @@ import {
   SubscriptionInfo,
   PaymentRecord,
   PlanConfig,
+  BillingCycle,
 } from '@/types';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -313,7 +314,7 @@ export const paymentApi = {
     return unwrap(data);
   },
 
-  createOrder: async (plan: string, discountCode?: string): Promise<{
+  createOrder: async (plan: string, billingCycle: BillingCycle, discountCode?: string): Promise<{
     orderId: string;
     amount: number;
     currency: string;
@@ -321,6 +322,7 @@ export const paymentApi = {
     originalAmount?: number;
     discountPaise?: number;
     discountPercent?: number;
+    billingCycle: BillingCycle;
   }> => {
     const { data } = await api.post<ApiResponse<{
       orderId: string;
@@ -330,7 +332,8 @@ export const paymentApi = {
       originalAmount?: number;
       discountPaise?: number;
       discountPercent?: number;
-    }>>('/payment/create-order', { plan, discountCode });
+      billingCycle: BillingCycle;
+    }>>('/payment/create-order', { plan, billingCycle, discountCode });
     return unwrap(data);
   },
 

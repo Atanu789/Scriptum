@@ -1,6 +1,7 @@
 // ─── User & Auth ──────────────────────────────────────────────────────────────
 
 export type Plan = 'free' | 'pro';
+export type BillingCycle = 'monthly' | 'yearly';
 
 export interface PlanLimits {
   aiUsagePerMonth:  number;   // -1 = unlimited
@@ -38,6 +39,7 @@ export interface SubscriptionInfo {
 export interface PaymentRecord {
   _id:                string;
   plan:               Plan;
+  billingCycle:       BillingCycle;
   amount:             number;
   currency:           string;
   razorpayOrderId:    string;

@@ -7,6 +7,8 @@ const Razorpay = require('razorpay') as new (opts: { key_id: string; key_secret:
 import crypto from 'crypto';
 import { Plan } from '../models/User';
 
+export type BillingCycle = 'monthly' | 'yearly';
+
 function safeCompareHex(expected: string, provided: string): boolean {
   const expectedBuf = Buffer.from(expected, 'hex');
   const providedBuf = Buffer.from(provided, 'hex');
@@ -19,6 +21,20 @@ function safeCompareHex(expected: string, provided: string): boolean {
 export const PLAN_PRICES_PAISE: Record<Exclude<Plan, 'free'>, number> = {
   pro: 49900, // ₹499
 };
+
+const YEARLY_MULTIPLIER = 12;
+const YEARLY_DISCOUNT_FACTOR = 0.6;
+
+export function getPlanPriceForCycle(
+  plan: Exclude<Plan, 'free'>,
+  billingCycle: BillingCycle,
+): number {
+  const monthlyPrice = PLAN_PRICES_PAISE[plan];
+  if (billingCycle === 'yearly') {
+    return Math.round(monthlyPrice * YEARLY_MULTIPLIER * YEARLY_DISCOUNT_FACTOR);
+  }
+  return monthlyPrice;
+}
 
 export const PLAN_LIMITS: { [P in Plan]: {
   aiUsagePerMonth:   number;   // -1 = unlimited
