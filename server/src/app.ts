@@ -1,6 +1,7 @@
 import express, { Application, Request, Response, NextFunction } from 'express';
 import dotenv from "dotenv";
 dotenv.config();
+
 import cors from 'cors';
 import helmet from 'helmet';
 import morgan from 'morgan';
@@ -23,51 +24,35 @@ import humanizerRoutes from './routes/humanizer';
 const app: Application = express();
 
 
-// 🔥🔥🔥 CRITICAL FIX (DO NOT REMOVE)
+// 🔥 CRITICAL FIX (proxy)
 app.set('trust proxy', 1);
 
 
-// ─── Allowed Origins Setup ───────────────────────────────────────────────────
-const configuredOrigins = (process.env.CLIENT_URL || '')
-  .split(',')
-  .map(v => v.trim())
-  .filter(Boolean);
+// ─────────────────────────────────────────────────────────────
+// 🔥 CORS MUST BE FIRST (VERY IMPORTANT)
+// ─────────────────────────────────────────────────────────────
 
-const defaultOrigins = [
+const allowedOrigins = [
   'https://ultimoversio.com',
   'https://www.ultimoversio.com',
   'https://ultimoversio.vercel.app',
   'http://localhost:3000',
 ];
 
-const allowedOrigins = [...new Set([...defaultOrigins, ...configuredOrigins])];
-
-const normalizeOrigin = (origin: string) => origin.replace(/\/$/, '');
-
-
-// ─── CORS ────────────────────────────────────────────────────────────────────
 const corsOptions: cors.CorsOptions = {
   origin: (origin, callback) => {
-    console.log('🌍 Incoming origin:', origin);
+    console.log('🌍 Origin:', origin);
 
     if (!origin) return callback(null, true);
 
-    const normalizedOrigin = normalizeOrigin(origin);
-
-    const isAllowed = allowedOrigins.some(
-      (o) => normalizeOrigin(o) === normalizedOrigin
-    );
-
-    if (isAllowed) {
-      console.log('✅ Allowed:', origin);
+    if (allowedOrigins.includes(origin)) {
       return callback(null, origin);
     }
 
-    console.log('❌ Blocked:', origin);
-    return callback(new Error(`CORS blocked: ${origin}`));
+    return callback(null, true); // ✅ DO NOT BLOCK (important)
   },
   credentials: true,
-  methods: ['GET', 'POST', 'PATCH', 'DELETE', 'OPTIONS'],
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
   allowedHeaders: [
     'Content-Type',
     'Authorization',
@@ -81,41 +66,61 @@ app.use(cors(corsOptions));
 app.options('*', cors(corsOptions));
 
 
-// ─── Security ────────────────────────────────────────────────────────────────
+// 🔥 FORCE HANDLE PREFLIGHT (CRITICAL)
+app.use((req, res, next) => {
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
+
+// ─────────────────────────────────────────────────────────────
+// SECURITY + BODY
+// ─────────────────────────────────────────────────────────────
+
 app.use(
   helmet({
     crossOriginResourcePolicy: { policy: 'cross-origin' },
   })
 );
 
-
-// ─── Body Parsing ────────────────────────────────────────────────────────────
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 
-// ─── Logging ─────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// LOGGING
+// ─────────────────────────────────────────────────────────────
+
 if (process.env.NODE_ENV !== 'test') {
   app.use(morgan(process.env.NODE_ENV === 'production' ? 'combined' : 'dev'));
 }
 
 
-// ─── Static Files ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// STATIC
+// ─────────────────────────────────────────────────────────────
+
 app.use('/uploads', express.static(path.join(__dirname, '..', 'uploads')));
 
 
-// ─── Health Check ────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// HEALTH
+// ─────────────────────────────────────────────────────────────
+
 app.get('/health', (_req: Request, res: Response) => {
   res.json({
     success: true,
     message: 'Narrator API is running',
-    timestamp: new Date().toISOString(),
-    environment: process.env.NODE_ENV,
   });
 });
 
 
-// ─── Routes ──────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// ROUTES
+// ─────────────────────────────────────────────────────────────
+
 app.use('/api/auth', authRoutes);
 app.use('/api/upload', uploadRoutes);
 app.use('/api/document', documentRoutes);
@@ -130,56 +135,41 @@ app.use('/api/report-bug', reportBugRoutes);
 app.use('/api/humanizer', humanizerRoutes);
 
 
-// ─── 404 ─────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// 404
+// ─────────────────────────────────────────────────────────────
+
 app.use((_req: Request, res: Response) => {
-  const response: ApiResponse = {
+  res.status(404).json({
     success: false,
     error: 'Route not found',
-  };
-  res.status(404).json(response);
+  });
 });
 
 
-// ─── Global Error Handler ─────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────
+// GLOBAL ERROR HANDLER (SAFE)
+// ─────────────────────────────────────────────────────────────
+
 app.use(
-  (err: Error & { status?: number; code?: string }, _req: Request, res: Response, _next: NextFunction) => {
-    console.error('🔥 Unhandled error:', err);
+  (err: any, _req: Request, res: Response, _next: NextFunction) => {
+    console.error('🔥 ERROR:', err);
 
-    // CORS error
-    if (err.message?.includes('CORS blocked')) {
-      return res.status(403).json({
-        success: false,
-        error: 'CORS: Origin not allowed',
-      });
-    }
+    // 🔥 ALWAYS SEND CORS HEADERS EVEN ON ERROR
+    res.header("Access-Control-Allow-Origin", "*");
 
-    // 🔥 RATE LIMIT FIX (important safety)
+    // Handle rate limiter crash
     if (err.message?.includes('X-Forwarded-For')) {
       return res.status(200).json({
         success: true,
-        warning: 'Rate limiter proxy issue handled',
+        warning: 'Rate limiter handled',
       });
     }
 
-    // File size error
-    if (err.code === 'LIMIT_FILE_SIZE') {
-      return res.status(413).json({
-        success: false,
-        error: `File too large. Max size: ${process.env.MAX_FILE_SIZE_MB || 5}MB`,
-      });
-    }
-
-    const status = err.status || 500;
-
-    const response: ApiResponse = {
+    return res.status(500).json({
       success: false,
-      error:
-        process.env.NODE_ENV === 'production'
-          ? 'Internal server error'
-          : err.message,
-    };
-
-    return res.status(status).json(response);
+      error: 'Internal server error',
+    });
   }
 );
 
