@@ -8,88 +8,51 @@ import path from 'path';
 
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-// ─── Validate environment variables before anything else ──────────────────────
+// ─── Validate env ─────────────────────────────────────────────
 validateEnv();
 
-const PORT = parseInt(process.env.PORT || '5000', 10);
-const MAX_PORT_ATTEMPTS = 10;
+const PORT = parseInt(process.env.PORT || '5001', 10);
 
 // Ensure upload directory exists
 const uploadDir = path.join(__dirname, '..', process.env.UPLOAD_DIR || 'uploads');
 if (!fs.existsSync(uploadDir)) {
   fs.mkdirSync(uploadDir, { recursive: true });
-  console.log(`📁  Created upload directory: ${uploadDir}`);
+  console.log(`📁 Created upload directory: ${uploadDir}`);
 }
 
 const startServer = async (): Promise<void> => {
   try {
-    // Connect to MongoDB
     await connectDB();
 
     const server = http.createServer(app);
 
-    const listenOnAvailablePort = (port: number, attempt = 1): void => {
-      const onListening = () => {
-        cleanup();
-        console.log(`🚀  Narrator API server running on port ${port}`);
-        console.log(`🌍  Environment: ${process.env.NODE_ENV}`);
-        console.log(`📍  Health check: http://localhost:${port}/health`);
-      };
+    server.listen(PORT, () => {
+      console.log(`🚀 Server running on port ${PORT}`);
+      console.log(`🌍 Environment: ${process.env.NODE_ENV}`);
+      console.log(`📍 Health: http://localhost:${PORT}/health`);
+    });
 
-      const onError = (err: NodeJS.ErrnoException) => {
-        cleanup();
-
-        if (err.code === 'EADDRINUSE' && attempt < MAX_PORT_ATTEMPTS) {
-          const nextPort = port + 1;
-          console.warn(`⚠️  Port ${port} is in use, retrying on ${nextPort}...`);
-          listenOnAvailablePort(nextPort, attempt + 1);
-          return;
-        }
-
-        throw err;
-      };
-
-      const cleanup = () => {
-        server.off('listening', onListening);
-        server.off('error', onError);
-      };
-
-      server.once('listening', onListening);
-      server.once('error', onError);
-      server.listen(port);
-    };
-
-    listenOnAvailablePort(PORT);
-
-    // ─── Graceful Shutdown ──────────────────────────────────────────────────
-    const shutdown = (signal: string) => {
-      console.log(`\n${signal} received. Shutting down gracefully…`);
-      server.close(() => {
-        console.log('✅  HTTP server closed');
-        process.exit(0);
-      });
-
-      // Force close after 10 seconds
-      setTimeout(() => {
-        console.error('❌  Forced shutdown after timeout');
-        process.exit(1);
-      }, 10_000);
-    };
-
-    process.on('SIGTERM', () => shutdown('SIGTERM'));
-    process.on('SIGINT', () => shutdown('SIGINT'));
+    // ─── SAFE ERROR LOGGING (NO EXIT) ─────────────────────────
 
     process.on('unhandledRejection', (reason: unknown) => {
-      console.error('❌  Unhandled Promise Rejection:', reason);
-      shutdown('UNHANDLED_REJECTION');
+      console.error('❌ Unhandled Promise Rejection:', reason);
     });
 
     process.on('uncaughtException', (err: Error) => {
-      console.error('❌  Uncaught Exception:', err);
-      shutdown('UNCAUGHT_EXCEPTION');
+      console.error('❌ Uncaught Exception:', err);
     });
+
+    // 🔥 IMPORTANT: DO NOT EXIT (PM2 handles this)
+    process.on('SIGINT', () => {
+      console.log('⚠️ SIGINT received (ignored in PM2)');
+    });
+
+    process.on('SIGTERM', () => {
+      console.log('⚠️ SIGTERM received (ignored in PM2)');
+    });
+
   } catch (error) {
-    console.error('❌  Failed to start server:', error);
+    console.error('❌ Failed to start server:', error);
     process.exit(1);
   }
 };
