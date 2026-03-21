@@ -48,10 +48,6 @@ function formatCompact(value: number): string {
   }).format(value || 0);
 }
 
-function deriveYearlyPrice(monthlyPriceINR: number): number {
-  return Math.max(0, Math.round(monthlyPriceINR * 12));
-}
-
 function TrendPill({ value }: { value: number }) {
   const positive = value >= 0;
   return (
@@ -364,7 +360,7 @@ export default function AdminPage() {
       await adminApi.updatePricing(token, plan.planId, {
         displayName: plan.displayName,
         monthlyPriceINR: plan.monthlyPriceINR,
-        yearlyPriceINR: deriveYearlyPrice(plan.monthlyPriceINR),
+        yearlyPriceINR: plan.yearlyPriceINR,
         enabled: plan.enabled,
         discountPercent: plan.discountPercent,
       });
@@ -1036,7 +1032,7 @@ export default function AdminPage() {
 
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0f1020]">
                 <h3 className="text-base font-semibold">Dynamic Pricing Control</h3>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Update monthly INR pricing, enable or disable plans, and set default discounts. Yearly is auto-calculated as monthly × 12.</p>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Update monthly and yearly INR pricing, enable or disable plans, and set default discounts.</p>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {pricingConfigs.map((plan) => (
                     <div key={plan.planId} className="rounded-lg border border-slate-200 p-3 dark:border-white/10">
@@ -1069,10 +1065,13 @@ export default function AdminPage() {
                         <input
                           type="number"
                           min={0}
-                          value={deriveYearlyPrice(plan.monthlyPriceINR)}
-                          readOnly
-                          className="rounded-md border border-slate-300 bg-slate-100 px-2 py-1 text-xs text-slate-600 dark:border-white/20 dark:bg-white/10 dark:text-slate-300"
-                          placeholder="Yearly INR (auto)"
+                          value={plan.yearlyPriceINR}
+                          onChange={(e) => {
+                            const value = Number(e.target.value || 0);
+                            setPricingConfigs((prev) => prev.map((item) => item.planId === plan.planId ? { ...item, yearlyPriceINR: value } : item));
+                          }}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
+                          placeholder="Yearly INR"
                         />
                         <input
                           type="number"

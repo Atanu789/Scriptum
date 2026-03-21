@@ -1,19 +1,33 @@
-require('dotenv').config();
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-async function listModels() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const genAI = new GoogleGenerativeAI(apiKey);
-  
-  try {
-    const models = await genAI.listModels();
-    console.log('Available Gemini models:');
-    for await (const model of models) {
-      console.log(`- ${model.name}`);
-    }
-  } catch (err) {
-    console.error('Error:', err.message);
+function countKeys(prefix) {
+  const values = new Set();
+
+  const csv = process.env[`${prefix}_API_KEYS`];
+  if (csv) {
+    csv.split(',').map((v) => v.trim()).filter(Boolean).forEach((v) => values.add(v));
   }
+
+  const single = process.env[`${prefix}_API_KEY`];
+  if (single) values.add(single.trim());
+
+  for (let i = 1; i <= 12; i += 1) {
+    const key = process.env[`${prefix}_API_KEY_${i}`] || process.env[`${prefix}_API_KEY${i}`];
+    if (key && key.trim()) values.add(key.trim());
+  }
+
+  return values.size;
 }
 
-listModels();
+function printPoolSummary() {
+  const groqCount = countKeys('GROQ');
+  const openRouterCount = countKeys('OPENROUTER');
+
+  console.log('AI key pool summary');
+  console.log(`- GROQ keys: ${groqCount}`);
+  console.log(`- OPENROUTER keys: ${openRouterCount}`);
+  console.log(`- Total keys: ${groqCount + openRouterCount}`);
+}
+
+printPoolSummary();

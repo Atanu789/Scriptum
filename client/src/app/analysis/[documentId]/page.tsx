@@ -17,7 +17,19 @@ import ShareMenu from '@/components/ShareMenu';
 
 export default function AnalysisPage() {
   const params = useParams<{ documentId: string }>();
-  const { document, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize } =
+  const {
+    document,
+    isLoading,
+    isAnalyzing,
+    isHumanizing,
+    humanizeProgress,
+    humanizePreviewText,
+    error,
+    aiLimitedNotice,
+    analysis,
+    analyze,
+    humanize,
+  } =
     useDocument(params.documentId);
   const {
     canUseHumanizeText,
@@ -174,11 +186,19 @@ export default function AnalysisPage() {
           </div>
         </div>
 
+        {aiLimitedNotice && (
+          <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-200">
+            Free limit reached - showing basic results. {aiLimitedNotice}
+          </div>
+        )}
+
         {/* ── Analysis Panel — full-width, expanded ──────────────────── */}
         <AnalysisPanel
           analysis={analysis}
           isAnalyzing={isAnalyzing}
           isHumanizing={isHumanizing}
+          analysisProgress={isHumanizing ? humanizeProgress : null}
+          streamingPreviewText={humanizePreviewText}
           onAnalyze={analyze}
           onHumanize={canUseHumanizeText ? humanize : undefined}
           onGoPremium={goPremium}

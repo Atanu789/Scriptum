@@ -22,8 +22,11 @@ export interface IUser extends Document {
   aiUsageThisMonth: number;
   uploadUsageThisMonth: number;
   aiUsageResetAt: Date | null;
+  ttsUsageToday: number;
+  ttsUsageDate: Date | null;
   aiUsageLimitOverride: number | null;
   uploadUsageLimitOverride: number | null;
+  ttsUsageLimitOverride: number | null;
 
   // ── One-time free trials / overage grace ─────────────────────────────
   trialTtsNarrationUsed: boolean;
@@ -72,8 +75,11 @@ const userSchema = new Schema<IUser>(
     aiUsageThisMonth:     { type: Number, default: 0 },
     uploadUsageThisMonth: { type: Number, default: 0 },
     aiUsageResetAt:       { type: Date,   default: null },
+    ttsUsageToday:        { type: Number, default: 0 },
+    ttsUsageDate:         { type: Date,   default: null },
     aiUsageLimitOverride: { type: Number, default: null },
     uploadUsageLimitOverride: { type: Number, default: null },
+    ttsUsageLimitOverride: { type: Number, default: null },
 
     // ── One-time free trials / overage grace ───────────────────────────
     trialTtsNarrationUsed:   { type: Boolean, default: false },

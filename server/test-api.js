@@ -1,32 +1,69 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 
-async function testAPI() {
-  const apiKey = process.env.GEMINI_API_KEY;
-  const models = ['gemini-pro', 'gemini-1.5-pro', 'gemini-1.5-flash', 'gemini-1.5-flash-latest'];
-  
-  for (const modelName of models) {
-    try {
-      const url = `https://generativelanguage.googleapis.com/v1/models/${modelName}:generateContent?key=${apiKey}`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: 'Say hello' }] }]
-        })
-      });
-      
-      if (response.ok) {
-        console.log(`✓ ${modelName} works!`);
-        const data = await response.json();
-        console.log('Response:', JSON.stringify(data, null, 2));
-        break;
-      } else {
-        console.log(`✗ ${modelName} failed: ${response.status}`);
-      }
-    } catch (err) {
-      console.log(`✗ ${modelName} error:`, err.message);
-    }
+async function testGroq() {
+  const key = process.env.GROQ_API_KEY_1 || process.env.GROQ_API_KEY;
+  if (!key) {
+    console.log('Groq key missing');
+    return;
   }
+
+  const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'llama-3.1-8b-instant',
+      messages: [{ role: 'user', content: 'Say hello in one line.' }],
+      temperature: 0,
+      max_tokens: 30,
+    }),
+  });
+
+  if (!response.ok) {
+    console.log('Groq failed:', response.status, await response.text());
+    return;
+  }
+
+  const data = await response.json();
+  console.log('Groq ok:', data.choices?.[0]?.message?.content || 'no content');
 }
 
-testAPI();
+async function testOpenRouter() {
+  const key = process.env.OPENROUTER_API_KEY_1 || process.env.OPENROUTER_API_KEY;
+  if (!key) {
+    console.log('OpenRouter key missing');
+    return;
+  }
+
+  const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: 'openrouter/auto',
+      messages: [{ role: 'user', content: 'Say hello in one line.' }],
+      temperature: 0,
+      max_tokens: 30,
+    }),
+  });
+
+  if (!response.ok) {
+    console.log('OpenRouter failed:', response.status, await response.text());
+    return;
+  }
+
+  const data = await response.json();
+  console.log('OpenRouter ok:', data.choices?.[0]?.message?.content || 'no content');
+}
+
+async function main() {
+  await testGroq();
+  await testOpenRouter();
+}
+
+main();

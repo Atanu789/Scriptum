@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Document, AnalysisResult, HumanizeResult } from '@/types';
+import { Document, AnalysisProgress, AnalysisResult, HumanizeResult } from '@/types';
 import { documentApi, analysisApi } from '@/lib/api';
 import { sanitize, sanitizeContent } from '@/lib/sanitize';
 import toast from 'react-hot-toast';
@@ -62,7 +62,10 @@ interface UseDocumentReturn {
   isLoading: boolean;
   isAnalyzing: boolean;
   isHumanizing: boolean;
+  humanizeProgress: AnalysisProgress | null;
+  humanizePreviewText: string;
   error: string | null;
+  aiLimitedNotice: string | null;
   analysis: AnalysisResult | null;
   refresh: () => Promise<void>;
   analyze: () => Promise<void>;
@@ -75,7 +78,10 @@ export function useDocument(documentId: string): UseDocumentReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isHumanizing, setIsHumanizing] = useState(false);
+  const [humanizeProgress, setHumanizeProgress] = useState<AnalysisProgress | null>(null);
+  const [humanizePreviewText, setHumanizePreviewText] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [aiLimitedNotice, setAiLimitedNotice] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
 
   const refresh = useCallback(async () => {
@@ -122,6 +128,7 @@ export function useDocument(documentId: string): UseDocumentReturn {
     if (!documentId) return;
     setIsAnalyzing(true);
     setError(null);
+    setAiLimitedNotice(null);
     const toastId = toast.loading('Running AI analysis…');
     try {
       const result = await analysisApi.analyze(documentId, true);
@@ -138,7 +145,7 @@ export function useDocument(documentId: string): UseDocumentReturn {
         },
       };
 
-      if (normalizedResult.aiScore === null || normalizedResult.aiScore <= 0) {
+      if (!normalizedResult.limited && (normalizedResult.aiScore === null || normalizedResult.aiScore <= 0)) {
         setError('AI temporarily busy, retrying...');
         const retry = await analysisApi.analyze(documentId, true);
         normalizedResult = {
@@ -155,14 +162,21 @@ export function useDocument(documentId: string): UseDocumentReturn {
         };
       }
 
-      if (normalizedResult.aiScore === null || normalizedResult.aiScore <= 0) {
+      if (!normalizedResult.limited && (normalizedResult.aiScore === null || normalizedResult.aiScore <= 0)) {
         throw new Error('AI analysis failed. Please retry.');
       }
 
       console.log('[useDocument] Fresh analysis result. aiScore:', normalizedResult.aiScore);
       setAnalysis(sanitizeAnalysis(normalizedResult));
+      if (normalizedResult.limited) {
+        const notice = normalizedResult.limitReason || 'Free limit reached - showing basic results.';
+        setAiLimitedNotice(notice);
+        toast.success('Free limit reached - showing basic results.', { id: toastId });
+      } else {
+        setAiLimitedNotice(null);
+        toast.success('Analysis complete', { id: toastId });
+      }
       setError(null);
-      toast.success('Analysis complete', { id: toastId });
       // Refresh doc to get updated status
       await refresh();
     } catch (err) {
@@ -180,13 +194,54 @@ export function useDocument(documentId: string): UseDocumentReturn {
   const humanize = useCallback(async (): Promise<HumanizeResult | null> => {
     if (!documentId) return null;
     setIsHumanizing(true);
-    const toastId = toast.loading('Humanizing AI-like sections…');
+    setHumanizeProgress({ step: 0, total: 100, label: 'Starting background humanize job…' });
+    setHumanizePreviewText('');
+    const toastId = toast.loading('Processing large document in background…');
     try {
-      const result = await analysisApi.humanize(documentId);
+      const started = await analysisApi.humanizeStart(documentId);
+
+      let result: HumanizeResult | null = null;
+      const maxPoll = 600;
+      for (let i = 0; i < maxPoll; i += 1) {
+        const status = await analysisApi.humanizeStatus(documentId, started.jobId);
+        const pct = Math.max(0, Math.min(100, status.progress ?? 0));
+        setHumanizeProgress({
+          step: pct,
+          total: 100,
+          label: `Humanizing chunks ${status.chunksDone}/${status.totalChunks}`,
+        });
+
+        if (status.partialText) {
+          setHumanizePreviewText(status.partialText);
+          setDocument((prev) => prev ? sanitizeDoc({ ...prev, cleanedText: status.partialText || prev.cleanedText }) : prev);
+        }
+
+        if (status.status === 'done') {
+          result = status.result || null;
+          break;
+        }
+
+        if (status.status === 'failed') {
+          throw new Error(status.error || 'Humanization failed');
+        }
+
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+      }
+
+      if (!result) {
+        throw new Error('Humanization job timed out while waiting for completion.');
+      }
+
+      if (result.limited) {
+        setAiLimitedNotice(result.limitReason || 'Free limit reached - showing basic results.');
+      }
+
       await refresh();
       const score = result.analysis?.aiScore;
       const scoreSuffix = typeof score === 'number' ? ` · AI likelihood now ${Math.round(score)}%` : '';
       toast.success(`Humanized ${result.appliedCount} section${result.appliedCount === 1 ? '' : 's'}${scoreSuffix}`, { id: toastId });
+      setHumanizeProgress(null);
+      setHumanizePreviewText('');
       return result;
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Humanization failed';
@@ -197,6 +252,7 @@ export function useDocument(documentId: string): UseDocumentReturn {
       return null;
     } finally {
       setIsHumanizing(false);
+      setHumanizeProgress(null);
     }
   }, [documentId, refresh]);
 
@@ -235,7 +291,10 @@ export function useDocument(documentId: string): UseDocumentReturn {
     isLoading,
     isAnalyzing,
     isHumanizing,
+    humanizeProgress,
+    humanizePreviewText,
     error,
+    aiLimitedNotice,
     analysis,
     refresh,
     analyze,

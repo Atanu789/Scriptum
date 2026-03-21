@@ -23,7 +23,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useSubscription } from '@/hooks/useSubscription';
-import { useScriptTokens, Token }          from '@/hooks/useScriptTokens';
+import { useScriptTokens, Token, normalizeWord } from '@/hooks/useScriptTokens';
 import { useWordMatcher }                   from '@/hooks/useWordMatcher';
 import { useDeepgramSync, SyncStatus }      from '@/hooks/useDeepgramSync';
 import { useAutoScroll }                    from '@/hooks/useAutoScroll';
@@ -391,6 +391,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   const containerRef       = useRef<HTMLDivElement>(null);
   const lastHighlightedRef = useRef<number>(-1);
   const lastSentenceRef    = useRef<number>(-1);
+  const micInterimWordsRef = useRef<string[]>([]);
   const rafManualRef       = useRef<number>(0);
   const speedRef           = useRef(speed);
   const isManualPlayingRef = useRef(isManualPlaying);
@@ -547,7 +548,34 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
   // ── Deepgram STT mic ───────────────────────────────────────────────────────
   const { start: micStart, stop: micStop } = useDeepgramSync({
-    onTranscript: (text) => { advancePointer(processChunk(text)); },
+    onTranscript: (text, isFinal) => {
+      const words = text
+        .split(/\s+/)
+        .map(normalizeWord)
+        .filter(Boolean);
+
+      if (words.length === 0) {
+        if (isFinal) micInterimWordsRef.current = [];
+        return;
+      }
+
+      const previousWords = micInterimWordsRef.current;
+      let sharedPrefixLength = 0;
+      while (
+        sharedPrefixLength < previousWords.length &&
+        sharedPrefixLength < words.length &&
+        previousWords[sharedPrefixLength] === words[sharedPrefixLength]
+      ) {
+        sharedPrefixLength += 1;
+      }
+
+      const deltaWords = words.slice(sharedPrefixLength);
+      if (deltaWords.length > 0) {
+        advancePointer(processChunk(deltaWords.join(' ')));
+      }
+
+      micInterimWordsRef.current = isFinal ? [] : words;
+    },
     onStatusChange: setSyncStatus,
     onError: (msg) => { setErrorMsg(msg); setActiveMode('idle'); },
   });
@@ -596,13 +624,16 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     ttsStop();
     cancelAnimationFrame(rafManualRef.current);
     setIsManualPlaying(false);
+    resetDOM();
     resetMatcher();
+    micInterimWordsRef.current = [];
     setActiveMode('mic');
     micStart();
-  }, [micStart, readingMode, resetMatcher, ttsStop]);
+  }, [micStart, readingMode, resetDOM, resetMatcher, ttsStop]);
 
   const handleStopMic = useCallback(() => {
     micStop();
+    micInterimWordsRef.current = [];
     setActiveMode('idle');
   }, [micStop]);
 
@@ -633,6 +664,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     setSyncStatus('idle');
     setIsManualPlaying(false);
     setErrorMsg(null);
+    micInterimWordsRef.current = [];
   }, [canUsePremiumAI, micStop, readingMode, ttsStop]);
 
   useEffect(() => {
@@ -654,6 +686,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     setSyncStatus('idle');
     setIsManualPlaying(false);
     setErrorMsg(null);
+    micInterimWordsRef.current = [];
     resetDOM();
   }, [micStop, resetDOM, resetMatcher, ttsStop]);
 

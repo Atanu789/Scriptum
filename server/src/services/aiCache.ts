@@ -26,6 +26,10 @@ const aiCacheSchema = new Schema<AICacheDocument>(
 const AICacheModel: Model<AICacheDocument> =
   mongoose.models.AICache || mongoose.model<AICacheDocument>('AICache', aiCacheSchema);
 
+function isCacheDbReady(): boolean {
+  return mongoose.connection.readyState === 1;
+}
+
 export function buildAICacheHash(input: {
   prompt: string;
   modelPreferences?: unknown;
@@ -43,24 +47,36 @@ export function buildAICacheHash(input: {
 }
 
 export async function getCachedAIResult<T = unknown>(hash: string): Promise<T | null> {
+  if (!isCacheDbReady()) return null;
+
   const now = new Date();
-  const row = await AICacheModel.findOne({ hash, expiresAt: { $gt: now } }).lean();
-  if (!row) return null;
-  return row.result as T;
+  try {
+    const row = await AICacheModel.findOne({ hash, expiresAt: { $gt: now } }).lean();
+    if (!row) return null;
+    return row.result as T;
+  } catch {
+    return null;
+  }
 }
 
 export async function setCachedAIResult(hash: string, result: unknown, ttlHours = 24): Promise<void> {
+  if (!isCacheDbReady()) return;
+
   const now = new Date();
   const expiresAt = new Date(now.getTime() + ttlHours * 60 * 60 * 1000);
 
-  await AICacheModel.findOneAndUpdate(
-    { hash },
-    {
-      hash,
-      result,
-      createdAt: now,
-      expiresAt,
-    },
-    { upsert: true, new: true, setDefaultsOnInsert: true }
-  );
+  try {
+    await AICacheModel.findOneAndUpdate(
+      { hash },
+      {
+        hash,
+        result,
+        createdAt: now,
+        expiresAt,
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+  } catch {
+    // Best-effort cache write; ignore failures.
+  }
 }

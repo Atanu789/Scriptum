@@ -16,6 +16,8 @@ import {
   DocumentSummary,
   UploadResult,
   AnalysisResult,
+  DocumentHumanizeJobStart,
+  DocumentHumanizeJobStatus,
   HumanizeResult,
   AudioSegment,
   UsageStats,
@@ -238,12 +240,36 @@ export const analysisApi = {
     return unwrap(data);
   },
 
+  humanizeStart: async (
+    documentId: string,
+    options?: { mode?: 'conservative' | 'balanced' | 'aggressive'; styleProfile?: 'student' | 'journalist' | 'casual-speaker' | 'academic' }
+  ): Promise<DocumentHumanizeJobStart> => {
+    const { data } = await api.post<ApiResponse<DocumentHumanizeJobStart>>(`/analyze/${documentId}/humanize`, options || {});
+    return unwrap(data);
+  },
+
+  humanizeStatus: async (documentId: string, jobId: string): Promise<DocumentHumanizeJobStatus> => {
+    const { data } = await api.get<ApiResponse<DocumentHumanizeJobStatus>>(`/analyze/${documentId}/humanize/${jobId}`);
+    return unwrap(data);
+  },
+
   humanize: async (
     documentId: string,
     options?: { mode?: 'conservative' | 'balanced' | 'aggressive'; styleProfile?: 'student' | 'journalist' | 'casual-speaker' | 'academic' }
   ): Promise<HumanizeResult> => {
-    const { data } = await api.post<ApiResponse<HumanizeResult>>(`/analyze/${documentId}/humanize`, options || {});
-    return unwrap(data);
+    const started = await analysisApi.humanizeStart(documentId, options);
+    const maxAttempts = 600;
+
+    for (let i = 0; i < maxAttempts; i += 1) {
+      const status = await analysisApi.humanizeStatus(documentId, started.jobId);
+      if (status.status === 'done' && status.result) return status.result;
+      if (status.status === 'failed') {
+        throw new Error(status.error || 'Humanization failed');
+      }
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    throw new Error('Humanization job timed out');
   },
 };
 

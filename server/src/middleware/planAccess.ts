@@ -118,9 +118,12 @@ export async function checkAIUsage(
       resetAt.getMonth()     === now.getMonth() &&
       resetAt.getFullYear()  === now.getFullYear();
 
+    let usageMutated = false;
+
     if (!sameMonth) {
       user.aiUsageThisMonth = 0;
       user.aiUsageResetAt   = now;
+      usageMutated = true;
     }
 
     const effectivePlan = resolveEffectivePlan(user.plan, user.planExpiryDate);
@@ -137,14 +140,14 @@ export async function checkAIUsage(
         return;
       }
 
-      res.status(429).json({
-        success: false,
-        error:   `Monthly AI analysis limit (${limit}) reached. Upgrade to Pro for more.`,
-        code:    'AI_LIMIT_REACHED',
-        usage:   user.aiUsageThisMonth,
-        limit,
-        trialUsed: user.trialAiOverageUsed,
-      });
+      req.aiLimited = true;
+      req.aiLimitReason = `Monthly AI analysis limit (${limit}) reached. Using fallback mode.`;
+
+      if (usageMutated) {
+        await user.save();
+      }
+
+      next();
       return;
     }
 
@@ -208,7 +211,6 @@ export async function checkUploadUsage(
   }
 }
 
-export const checkTTSNarrationAccess = requireFeatureWithOneTimeTrial('ttsNarration', 'trialTtsNarrationUsed');
 export const checkExportAccess = requireFeatureWithOneTimeTrial('exportPPT', 'trialExportUsed');
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
@@ -218,4 +220,79 @@ function resolveEffectivePlan(plan: Plan, expiryDate: Date | null): Plan {
   // Paid plan — check expiry
   if (expiryDate && expiryDate > new Date()) return plan;
   return 'free'; // expired → treat as free
+}
+
+function isSameUtcDay(a: Date, b: Date): boolean {
+  return (
+    a.getUTCFullYear() === b.getUTCFullYear()
+    && a.getUTCMonth() === b.getUTCMonth()
+    && a.getUTCDate() === b.getUTCDate()
+  );
+}
+
+export async function checkTTSNarrationAccess(
+  req: AuthenticatedRequest,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = req.user?.userId;
+    if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
+
+    const user = await User.findById(userId).select(
+      'plan planExpiryDate trialTtsNarrationUsed ttsUsageToday ttsUsageDate ttsUsageLimitOverride'
+    );
+    if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
+
+    const effectivePlan = resolveEffectivePlan(user.plan, user.planExpiryDate);
+    const limits = PLAN_LIMITS[effectivePlan];
+
+    // Free users keep one one-time narration trial.
+    if (!limits.ttsNarration) {
+      if (effectivePlan === 'free' && !user.trialTtsNarrationUsed) {
+        user.trialTtsNarrationUsed = true;
+        await user.save();
+        next();
+        return;
+      }
+
+      res.status(403).json({
+        success: false,
+        error: "Feature 'ttsNarration' requires a Pro plan. Upgrade at /pricing.",
+        code: 'PLAN_UPGRADE_REQUIRED',
+        feature: 'ttsNarration',
+      });
+      return;
+    }
+
+    const baseLimit = limits.ttsRequestsPerDay;
+    const overrideLimit = typeof user.ttsUsageLimitOverride === 'number' ? user.ttsUsageLimitOverride : null;
+    const limit = overrideLimit !== null ? overrideLimit : baseLimit;
+
+    const now = new Date();
+    const usageDate = user.ttsUsageDate;
+    if (!usageDate || !isSameUtcDay(usageDate, now)) {
+      user.ttsUsageToday = 0;
+      user.ttsUsageDate = now;
+    }
+
+    if (limit !== -1 && user.ttsUsageToday >= limit) {
+      res.status(429).json({
+        success: false,
+        error: `Daily teleprompter narration limit (${limit}) reached.`,
+        code: 'TTS_DAILY_LIMIT_REACHED',
+        usage: user.ttsUsageToday,
+        limit,
+      });
+      return;
+    }
+
+    user.ttsUsageToday += 1;
+    user.ttsUsageDate = now;
+    await user.save();
+    next();
+  } catch (err) {
+    console.error('checkTTSNarrationAccess error:', err);
+    res.status(500).json({ success: false, error: 'TTS access check failed' });
+  }
 }

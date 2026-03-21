@@ -9,7 +9,6 @@ const REQUIRED_VARS = [
 ] as const;
 
 const OPTIONAL_VARS = [
-  { key: 'GEMINI_API_KEY',          warn: 'AI analysis will be disabled' },
   { key: 'TEXTGEARS_API_KEY',       warn: 'Readability will use local Flesch calculation only' },
   { key: 'CLIENT_URL',              warn: 'CORS will default to http://localhost:3000' },
   { key: 'DEEPGRAM_API_KEY',        warn: 'Teleprompter mic-sync and TTS will be unavailable' },
@@ -26,6 +25,26 @@ const OPTIONAL_VARS = [
   { key: 'MAIL_FROM',               warn: 'Outbound emails will not have a configured from address' },
   { key: 'CLIENT_APP_URL',          warn: 'Password reset links will default to CLIENT_URL / localhost' },
 ] as const;
+
+function countProviderKeys(prefix: 'GROQ' | 'OPENROUTER'): number {
+  const found = new Set<string>();
+
+  const csv = process.env[`${prefix}_API_KEYS`]?.trim() || '';
+  if (csv) {
+    csv.split(',').map((v) => v.trim()).filter(Boolean).forEach((v) => found.add(v));
+  }
+
+  const single = process.env[`${prefix}_API_KEY`]?.trim();
+  if (single) found.add(single);
+
+  for (let i = 1; i <= 12; i += 1) {
+    const numbered = process.env[`${prefix}_API_KEY_${i}`]?.trim()
+      || process.env[`${prefix}_API_KEY${i}`]?.trim();
+    if (numbered) found.add(numbered);
+  }
+
+  return found.size;
+}
 
 export function validateEnv(): void {
   const missing: string[] = [];
@@ -48,6 +67,19 @@ export function validateEnv(): void {
     if (!process.env[key]?.trim()) {
       console.warn(`⚠️  ${key} not set — ${warn}`);
     }
+  }
+
+  const groqKeyCount = countProviderKeys('GROQ');
+  const openRouterKeyCount = countProviderKeys('OPENROUTER');
+
+  if (groqKeyCount === 0 && openRouterKeyCount === 0) {
+    console.warn('⚠️  No GROQ/OPENROUTER API keys found — AI analysis will be unavailable');
+  }
+  if (groqKeyCount > 0 && groqKeyCount < 4) {
+    console.warn(`⚠️  GROQ key pool has ${groqKeyCount} key(s); 4+ recommended for high concurrency`);
+  }
+  if (openRouterKeyCount > 0 && openRouterKeyCount < 4) {
+    console.warn(`⚠️  OPENROUTER key pool has ${openRouterKeyCount} key(s); 4+ recommended for high concurrency`);
   }
 
   // Validate JWT_SECRET strength

@@ -35,6 +35,7 @@ interface Props {
   getGrammarIssueLine?:  (issue: GrammarIssue) => number | null;
   documentStatus:        string;
   expanded?:             boolean;
+  streamingPreviewText?: string;
 }
 
 // ─── Score Ring ────────────────────────────────────────────────────────────────
@@ -399,6 +400,7 @@ type TabId = 'overview' | 'integrity' | 'language' | 'tone';
 
 function AnalysisPanel({
   analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onGoPremium, canUseGrammarFixFeature, canUseHumanizeFeature, canUseToneBiasFeature, aiUsageLabel, isAiUsageBlocked, onCancelAnalyze, onSave, documentStatus, expanded = false,
+  streamingPreviewText = '', 
   onApplySuggestion, onApplyGrammarFix, getGrammarIssueLine,
 }: Props) {
   const { theme } = useTheme();
@@ -454,7 +456,17 @@ function AnalysisPanel({
 
   // ── Loading states ──────────────────────────────────────────────────────────
 
-  if (isAnalyzing && analysisProgress) return <ProgressScreen progress={analysisProgress} onCancel={onCancelAnalyze} isDark={D} />;
+  if ((isAnalyzing || isHumanizing) && analysisProgress) return <ProgressScreen progress={analysisProgress} onCancel={onCancelAnalyze} isDark={D} />;
+        {isHumanizing && streamingPreviewText && (
+          <div className={cn('mb-5 rounded-xl border p-3', D ? 'border-indigo-900/50 bg-indigo-950/20' : 'border-indigo-200 bg-indigo-50/70')}>
+            <p className={cn('mb-1 text-[10px] font-bold uppercase tracking-wider', D ? 'text-indigo-300' : 'text-indigo-700')}>
+              Live Humanize Preview
+            </p>
+            <p className={cn('line-clamp-6 text-xs leading-relaxed', D ? 'text-slate-200' : 'text-slate-700')}>
+              {streamingPreviewText}
+            </p>
+          </div>
+        )}
 
   if (isAnalyzing) return (
     <div className={cn('rounded-2xl border overflow-hidden', D ? 'bg-[#0f0f1a] border-indigo-900/40' : 'bg-white border-indigo-100')}>

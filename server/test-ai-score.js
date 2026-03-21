@@ -1,4 +1,5 @@
-require('dotenv').config();
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '.env') });
 const { analyzeAIScore } = require('./dist/services/ai/aiScoreAnalyzer');
 
 const testText = `

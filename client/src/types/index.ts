@@ -6,6 +6,7 @@ export type BillingCycle = 'monthly' | 'yearly';
 export interface PlanLimits {
   aiUsagePerMonth:  number;   // -1 = unlimited
   uploadsPerMonth:  number;   // -1 = unlimited
+  ttsRequestsPerDay: number;  // -1 = unlimited
   teleprompterAI:   boolean;
   exportPPT:        boolean;
   ttsNarration:     boolean;
@@ -361,6 +362,8 @@ export interface AnalysisResult {
   avgSentenceLength?:  number;
   longSentences?:      string[];
   tone?:               ToneResult;
+  limited?:            boolean;
+  limitReason?:        string;
 }
 
 export interface HumanizeResult {
@@ -379,10 +382,35 @@ export interface HumanizeResult {
   notes?: string[];
   retryCount?: number;
   evaluationReason?: string;
+  limited?: boolean;
+  limitReason?: string;
   analysis?: {
     aiScore: number | null;
     analyzedAt: string;
   };
+}
+
+export interface DocumentHumanizeJobStart {
+  jobId: string;
+  status: 'processing' | 'done';
+  progress: number;
+  chunksDone: number;
+  totalChunks: number;
+  limited?: boolean;
+  limitReason?: string;
+}
+
+export interface DocumentHumanizeJobStatus {
+  jobId: string;
+  status: 'processing' | 'done' | 'failed';
+  progress: number;
+  chunksDone: number;
+  totalChunks: number;
+  partialText?: string;
+  result?: HumanizeResult | null;
+  error?: string;
+  limited?: boolean;
+  limitReason?: string;
 }
 
 export interface DocumentAbstractResult {

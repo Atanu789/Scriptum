@@ -38,8 +38,9 @@ type DisplayPlan = PlanEntry & {
 type BillingMode = 'monthly' | 'yearly';
 
 const PLAN_COMPARE_ROWS = [
-  { label: 'Uploads / month', values: { free: '5', pro: '50', advanced: '200' } },
-  { label: 'AI analyses / month', values: { free: '5', pro: '50', advanced: '150' } },
+  { label: 'Uploads / month', values: { free: '5', pro: '100', advanced: '350' } },
+  { label: 'AI analyses / month', values: { free: '5', pro: '80', advanced: '180' } },
+  { label: 'Teleprompter narrations / day', values: { free: 'Trial only', pro: '10', advanced: '25' } },
   { label: 'Grammar fix', values: { free: false, pro: true, advanced: true } },
   { label: 'Humanize text', values: { free: false, pro: true, advanced: true } },
   { label: 'AI teleprompter', values: { free: false, pro: true, advanced: true } },
@@ -263,6 +264,7 @@ export default function PricingPage() {
   const isAdvancedActive =
     effectivePlan === 'pro' &&
     ((sub?.limits.aiUsagePerMonth ?? 0) >= 150 || (sub?.limits.uploadsPerMonth ?? 0) >= 200);
+    ((sub?.limits.aiUsagePerMonth ?? 0) >= 180 || (sub?.limits.uploadsPerMonth ?? 0) >= 350);
   const activePaidTier = effectivePlan === 'free' ? null : (isAdvancedActive ? 'advanced' : 'pro');
   const activePaidRecord = activePaidTier
     ? history.find((rec) => rec.status === 'captured' && (rec.pricingTier || rec.plan) === activePaidTier)
@@ -286,7 +288,7 @@ export default function PricingPage() {
         ...plan,
         description: plan.id === 'advanced'
           ? 'Higher limits and priority support for heavy usage.'
-          : '50 uploads, 50 AI analyses, plus full premium toolkit.',
+          : '100 uploads, 80 AI analyses, plus full premium toolkit.',
         ctaLabel: plan.id === 'advanced' ? 'Request discount' : 'Upgrade to Pro',
         bestFor: plan.id === 'advanced' ? 'For teams and power users' : 'For regular publishing',
       };
@@ -462,8 +464,9 @@ export default function PricingPage() {
                     </>
                   ) : plan.id === 'pro' ? (
                     <>
-                      <PlanFeature included label="50 uploads per month" />
-                      <PlanFeature included label="50 AI analyses per month" />
+                      <PlanFeature included label="100 uploads per month" />
+                      <PlanFeature included label="80 AI analyses per month" />
+                      <PlanFeature included label="10 teleprompter narrations per day" />
                       <PlanFeature included label="Grammar fix" />
                       <PlanFeature included label="Humanize text" />
                       <PlanFeature included label="AI teleprompter + TTS" />
@@ -471,8 +474,9 @@ export default function PricingPage() {
                     </>
                   ) : (
                     <>
-                      <PlanFeature included label="200 uploads per month" />
-                      <PlanFeature included label="150 AI analyses per month" />
+                      <PlanFeature included label="350 uploads per month" />
+                      <PlanFeature included label="180 AI analyses per month" />
+                      <PlanFeature included label="25 teleprompter narrations per day" />
                       <PlanFeature included label="Grammar fix + Humanize text" />
                       <PlanFeature included label="AI teleprompter + TTS" />
                       <PlanFeature included label="PDF + DOCX + PPTX export" />

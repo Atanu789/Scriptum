@@ -1,10 +1,12 @@
-import 'dotenv/config';
+import dotenv from 'dotenv';
 import http from 'http';
 import app from './app';
 import connectDB from './config/db';
 import { validateEnv } from './config/validateEnv';
 import fs from 'fs';
 import path from 'path';
+
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // ─── Validate environment variables before anything else ──────────────────────
 validateEnv();

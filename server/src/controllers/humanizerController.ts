@@ -483,6 +483,35 @@ export const processHumanizerText = async (req: AuthenticatedRequest, res: Respo
       return;
     }
 
+    if (req.aiLimited) {
+      const fallback = {
+        humanizedText: sourceText,
+        originalText: sourceText,
+        wordCount: wordCount(sourceText),
+        mode,
+        quality: 'medium' as const,
+        aiLikelihoodScore: 0,
+        notes: ['AI rate limit reached. Returning original text.'],
+        cached: false,
+        planTier: 'free' as const,
+        limits: HUMANIZER_PLAN_LIMITS.free,
+        usageToday: {
+          requestsUsed: 0,
+          wordsProcessed: 0,
+        },
+        limited: true,
+        limitReason: req.aiLimitReason || 'AI rate limit reached. Returning original text.',
+      };
+
+      res.json({
+        success: true,
+        limited: true,
+        data: fallback,
+        message: req.aiLimitReason || 'AI rate limit reached. Returned fallback humanized text.',
+      });
+      return;
+    }
+
     const jobId = crypto.randomUUID();
     humanizerJobs.set(jobId, {
       jobId,

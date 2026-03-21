@@ -1,4 +1,5 @@
 import rateLimit, { RateLimitRequestHandler } from 'express-rate-limit';
+import { AuthenticatedRequest } from '../types';
 
 /**
  * General API rate limiter – 100 requests per 15 minutes per IP
@@ -36,9 +37,11 @@ export const analysisLimiter = rateLimit({
   max: 20,
   standardHeaders: true,
   legacyHeaders: false,
-  message: {
-    success: false,
-    error: 'AI analysis rate limit reached. Please try again after 1 hour.',
+  handler: (req, _res, next) => {
+    const r = req as AuthenticatedRequest;
+    r.aiLimited = true;
+    r.aiLimitReason = 'AI analysis rate limit reached. Using fallback mode.';
+    next();
   },
 });
 

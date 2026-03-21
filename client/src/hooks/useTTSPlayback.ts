@@ -29,6 +29,19 @@ interface Chunk {
   text: string;
 }
 
+function getTokenStartOffsets(chunk: Chunk): number[] {
+  const offsets: number[] = [];
+  let cursor = 0;
+
+  for (let i = 0; i < chunk.tokens.length; i += 1) {
+    offsets.push(cursor);
+    cursor += chunk.tokens[i].original.length;
+    if (i < chunk.tokens.length - 1) cursor += 1;
+  }
+
+  return offsets;
+}
+
 function chunkTokens(tokens: Token[], size: number): Chunk[] {
   const chunks: Chunk[] = [];
   for (let i = 0; i < tokens.length; i += size) {
@@ -99,6 +112,7 @@ export function useTTSPlayback({
 
     const chunk = chunks[idx];
     const utterance = new SpeechSynthesisUtterance(chunk.text);
+    const tokenStartOffsets = getTokenStartOffsets(chunk);
     utterance.rate = 1;
     utterance.pitch = 1;
 
@@ -110,8 +124,14 @@ export function useTTSPlayback({
     utterance.onboundary = (event) => {
       if (!chunk.tokens.length) return;
       const charIndex = event.charIndex || 0;
-      const ratio = chunk.text.length > 0 ? Math.min(1, Math.max(0, charIndex / chunk.text.length)) : 0;
-      const offset = Math.min(chunk.tokens.length - 1, Math.floor(ratio * chunk.tokens.length));
+      let offset = 0;
+      for (let i = 1; i < tokenStartOffsets.length; i += 1) {
+        if (charIndex >= tokenStartOffsets[i]) {
+          offset = i;
+        } else {
+          break;
+        }
+      }
       onPointerRef.current(chunk.start + offset);
     };
 

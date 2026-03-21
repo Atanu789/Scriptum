@@ -6,6 +6,7 @@ import {
   analyzeDocument,
   analyzeDocumentValidation,
   generateAbstract,
+  getDocumentHumanizeJob,
   humanizeDetectedText,
 } from '../controllers/analysisController';
 
@@ -19,6 +20,7 @@ router.use(analysisLimiter);
 // or via SameSite cookie attributes + custom headers for API requests
 router.post('/:id', checkAIUsage, analyzeDocumentValidation, analyzeDocument);
 router.post('/:id/humanize', checkAIUsage, requireFeature('humanizeText'), analyzeDocumentValidation, humanizeDetectedText);
+router.get('/:id/humanize/:jobId', analyzeDocumentValidation, getDocumentHumanizeJob);
 router.post('/:id/abstract', checkAIUsage, analyzeDocumentValidation, generateAbstract);
 
 export default router;

@@ -5,6 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import AnalysisPanel from '@/components/AnalysisPanel';
 import ShareMenu from '@/components/ShareMenu';
+import { HumanizeRewriteModal } from '@/components/HumanizeRewriteModal';
 import { useDocument } from '@/hooks/useDocument';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
@@ -306,6 +307,8 @@ export default function EditorPage() {
     before: string;
     after: string;
   } | null>(null);
+  const [showRewriteModal, setShowRewriteModal] = useState(false);
+  const [rewriteData, setRewriteData] = useState<Array<{ original: string; replacement: string }>>([]);
   const [versions, setVersions] = useState<LocalVersionSnapshot[]>([]);
   const [metadataDifficulty, setMetadataDifficulty] = useState<'Easy' | 'Medium' | 'Hard'>('Medium');
   const [metadataTags, setMetadataTags] = useState('DP, Graph');
@@ -1126,6 +1129,12 @@ export default function EditorPage() {
       before: beforeText,
       after: afterText,
     });
+    
+    // Show rewrite modal if appliedRewrites are available
+    if (result.appliedRewrites && result.appliedRewrites.length > 0) {
+      setRewriteData(result.appliedRewrites);
+      setShowRewriteModal(true);
+    }
   }, [doc?.cleanedText, editorHtml, humanize, recalcEditorMetrics]);
 
   const getIssueLineNumber = useCallback((issue: GrammarIssue) => {
@@ -1733,6 +1742,13 @@ export default function EditorPage() {
           </div>
         </div>
       )}
+
+      <HumanizeRewriteModal
+        isOpen={showRewriteModal}
+        onClose={() => setShowRewriteModal(false)}
+        rewrites={rewriteData}
+        totalCount={rewriteData.length}
+      />
     </div>
   );
 }

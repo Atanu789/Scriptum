@@ -1,4 +1,4 @@
-import { callGemini } from './geminiClient';
+import { runAI } from '../aiRouter';
 import { ToneResult } from '../../types';
 
 function extractJSON(text: string): any {
@@ -22,8 +22,18 @@ Text:
 ${sample}`;
 
   try {
-    const response = await callGemini(prompt);
-    const data = extractJSON(response);
+    const ai = await runAI({
+      prompt,
+      modelPreferences: {
+        groq: ['llama-3.1-8b-instant'],
+        openrouter: ['openrouter/auto'],
+      },
+      temperature: 0.1,
+      maxTokens: 500,
+      forceFresh: true,
+    });
+
+    const data = extractJSON(ai.text || '{}');
     
     return {
       dominantTone: data.dominantTone || 'neutral',

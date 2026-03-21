@@ -13,6 +13,8 @@ export interface JwtPayload {
 
 export interface AuthenticatedRequest extends Request {
   user?: JwtPayload;
+  aiLimited?: boolean;
+  aiLimitReason?: string;
 }
 
 // ─── Document ────────────────────────────────────────────────────────────────

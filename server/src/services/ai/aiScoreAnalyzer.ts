@@ -1,4 +1,4 @@
-import { callGemini } from './geminiClient';
+import { runAI } from '../aiRouter';
 import { HumanizeMode, ToneResult } from '../../types';
 
 interface AIScoreResult {
@@ -49,6 +49,27 @@ interface SentenceRewriteResponse {
 const SAMPLE_CHARS = 3000;
 const HUMANIZATION_TIP_COUNT = 5;
 const MAX_HUMANIZE_SENTENCES = 80;
+const DEFAULT_MODELS = {
+  groq: ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'],
+  openrouter: ['openrouter/auto'],
+};
+
+async function askAI(prompt: string, maxTokens: number): Promise<string> {
+  const res = await runAI({
+    prompt,
+    modelPreferences: DEFAULT_MODELS,
+    temperature: 0.2,
+    maxTokens,
+    forceFresh: true,
+    validateResult: (text) => Boolean(text && text.trim().length > 0),
+  });
+
+  if (!res.success || !res.text) {
+    throw new Error(res.message || 'AI temporarily unavailable');
+  }
+
+  return res.text;
+}
 
 function extractJSON(text: string): MasterPromptResponse {
   const jsonMatch = text.match(/\{[\s\S]*\}/);
@@ -323,7 +344,7 @@ export async function generateSentenceRewriteSuggestions(
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const retryHint = attempt === 0 ? '' : '\nReturn JSON only. No explanation.';
-      const response = await callGemini(`${prompt}${retryHint}`);
+      const response = await askAI(`${prompt}${retryHint}`, 1300);
       const parsed = extractRewriteJSON(response);
       const rewrites = Array.isArray(parsed.rewrites) ? parsed.rewrites : [];
 
@@ -356,7 +377,7 @@ export async function rewriteSingleSentenceWithMode(
 
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const output = (await callGemini(prompt))
+      const output = (await askAI(prompt, 180))
         .replace(/^```[a-z]*\n?/i, '')
         .replace(/```$/i, '')
         .trim();
@@ -398,7 +419,7 @@ export async function analyzeAIScore(text: string): Promise<AIScoreResult> {
     for (let attempt = 0; attempt < 2; attempt += 1) {
       try {
         const retryHint = attempt === 0 ? '' : '\nReturn JSON only. No extra text.';
-        const response = await callGemini(`${prompt}${retryHint}`);
+        const response = await askAI(`${prompt}${retryHint}`, 1200);
         parsed = extractJSON(response);
         break;
       } catch (innerErr) {

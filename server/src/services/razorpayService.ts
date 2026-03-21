@@ -39,6 +39,7 @@ export function getPlanPriceForCycle(
 export const PLAN_LIMITS: { [P in Plan]: {
   aiUsagePerMonth:   number;   // -1 = unlimited
   uploadsPerMonth:   number;   // -1 = unlimited
+  ttsRequestsPerDay: number;
   teleprompterAI:    boolean;
   exportPPT:         boolean;
   ttsNarration:      boolean;
@@ -48,6 +49,7 @@ export const PLAN_LIMITS: { [P in Plan]: {
   free: {
     aiUsagePerMonth:  5,
     uploadsPerMonth:  5,
+    ttsRequestsPerDay: 0,
     teleprompterAI:   false,
     exportPPT:        false,
     ttsNarration:     false,
@@ -55,8 +57,9 @@ export const PLAN_LIMITS: { [P in Plan]: {
     humanizeText:     false,
   },
   pro: {
-    aiUsagePerMonth:  50,
-    uploadsPerMonth:  50,
+    aiUsagePerMonth:  80,
+    uploadsPerMonth:  100,
+    ttsRequestsPerDay: 10,
     teleprompterAI:   true,
     exportPPT:        true,
     ttsNarration:     true,

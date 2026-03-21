@@ -71,10 +71,13 @@ async function loadPricingConfigMap(): Promise<Record<PricingPlanId, {
     const monthlyPriceINR = Number.isFinite(row.monthlyPriceINR)
       ? Math.max(0, row.monthlyPriceINR)
       : map[planId].monthlyPriceINR;
+    const yearlyPriceINR = Number.isFinite(row.yearlyPriceINR)
+      ? Math.max(0, row.yearlyPriceINR)
+      : deriveYearlyPrice(monthlyPriceINR);
     map[planId] = {
       name: row.displayName || map[planId].name,
       monthlyPriceINR,
-      yearlyPriceINR: deriveYearlyPrice(monthlyPriceINR),
+      yearlyPriceINR,
       enabled: typeof row.enabled === 'boolean' ? row.enabled : map[planId].enabled,
       discountPercent: clampPercent(Number(row.discountPercent || 0)),
     };
@@ -121,8 +124,9 @@ export async function getPlans(_req: Request, res: Response): Promise<void> {
         priceLabel: `₹${advanced.monthlyPriceINR} / month`,
         limits: {
           ...PLAN_LIMITS.pro,
-          aiUsagePerMonth: 150,
-          uploadsPerMonth: 200,
+          aiUsagePerMonth: 180,
+          uploadsPerMonth: 350,
+          ttsRequestsPerDay: 25,
         },
       },
     },
@@ -159,9 +163,8 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
-    const yearlyPriceINR = deriveYearlyPrice(selectedPricing.monthlyPriceINR);
     const baseAmount = normalizedBillingCycle === 'yearly'
-      ? toPaise(yearlyPriceINR)
+      ? toPaise(selectedPricing.yearlyPriceINR)
       : toPaise(selectedPricing.monthlyPriceINR);
     const configuredCode = (process.env.PRO_DISCOUNT_CODE || '').trim();
     const configuredPercentRaw = Number.parseInt(process.env.PRO_DISCOUNT_PERCENT || '10', 10);
@@ -335,8 +338,11 @@ export async function verifyPayment(req: AuthenticatedRequest, res: Response): P
       aiUsageThisMonth:     0,
       uploadUsageThisMonth: 0,
       aiUsageResetAt:       now,
-      aiUsageLimitOverride: isAdvanced ? 150 : null,
-      uploadUsageLimitOverride: isAdvanced ? 200 : null,
+      ttsUsageToday:        0,
+      ttsUsageDate:         now,
+      aiUsageLimitOverride: isAdvanced ? 180 : null,
+      uploadUsageLimitOverride: isAdvanced ? 350 : null,
+      ttsUsageLimitOverride: isAdvanced ? 25 : null,
     });
 
     payment.razorpayPaymentId = razorpay_payment_id;
@@ -426,6 +432,9 @@ export async function redeemCode(req: AuthenticatedRequest, res: Response): Prom
     user.aiUsageThisMonth = 0;
     user.uploadUsageThisMonth = 0;
     user.aiUsageResetAt = now;
+    user.ttsUsageToday = 0;
+    user.ttsUsageDate = now;
+    user.ttsUsageLimitOverride = null;
     await user.save();
 
     await Payment.create({
@@ -462,7 +471,7 @@ export async function getSubscription(req: AuthenticatedRequest, res: Response):
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
     const user = await User.findById(userId).select(
-      'plan planStartDate planExpiryDate aiUsageThisMonth uploadUsageThisMonth aiUsageLimitOverride uploadUsageLimitOverride trialTtsNarrationUsed trialExportUsed trialAiOverageUsed trialUploadOverageUsed'
+      'plan planStartDate planExpiryDate aiUsageThisMonth uploadUsageThisMonth aiUsageLimitOverride uploadUsageLimitOverride ttsUsageLimitOverride trialTtsNarrationUsed trialExportUsed trialAiOverageUsed trialUploadOverageUsed'
     );
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
@@ -489,6 +498,10 @@ export async function getSubscription(req: AuthenticatedRequest, res: Response):
             typeof user.uploadUsageLimitOverride === 'number'
               ? user.uploadUsageLimitOverride
               : PLAN_LIMITS[user.plan].uploadsPerMonth,
+          ttsRequestsPerDay:
+            typeof user.ttsUsageLimitOverride === 'number'
+              ? user.ttsUsageLimitOverride
+              : PLAN_LIMITS[user.plan].ttsRequestsPerDay,
         },
         trials: {
           ttsNarration: {

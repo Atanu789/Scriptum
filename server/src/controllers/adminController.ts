@@ -26,6 +26,7 @@ interface AdminUserPatchBody {
   planDays?: number;
   aiUsageLimitOverride?: number | null;
   uploadUsageLimitOverride?: number | null;
+  ttsUsageLimitOverride?: number | null;
   trialTtsNarrationUsed?: boolean;
   resetUsage?: boolean;
   reason?: string;
@@ -59,6 +60,7 @@ export const patchUserValidation = [
   body('planDays').optional().isInt({ min: 1, max: 3650 }).withMessage('planDays must be between 1 and 3650').toInt(),
   body('aiUsageLimitOverride').optional({ nullable: true }).isInt({ min: -1, max: 100000 }).withMessage('aiUsageLimitOverride must be -1 to 100000').toInt(),
   body('uploadUsageLimitOverride').optional({ nullable: true }).isInt({ min: -1, max: 100000 }).withMessage('uploadUsageLimitOverride must be -1 to 100000').toInt(),
+  body('ttsUsageLimitOverride').optional({ nullable: true }).isInt({ min: -1, max: 100000 }).withMessage('ttsUsageLimitOverride must be -1 to 100000').toInt(),
   body('trialTtsNarrationUsed').optional().isBoolean().withMessage('trialTtsNarrationUsed must be boolean').toBoolean(),
   body('resetUsage').optional().isBoolean().withMessage('resetUsage must be boolean').toBoolean(),
   body('reason').optional().trim().isLength({ min: 5, max: 240 }).withMessage('reason must be 5-240 characters'),
@@ -483,11 +485,14 @@ export const getPricingConfig = async (_req: Request, res: Response): Promise<vo
       const row = rowMap.get(planId);
       const fb = fallback[planId];
       const monthlyPriceINR = Number.isFinite(row?.monthlyPriceINR) ? row!.monthlyPriceINR : fb.monthlyPriceINR;
+      const yearlyPriceINR = Number.isFinite(row?.yearlyPriceINR)
+        ? row!.yearlyPriceINR
+        : deriveYearlyPrice(monthlyPriceINR);
       return {
         planId,
         displayName: row?.displayName || fb.displayName,
         monthlyPriceINR,
-        yearlyPriceINR: deriveYearlyPrice(monthlyPriceINR),
+        yearlyPriceINR,
         enabled: typeof row?.enabled === 'boolean' ? row.enabled : fb.enabled,
         discountPercent: Number.isFinite(row?.discountPercent) ? Math.max(0, Math.min(100, row!.discountPercent)) : fb.discountPercent,
         updatedAt: row?.updatedAt || null,
@@ -521,8 +526,7 @@ export const updatePricingConfig = async (req: Request, res: Response): Promise<
 
     const update: Record<string, unknown> = {};
     if (typeof monthlyPriceINR === 'number') update.monthlyPriceINR = monthlyPriceINR;
-    // Yearly value is derived from monthly x 12; accepted input is ignored intentionally.
-    void yearlyPriceINR;
+    if (typeof yearlyPriceINR === 'number') update.yearlyPriceINR = yearlyPriceINR;
     if (typeof enabled === 'boolean') update.enabled = enabled;
     if (typeof discountPercent === 'number') update.discountPercent = Math.max(0, Math.min(100, discountPercent));
     if (typeof displayName === 'string' && displayName.trim()) update.displayName = displayName.trim();
@@ -534,6 +538,10 @@ export const updatePricingConfig = async (req: Request, res: Response): Promise<
       typeof update.monthlyPriceINR === 'number'
         ? (update.monthlyPriceINR as number)
         : (planId === 'advanced' ? 3500 : 2500);
+    const resolvedYearlyPrice =
+      typeof update.yearlyPriceINR === 'number'
+        ? (update.yearlyPriceINR as number)
+        : deriveYearlyPrice(resolvedMonthlyPrice);
 
     const doc = await PricingConfig.findOneAndUpdate(
       { planId },
@@ -542,7 +550,7 @@ export const updatePricingConfig = async (req: Request, res: Response): Promise<
           planId,
           displayName: update.displayName || (planId === 'advanced' ? 'Advanced' : 'Pro'),
           monthlyPriceINR: resolvedMonthlyPrice,
-          yearlyPriceINR: deriveYearlyPrice(resolvedMonthlyPrice),
+          yearlyPriceINR: resolvedYearlyPrice,
           enabled: update.enabled ?? true,
           discountPercent: update.discountPercent ?? 0,
           updatedBy: adminUsername,
@@ -669,6 +677,7 @@ export const updateDiscountRequest = async (req: Request, res: Response): Promis
           user.planExpiryDate = null;
           user.aiUsageLimitOverride = null;
           user.uploadUsageLimitOverride = null;
+          user.ttsUsageLimitOverride = null;
         } else {
           const now = new Date();
           const expiry = new Date(now);
@@ -678,8 +687,11 @@ export const updateDiscountRequest = async (req: Request, res: Response): Promis
           user.planExpiryDate = expiry;
 
           if (requestDoc.assignedPlan === 'advanced') {
-            user.aiUsageLimitOverride = -1;
-            user.uploadUsageLimitOverride = -1;
+            user.aiUsageLimitOverride = 180;
+            user.uploadUsageLimitOverride = 350;
+            user.ttsUsageLimitOverride = 25;
+          } else {
+            user.ttsUsageLimitOverride = null;
           }
         }
         await user.save();
@@ -721,6 +733,7 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
     aiUsageLimitOverride,
     reason,
     uploadUsageLimitOverride,
+    ttsUsageLimitOverride,
     trialTtsNarrationUsed,
     resetUsage,
   } = req.body as AdminUserPatchBody;
@@ -755,6 +768,11 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
     const uploadOverride = mapOverride(uploadUsageLimitOverride);
     if (uploadOverride !== undefined) {
       user.uploadUsageLimitOverride = uploadOverride;
+    }
+
+    const ttsOverride = mapOverride(ttsUsageLimitOverride);
+    if (ttsOverride !== undefined) {
+      user.ttsUsageLimitOverride = ttsOverride;
     }
 
     if (typeof trialTtsNarrationUsed === 'boolean') {
@@ -794,6 +812,7 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
       planDays: planDays ?? null,
       aiUsageLimitOverride: aiOverride ?? null,
       uploadUsageLimitOverride: uploadOverride ?? null,
+      ttsUsageLimitOverride: ttsOverride ?? null,
       trialTtsNarrationUsed: user.trialTtsNarrationUsed,
       resetUsage: Boolean(resetUsage),
     };
@@ -825,6 +844,7 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
         uploadUsageThisMonth: user.uploadUsageThisMonth,
         aiUsageLimitOverride: user.aiUsageLimitOverride,
         uploadUsageLimitOverride: user.uploadUsageLimitOverride,
+        ttsUsageLimitOverride: user.ttsUsageLimitOverride,
         trialTtsNarrationUsed: user.trialTtsNarrationUsed,
       },
       message: 'User updated successfully',

@@ -1,7 +1,6 @@
-import { callGemini } from './ai/geminiClient';
 import { buildAICacheHash, getCachedAIResult, setCachedAIResult } from './aiCache';
 
-export type AIProvider = 'groq' | 'openrouter' | 'gemini';
+export type AIProvider = 'groq' | 'openrouter';
 
 export interface AIResponse {
   success: boolean;
@@ -18,7 +17,6 @@ export interface RunAIParams {
   modelPreferences?: {
     groq?: string[];
     openrouter?: string[];
-    gemini?: string[];
   };
   temperature?: number;
   maxTokens?: number;
@@ -27,14 +25,16 @@ export interface RunAIParams {
   validateResult?: (text: string) => boolean;
 }
 
-const PROVIDER_TIMEOUT_MS = 8_000;
+const PROVIDER_TIMEOUT_MS = 200_000;
 
 const DEFAULT_GROQ_MODELS = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
 const DEFAULT_OPENROUTER_FREE_MODELS = [
-  'meta-llama/llama-3.1-8b-instruct:free',
-  'mistralai/mistral-7b-instruct:free',
+  'openrouter/auto',
 ];
-const DEFAULT_GEMINI_MODELS = ['gemini-2.5-flash'];
+const roundRobinCursor: Record<AIProvider, number> = {
+  groq: 0,
+  openrouter: 0,
+};
 
 function withTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
   let timer: NodeJS.Timeout | null = null;
@@ -54,22 +54,49 @@ function isRetryableProviderError(status: number, message: string): boolean {
   return lower.includes('timeout') || lower.includes('rate limit') || lower.includes('quota');
 }
 
-function parseKeyPool(primaryKey?: string, secondaryKey?: string): string[] {
-  return [primaryKey, secondaryKey].map((v) => (v || '').trim()).filter(Boolean);
+function parseKeyPool(prefix: 'GROQ' | 'OPENROUTER'): string[] {
+  const list: string[] = [];
+
+  const csv = process.env[`${prefix}_API_KEYS`]?.trim() || '';
+  if (csv) {
+    list.push(...csv.split(',').map((v) => v.trim()).filter(Boolean));
+  }
+
+  const single = process.env[`${prefix}_API_KEY`]?.trim();
+  if (single) list.push(single);
+
+  for (let i = 1; i <= 12; i += 1) {
+    const numbered = process.env[`${prefix}_API_KEY_${i}`]?.trim()
+      || process.env[`${prefix}_API_KEY${i}`]?.trim();
+    if (numbered) list.push(numbered);
+  }
+
+  return Array.from(new Set(list));
+}
+
+function getStartKeyIndex(provider: AIProvider, keyCount: number): number {
+  if (keyCount <= 1) return 0;
+  const start = Math.abs(roundRobinCursor[provider]) % keyCount;
+  roundRobinCursor[provider] += 1;
+  if (roundRobinCursor[provider] > Number.MAX_SAFE_INTEGER - 10_000) {
+    roundRobinCursor[provider] = 0;
+  }
+  return start;
 }
 
 async function callGroq(params: RunAIParams): Promise<{ text: string; tokensUsed?: number }> {
-  const keys = parseKeyPool(process.env.GROQ_API_KEY_1 || process.env.GROQ_API_KEY, process.env.GROQ_API_KEY_2);
+  const keys = parseKeyPool('GROQ');
   const models = params.modelPreferences?.groq?.length ? params.modelPreferences.groq : DEFAULT_GROQ_MODELS;
 
   if (keys.length === 0) {
     throw new Error('GROQ_KEYS_MISSING');
   }
 
+  const startKeyIndex = getStartKeyIndex('groq', keys.length);
   let lastErr: Error | null = null;
 
-  for (let keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
-    const key = keys[keyIndex];
+  for (let keyOffset = 0; keyOffset < keys.length; keyOffset += 1) {
+    const key = keys[(startKeyIndex + keyOffset) % keys.length];
 
     for (const model of models) {
       try {
@@ -127,9 +154,9 @@ async function callGroq(params: RunAIParams): Promise<{ text: string; tokensUsed
 }
 
 async function callOpenRouter(params: RunAIParams): Promise<{ text: string; tokensUsed?: number }> {
-  const keys = parseKeyPool(process.env.OPENROUTER_API_KEY_1 || process.env.OPENROUTER_API_KEY, process.env.OPENROUTER_API_KEY_2);
+  const keys = parseKeyPool('OPENROUTER');
   const models = params.modelPreferences?.openrouter?.length
-    ? params.modelPreferences.openrouter.filter((m) => m.includes(':free'))
+    ? params.modelPreferences.openrouter
     : DEFAULT_OPENROUTER_FREE_MODELS;
 
   if (keys.length === 0) {
@@ -140,10 +167,11 @@ async function callOpenRouter(params: RunAIParams): Promise<{ text: string; toke
     throw new Error('OPENROUTER_FREE_MODELS_MISSING');
   }
 
+  const startKeyIndex = getStartKeyIndex('openrouter', keys.length);
   let lastErr: Error | null = null;
 
-  for (let keyIndex = 0; keyIndex < keys.length; keyIndex += 1) {
-    const key = keys[keyIndex];
+  for (let keyOffset = 0; keyOffset < keys.length; keyOffset += 1) {
+    const key = keys[(startKeyIndex + keyOffset) % keys.length];
 
     for (const model of models) {
       try {
@@ -200,36 +228,6 @@ async function callOpenRouter(params: RunAIParams): Promise<{ text: string; toke
   throw lastErr || new Error('OpenRouter fallback pool exhausted');
 }
 
-async function callGeminiFallback(params: RunAIParams): Promise<{ text: string; tokensUsed?: number }> {
-  const models = params.modelPreferences?.gemini?.length ? params.modelPreferences.gemini : DEFAULT_GEMINI_MODELS;
-  let lastErr: Error | null = null;
-
-  for (const model of models) {
-    try {
-      const text = await withTimeout(
-        callGemini(params.prompt, {
-          model,
-          temperature: params.temperature ?? 0.3,
-          maxOutputTokens: params.maxTokens ?? 900,
-        }),
-        PROVIDER_TIMEOUT_MS
-      );
-
-      const cleaned = (text || '').trim();
-      if (!cleaned) {
-        lastErr = new Error('GEMINI_EMPTY_RESPONSE');
-        continue;
-      }
-
-      return { text: cleaned };
-    } catch (err) {
-      lastErr = err instanceof Error ? err : new Error('Gemini failed');
-    }
-  }
-
-  throw lastErr || new Error('Gemini fallback exhausted');
-}
-
 export async function runAI({
   prompt,
   modelPreferences,
@@ -259,8 +257,9 @@ export async function runAI({
   const providerChain: Array<{ provider: AIProvider; run: () => Promise<{ text: string; tokensUsed?: number }> }> = [
     { provider: 'groq', run: () => callGroq({ prompt: cleanedPrompt, modelPreferences, temperature, maxTokens, userId, forceFresh }) },
     { provider: 'openrouter', run: () => callOpenRouter({ prompt: cleanedPrompt, modelPreferences, temperature, maxTokens, userId, forceFresh }) },
-    { provider: 'gemini', run: () => callGeminiFallback({ prompt: cleanedPrompt, modelPreferences, temperature, maxTokens, userId, forceFresh }) },
   ];
+
+  const providerErrors: string[] = [];
 
   for (const step of providerChain) {
     try {
@@ -277,14 +276,18 @@ export async function runAI({
         await setCachedAIResult(hash, normalized, 24);
       }
       return normalized;
-    } catch {
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Provider call failed';
+      providerErrors.push(`${step.provider}: ${message}`);
       // Try next provider in chain.
     }
   }
 
   return {
     success: false,
-    message: 'AI temporarily unavailable',
+    message: providerErrors.length > 0
+      ? `AI temporarily unavailable (${providerErrors.join(' | ')})`
+      : 'AI temporarily unavailable',
     fallbackTried: true,
   };
 }
