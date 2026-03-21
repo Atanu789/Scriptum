@@ -8,11 +8,10 @@ import ShareMenu from '@/components/ShareMenu';
 import { useDocument } from '@/hooks/useDocument';
 import { useSubscription } from '@/hooks/useSubscription';
 import {
-  Save, BarChart2, Loader2, Tv2, ExternalLink,
+  Save, BarChart2, Loader2, ExternalLink,
   ChevronLeft, FileText, AlertCircle,
   Image as ImageIcon, Video, Music, X, Library, AlignLeft, AlignCenter, AlignRight, WrapText, GitCompare,
   Bold, Italic, Underline, List, ListOrdered, Link2, Table2, Upload, Download, History, Eye, EyeOff, MoreHorizontal, PanelRightClose,
-  Sparkles,
 } from 'lucide-react';
 import { formatWordCount, cn } from '@/lib/utils';
 import { documentApi } from '@/lib/api';
@@ -269,7 +268,7 @@ export default function EditorPage() {
   const params = useParams<{ documentId: string }>();
   const documentId = params.documentId;
 
-  const { document: doc, isLoading, isAnalyzing, isHumanizing, isGeneratingAbstract, error, analysis, analyze, humanize, generateAbstract, updateContent } =
+  const { document: doc, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize, updateContent } =
     useDocument(documentId);
   const {
     canUseGrammarFix,
@@ -1011,12 +1010,6 @@ export default function EditorPage() {
     exportFile(filename, editorHtml || editorRef.current.innerHTML, 'text/html;charset=utf-8');
   }, [doc?.originalFileName, editorHtml]);
 
-  const handlePublish = useCallback(async () => {
-    await handleSave();
-    snapshotVersion('Published Snapshot');
-    toast.success('Published successfully');
-  }, [handleSave, snapshotVersion]);
-
   // Insert the document's media at the current cursor position
   const isMediaDoc = doc?.sourceType && ['image', 'audio', 'video'].includes(doc.sourceType);
 
@@ -1134,38 +1127,6 @@ export default function EditorPage() {
       after: afterText,
     });
   }, [doc?.cleanedText, editorHtml, humanize, recalcEditorMetrics]);
-
-  const handleGenerateAbstract = useCallback(async () => {
-    if (!editorRef.current) return;
-    const result = await generateAbstract();
-    if (!result) return;
-
-    const abstractLines = result.abstract
-      .split(/\r?\n/)
-      .map((line) => line.trim())
-      .filter(Boolean);
-    const abstractHtml = abstractLines.length > 0
-      ? abstractLines.map((line) => `<p>${escHtml(line)}</p>`).join('')
-      : `<p>${escHtml(result.abstract)}</p>`;
-
-    const keyPointItems = (result.keyPoints || []).map((point) => `<li>${escHtml(point)}</li>`).join('');
-    const sectionHtml = [
-      '<section data-generated="abstract" style="border:1px solid #dbeafe;background:#f8fbff;border-radius:10px;padding:12px;margin:10px 0 14px;">',
-      '<h2>Abstract</h2>',
-      abstractHtml,
-      keyPointItems ? '<h3>Key Points</h3>' : '',
-      keyPointItems ? `<ul>${keyPointItems}</ul>` : '',
-      '</section>',
-    ].join('');
-
-    const current = editorRef.current.innerHTML || '<p><br></p>';
-    const next = sanitizeAndNormalizeEditorHtml(`${sectionHtml}${current}`);
-    editorRef.current.innerHTML = next;
-    setEditorHtml(next);
-    recalcEditorMetrics();
-    setIsDirty(true);
-    toast.success('Abstract inserted at top');
-  }, [generateAbstract, recalcEditorMetrics]);
 
   const getIssueLineNumber = useCallback((issue: GrammarIssue) => {
     if (!Number.isInteger(issue.offset)) return null;
@@ -1299,7 +1260,9 @@ export default function EditorPage() {
                   href={`/export/${documentId}`}
                   className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs text-slate-700 hover:bg-slate-100 dark:text-zinc-200 dark:hover:bg-zinc-800"
                 >
-                  <ExternalLink className="h-3.5 w-3.5" /> Advanced Export
+                  <ExternalLink className="h-3.5 w-3.5" />
+                  Advanced Export
+                  <span className="ml-auto rounded bg-amber-500 px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide text-white">Premium</span>
                 </Link>
               </div>
             </details>
@@ -1345,16 +1308,6 @@ export default function EditorPage() {
               {isAnalyzing ? 'Analysing�Ǫ' : 'Analyse'}
             </button>
             <button
-              onClick={handleGenerateAbstract}
-              disabled={isGeneratingAbstract}
-              className="btn-secondary py-1.5 px-3 text-xs"
-            >
-              {isGeneratingAbstract
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <Sparkles className="h-3.5 w-3.5" />}
-              {isGeneratingAbstract ? 'Generating...' : 'Generate Abstract'}
-            </button>
-            <button
               onClick={() => setRightPanelMode((prev) => prev === 'analysis' ? 'preview' : 'analysis')}
               className="btn-secondary py-1.5 px-3 text-xs"
               title="Toggle preview"
@@ -1371,17 +1324,6 @@ export default function EditorPage() {
                 <PanelRightClose className="h-3.5 w-3.5" /> Squeeze
               </button>
             )}
-            <Link href={`/teleprompter/${documentId}`} className="btn-secondary py-1.5 px-3 text-xs">
-              <Tv2 className="h-3.5 w-3.5" /> Teleprompter
-            </Link>
-            <button
-              onClick={handlePublish}
-              disabled={isSaving}
-              className="btn-primary py-1.5 px-3 text-xs"
-            >
-              {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-              Publish
-            </button>
           </div>
         </div>
       </div>

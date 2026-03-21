@@ -17,7 +17,6 @@ import {
   UploadResult,
   AnalysisResult,
   HumanizeResult,
-  DocumentAbstractResult,
   AudioSegment,
   UsageStats,
   SubscriptionInfo,
@@ -244,11 +243,6 @@ export const analysisApi = {
     options?: { mode?: 'conservative' | 'balanced' | 'aggressive'; styleProfile?: 'student' | 'journalist' | 'casual-speaker' | 'academic' }
   ): Promise<HumanizeResult> => {
     const { data } = await api.post<ApiResponse<HumanizeResult>>(`/analyze/${documentId}/humanize`, options || {});
-    return unwrap(data);
-  },
-
-  generateAbstract: async (documentId: string): Promise<DocumentAbstractResult> => {
-    const { data } = await api.post<ApiResponse<DocumentAbstractResult>>(`/analyze/${documentId}/abstract`);
     return unwrap(data);
   },
 };
@@ -560,6 +554,7 @@ export const adminApi = {
           typeof user.aiUsageLimitOverride === 'number' ? user.aiUsageLimitOverride : null,
         uploadUsageLimitOverride:
           typeof user.uploadUsageLimitOverride === 'number' ? user.uploadUsageLimitOverride : null,
+        trialTtsNarrationUsed: Boolean(user.trialTtsNarrationUsed),
         documentCount: Number(user.documentCount || 0),
         totalAnalyses: Number(user.totalAnalyses || 0),
         totalGeminiCalls: Number(user.totalGeminiCalls || 0),
@@ -581,6 +576,7 @@ export const adminApi = {
       planDays?: number;
       aiUsageLimitOverride?: number | null;
       uploadUsageLimitOverride?: number | null;
+      trialTtsNarrationUsed?: boolean;
       resetUsage?: boolean;
       reason?: string;
     },

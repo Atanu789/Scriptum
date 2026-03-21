@@ -7,7 +7,7 @@ import { useTheme } from '@/components/providers/ThemeProvider';
 import { useSubscription } from '@/hooks/useSubscription';
 import { FloatingDock, DockItem } from '@/components/ui/floating-dock';
 import {
-  LayoutDashboard, Upload, LogOut, Sun, Moon, BookOpen, User, Crown,
+  LayoutDashboard, LogOut, Sun, Moon, BookOpen, User, Crown, Tv2,
 } from 'lucide-react';
 
 export default function FloatingDockNav() {
@@ -73,10 +73,10 @@ export default function FloatingDockNav() {
       active: pathname === '/dashboard',
     },
     {
-      title: 'Upload',
-      icon: <Upload className="h-full w-full" />,
-      href: '/upload',
-      active: pathname === '/upload',
+      title: 'Teleprompter',
+      icon: <Tv2 className="h-full w-full" />,
+      href: '/teleprompter',
+      active: pathname.startsWith('/teleprompter'),
     },
    
     {

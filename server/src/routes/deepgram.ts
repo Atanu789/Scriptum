@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express';
 import { authenticate } from '../middleware/auth';
 import { deepgramTokenLimiter } from '../middleware/rateLimiter';
-import { checkTTSNarrationAccess } from '../middleware/planAccess';
+import { checkTTSNarrationAccess, requireFeature } from '../middleware/planAccess';
 import { generateTempKey, streamTTS } from '../services/deepgram';
 import { ApiResponse } from '../types';
 
@@ -14,6 +14,7 @@ const router = Router();
 router.get(
   '/token',
   authenticate,
+  requireFeature('teleprompterAI'),
   deepgramTokenLimiter,
   async (_req: Request, res: Response): Promise<void> => {
     try {

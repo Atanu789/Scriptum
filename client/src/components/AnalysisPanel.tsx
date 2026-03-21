@@ -737,6 +737,14 @@ function AnalysisPanel({
                   >
                     Beta
                   </span>
+                  <span
+                    className={cn(
+                      'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
+                      humanizeEnabled ? 'bg-amber-400/90 text-black' : 'bg-amber-200 text-amber-800',
+                    )}
+                  >
+                    Premium
+                  </span>
                   {!humanizeEnabled && <Crown className="h-4 w-4" />}
                 </button>
                 {humanizeEnabled && !canHumanize && (

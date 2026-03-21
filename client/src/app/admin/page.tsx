@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { adminApi } from '@/lib/api';
+import { cn } from '@/lib/utils';
 import type {
   AdminAuditLogItem,
   AdminMetrics,
@@ -45,6 +46,10 @@ function formatCompact(value: number): string {
     notation: 'compact',
     maximumFractionDigits: 1,
   }).format(value || 0);
+}
+
+function deriveYearlyPrice(monthlyPriceINR: number): number {
+  return Math.max(0, Math.round(monthlyPriceINR * 12));
 }
 
 function TrendPill({ value }: { value: number }) {
@@ -359,7 +364,7 @@ export default function AdminPage() {
       await adminApi.updatePricing(token, plan.planId, {
         displayName: plan.displayName,
         monthlyPriceINR: plan.monthlyPriceINR,
-        yearlyPriceINR: plan.yearlyPriceINR,
+        yearlyPriceINR: deriveYearlyPrice(plan.monthlyPriceINR),
         enabled: plan.enabled,
         discountPercent: plan.discountPercent,
       });
@@ -686,6 +691,18 @@ export default function AdminPage() {
                           <td className="px-3 py-3 text-xs">
                             <p>AI: <span className="font-semibold">{u.aiUsageThisMonth}</span></p>
                             <p>Uploads: <span className="font-semibold">{u.uploadUsageThisMonth}</span></p>
+                            <p>
+                              Teleprompter trial:{' '}
+                              <span className={cn(
+                                'font-semibold',
+                                u.trialTtsNarrationUsed
+                                  ? 'text-amber-600 dark:text-amber-300'
+                                  : 'text-emerald-600 dark:text-emerald-300',
+                              )}
+                              >
+                                {u.trialTtsNarrationUsed ? 'Used' : 'Available'}
+                              </span>
+                            </p>
                           </td>
                           <td className="px-3 py-3 font-semibold">{u.documentCount}</td>
                           <td className="px-3 py-3 text-xs text-slate-600 dark:text-slate-400">
@@ -729,6 +746,25 @@ export default function AdminPage() {
                                   className="rounded-lg border border-indigo-300 px-2 py-1 text-xs font-semibold text-indigo-700 hover:bg-indigo-50 dark:border-indigo-400/40 dark:text-indigo-300 dark:hover:bg-indigo-500/10"
                                 >
                                   Reset Usage
+                                </button>
+
+                                <button
+                                  onClick={() => openConfirm(
+                                    u.trialTtsNarrationUsed ? 'Grant Teleprompter Trial' : 'Mark Teleprompter Trial Used',
+                                    u.trialTtsNarrationUsed
+                                      ? `Allow one free teleprompter narration trial again for ${u.email}?`
+                                      : `Mark teleprompter narration trial as used for ${u.email}?`,
+                                    async (reason) => {
+                                      await patchUser(u.id, {
+                                        trialTtsNarrationUsed: !u.trialTtsNarrationUsed,
+                                        reason,
+                                      });
+                                      toast.success('Teleprompter usage updated');
+                                    }
+                                  )}
+                                  className="rounded-lg border border-violet-300 px-2 py-1 text-xs font-semibold text-violet-700 hover:bg-violet-50 dark:border-violet-400/40 dark:text-violet-300 dark:hover:bg-violet-500/10"
+                                >
+                                  {u.trialTtsNarrationUsed ? 'Grant Teleprompter Trial' : 'Mark Teleprompter Used'}
                                 </button>
 
                                 <button
@@ -901,6 +937,7 @@ export default function AdminPage() {
                   <option value="reset_usage">Reset Usage</option>
                   <option value="set_ai_limit">Set AI Limit</option>
                   <option value="set_upload_limit">Set Upload Limit</option>
+                  <option value="set_tts_trial">Set Teleprompter Trial</option>
                   <option value="delete_user">Delete User</option>
                 </select>
               </div>
@@ -999,7 +1036,7 @@ export default function AdminPage() {
 
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0f1020]">
                 <h3 className="text-base font-semibold">Dynamic Pricing Control</h3>
-                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Update monthly/yearly INR pricing, enable or disable plans, and set default discounts.</p>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Update monthly INR pricing, enable or disable plans, and set default discounts. Yearly is auto-calculated as monthly × 12.</p>
                 <div className="mt-4 grid gap-3 md:grid-cols-2">
                   {pricingConfigs.map((plan) => (
                     <div key={plan.planId} className="rounded-lg border border-slate-200 p-3 dark:border-white/10">
@@ -1032,13 +1069,10 @@ export default function AdminPage() {
                         <input
                           type="number"
                           min={0}
-                          value={plan.yearlyPriceINR}
-                          onChange={(e) => {
-                            const value = Number(e.target.value || 0);
-                            setPricingConfigs((prev) => prev.map((item) => item.planId === plan.planId ? { ...item, yearlyPriceINR: value } : item));
-                          }}
-                          className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
-                          placeholder="Yearly INR"
+                          value={deriveYearlyPrice(plan.monthlyPriceINR)}
+                          readOnly
+                          className="rounded-md border border-slate-300 bg-slate-100 px-2 py-1 text-xs text-slate-600 dark:border-white/20 dark:bg-white/10 dark:text-slate-300"
+                          placeholder="Yearly INR (auto)"
                         />
                         <input
                           type="number"

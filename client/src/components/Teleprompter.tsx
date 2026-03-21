@@ -3,7 +3,9 @@
 import React, { useEffect, useCallback, useMemo, useRef } from 'react';
 import Link from 'next/link';
 import { useTeleprompter } from '@/hooks/useTeleprompter';
+import { useSubscription } from '@/hooks/useSubscription';
 import { cn } from '@/lib/utils';
+import toast from 'react-hot-toast';
 import {
   Play, Pause, RotateCcw, ChevronLeft,
   Sun, Moon, Minus, Plus, Gauge, FlipHorizontal, Mic,
@@ -53,12 +55,18 @@ function tokenise(raw: string): Token[] {
 
 // ── Main component ─────────────────────────────────────────────────────────
 export default function TeleprompterView({ text, documentTitle, documentId }: Props) {
+  const { isPremium } = useSubscription();
+  const handleSyncBlocked = useCallback(() => {
+    toast.error('Mic sync is a Premium feature');
+    window.location.href = '/pricing';
+  }, []);
+
   const {
     isPlaying, speed, fontSize, theme, mirror, progress,
     currentCharIndex, isSpeaking,
     isSyncMode, isListening, toggleSyncMode,
     scrollRef, toggle, reset, setSpeed, setFontSize, setTheme, toggleMirror,
-  } = useTeleprompter(text);
+  } = useTeleprompter(text, { allowSyncMode: isPremium, onSyncModeBlocked: handleSyncBlocked });
 
   const isDark = theme === 'dark';
 
@@ -410,8 +418,12 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
             {/* Sync-mode toggle: click to switch between TTS narrate ↔ mic listen */}
             <button
               onClick={toggleSyncMode}
+              disabled={!isPremium}
               className={cn(
                 'flex min-h-[40px] items-center gap-1.5 rounded-lg px-2 py-1 text-xs transition-all',
+                !isPremium
+                  ? (isDark ? 'cursor-not-allowed bg-amber-500/10 text-amber-300 ring-1 ring-amber-500/20' : 'cursor-not-allowed bg-amber-50 text-amber-600')
+                  :
                 isSyncMode
                   ? isDark
                     ? 'bg-indigo-500/15 text-indigo-300 ring-1 ring-indigo-500/25'
@@ -424,7 +436,13 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
                   ? 'text-white/20 hover:text-white/60 hover:bg-white/[0.06]'
                   : 'text-gray-300 hover:text-gray-500 hover:bg-gray-100',
               )}
-              title={isSyncMode ? 'Mic sync ON — press V or click to switch to narrate mode' : 'Click or press V to enable mic sync (you speak, text follows)'}
+              title={
+                !isPremium
+                  ? 'Mic sync is Premium'
+                  : isSyncMode
+                    ? 'Mic sync ON — press V or click to switch to narrate mode'
+                    : 'Click or press V to enable mic sync (you speak, text follows)'
+              }
             >
               {isListening || isSpeaking
                 ? <Mic className="h-4 w-4" style={{ animation: 'livepulse 1s ease-in-out infinite' }} />
@@ -433,6 +451,12 @@ export default function TeleprompterView({ text, documentTitle, documentId }: Pr
                 isSyncMode ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
               )}>
                 {isSyncMode ? 'Sync' : 'TTS'}
+              </span>
+              <span className={cn(
+                'rounded px-1 py-0.5 text-[9px] font-bold uppercase tracking-wide',
+                isDark ? 'bg-amber-400/80 text-black' : 'bg-amber-500 text-white',
+              )}>
+                Premium
               </span>
             </button>
           </div>

@@ -80,6 +80,7 @@ export interface AdminUserSummary {
   uploadUsageThisMonth: number;
   aiUsageLimitOverride: number | null;
   uploadUsageLimitOverride: number | null;
+  trialTtsNarrationUsed: boolean;
   documentCount: number;
   totalAnalyses: number;
   totalGeminiCalls: number;

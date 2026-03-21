@@ -38,8 +38,8 @@ type DisplayPlan = PlanEntry & {
 type BillingMode = 'monthly' | 'yearly';
 
 const PLAN_COMPARE_ROWS = [
-  { label: 'Uploads / month', values: { free: '5', pro: '50', advanced: '120' } },
-  { label: 'AI analyses / month', values: { free: '5', pro: '50', advanced: '120' } },
+  { label: 'Uploads / month', values: { free: '5', pro: '50', advanced: '200' } },
+  { label: 'AI analyses / month', values: { free: '5', pro: '50', advanced: '150' } },
   { label: 'Grammar fix', values: { free: false, pro: true, advanced: true } },
   { label: 'Humanize text', values: { free: false, pro: true, advanced: true } },
   { label: 'AI teleprompter', values: { free: false, pro: true, advanced: true } },
@@ -260,7 +260,9 @@ export default function PricingPage() {
   const expiry = sub?.planExpiryDate ? new Date(sub.planExpiryDate) : null;
   const expired = expiry ? expiry < new Date() : false;
   const effectivePlan = expired ? 'free' : activePlan;
-  const isAdvancedActive = effectivePlan === 'pro' && (sub?.limits.aiUsagePerMonth === 120 || sub?.limits.uploadsPerMonth === 120);
+  const isAdvancedActive =
+    effectivePlan === 'pro' &&
+    ((sub?.limits.aiUsagePerMonth ?? 0) >= 150 || (sub?.limits.uploadsPerMonth ?? 0) >= 200);
   const activePaidTier = effectivePlan === 'free' ? null : (isAdvancedActive ? 'advanced' : 'pro');
   const activePaidRecord = activePaidTier
     ? history.find((rec) => rec.status === 'captured' && (rec.pricingTier || rec.plan) === activePaidTier)
@@ -307,7 +309,7 @@ export default function PricingPage() {
             onClick={() => setBillingMode('yearly')}
             className={cn('rounded-full px-4 py-1.5 font-semibold transition', billingMode === 'yearly' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-white/65')}
           >
-            Yearly <span className="ml-1 text-[10px] text-emerald-300">Save with annual billing</span>
+            Yearly <span className="ml-1 text-[10px] text-emerald-300">12 × monthly</span>
           </button>
         </div>
 
@@ -372,7 +374,6 @@ export default function PricingPage() {
             const monthlyPrice = plan.priceINR;
             const yearlyPrice = plan.yearlyPriceINR ?? monthlyPrice * 12;
             const currentPrice = billingMode === 'yearly' ? yearlyPrice : monthlyPrice;
-            const yearlySavings = monthlyPrice > 0 ? Math.max(0, monthlyPrice * 12 - yearlyPrice) : 0;
             const dailyPrice = plan.priceINR > 0
               ? billingMode === 'yearly'
                 ? Math.max(1, Math.round(yearlyPrice / 365))
@@ -423,7 +424,7 @@ export default function PricingPage() {
                       </div>
                       <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
                         {billingMode === 'yearly'
-                          ? `₹${yearlyPrice}/year (Save ₹${yearlySavings})`
+                          ? `₹${yearlyPrice}/year (₹${monthlyPrice} × 12 months)`
                           : `₹${monthlyPrice}/month`}
                       </p>
                       <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">Approx ₹{dailyPrice} per day</p>
@@ -451,21 +452,30 @@ export default function PricingPage() {
                 <ul className="mb-4 flex flex-1 flex-col gap-1.5">
                   {plan.id === 'free' ? (
                     <>
-                      <PlanFeature included={false} label="Limited AI analysis" />
-                      <PlanFeature included={false} label="No humanization" />
-                      <PlanFeature included={false} label="Basic export only" />
-                      <PlanFeature included={true} label="Starter uploads" />
+                      <PlanFeature included label="5 uploads per month" />
+                      <PlanFeature included label="5 AI analyses per month" />
+                      <PlanFeature included={false} label="Grammar fix" />
+                      <PlanFeature included={false} label="Humanize text" />
+                      <PlanFeature included label="PDF + DOCX export" />
+                      <PlanFeature included={false} label="PPTX export" />
+                      <PlanFeature included={false} label="AI teleprompter + TTS" />
                     </>
                   ) : plan.id === 'pro' ? (
                     <>
-                      <PlanFeature included label="Unlimited-feel AI workflow" />
-                      <PlanFeature included label="Humanize AI content" />
-                      <PlanFeature included label="Teleprompter sync" />
-                      <PlanFeature included label="PDF + DOCX + PPT export" />
+                      <PlanFeature included label="50 uploads per month" />
+                      <PlanFeature included label="50 AI analyses per month" />
+                      <PlanFeature included label="Grammar fix" />
+                      <PlanFeature included label="Humanize text" />
+                      <PlanFeature included label="AI teleprompter + TTS" />
+                      <PlanFeature included label="PDF + DOCX + PPTX export" />
                     </>
                   ) : (
                     <>
-                      <PlanFeature included label="Unlimited usage controls" />
+                      <PlanFeature included label="200 uploads per month" />
+                      <PlanFeature included label="150 AI analyses per month" />
+                      <PlanFeature included label="Grammar fix + Humanize text" />
+                      <PlanFeature included label="AI teleprompter + TTS" />
+                      <PlanFeature included label="PDF + DOCX + PPTX export" />
                       <PlanFeature included label="Team onboarding" />
                       <PlanFeature included label="Priority+ support" />
                       <PlanFeature included label="Custom billing" />

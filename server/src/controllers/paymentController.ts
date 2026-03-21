@@ -36,7 +36,7 @@ const DEFAULT_DYNAMIC_PRICING: Record<PricingPlanId, {
   advanced: {
     name: 'Advanced',
     monthlyPriceINR: 3500,
-    yearlyPriceINR: 36000,
+    yearlyPriceINR: 42000,
     enabled: true,
     discountPercent: 0,
   },
@@ -49,6 +49,10 @@ function clampPercent(value: number): number {
 
 function toPaise(valueINR: number): number {
   return Math.max(0, Math.round(valueINR * 100));
+}
+
+function deriveYearlyPrice(monthlyPriceINR: number): number {
+  return Math.max(0, Math.round(monthlyPriceINR * 12));
 }
 
 async function loadPricingConfigMap(): Promise<Record<PricingPlanId, {
@@ -64,10 +68,13 @@ async function loadPricingConfigMap(): Promise<Record<PricingPlanId, {
   for (const row of rows) {
     const planId = row.planId as PricingPlanId;
     if (!map[planId]) continue;
+    const monthlyPriceINR = Number.isFinite(row.monthlyPriceINR)
+      ? Math.max(0, row.monthlyPriceINR)
+      : map[planId].monthlyPriceINR;
     map[planId] = {
       name: row.displayName || map[planId].name,
-      monthlyPriceINR: Number.isFinite(row.monthlyPriceINR) ? Math.max(0, row.monthlyPriceINR) : map[planId].monthlyPriceINR,
-      yearlyPriceINR: Number.isFinite(row.yearlyPriceINR) ? Math.max(0, row.yearlyPriceINR) : map[planId].yearlyPriceINR,
+      monthlyPriceINR,
+      yearlyPriceINR: deriveYearlyPrice(monthlyPriceINR),
       enabled: typeof row.enabled === 'boolean' ? row.enabled : map[planId].enabled,
       discountPercent: clampPercent(Number(row.discountPercent || 0)),
     };
@@ -114,8 +121,8 @@ export async function getPlans(_req: Request, res: Response): Promise<void> {
         priceLabel: `₹${advanced.monthlyPriceINR} / month`,
         limits: {
           ...PLAN_LIMITS.pro,
-          aiUsagePerMonth: 120,
-          uploadsPerMonth: 120,
+          aiUsagePerMonth: 150,
+          uploadsPerMonth: 200,
         },
       },
     },
@@ -152,8 +159,9 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
 
+    const yearlyPriceINR = deriveYearlyPrice(selectedPricing.monthlyPriceINR);
     const baseAmount = normalizedBillingCycle === 'yearly'
-      ? toPaise(selectedPricing.yearlyPriceINR)
+      ? toPaise(yearlyPriceINR)
       : toPaise(selectedPricing.monthlyPriceINR);
     const configuredCode = (process.env.PRO_DISCOUNT_CODE || '').trim();
     const configuredPercentRaw = Number.parseInt(process.env.PRO_DISCOUNT_PERCENT || '10', 10);
@@ -327,8 +335,8 @@ export async function verifyPayment(req: AuthenticatedRequest, res: Response): P
       aiUsageThisMonth:     0,
       uploadUsageThisMonth: 0,
       aiUsageResetAt:       now,
-      aiUsageLimitOverride: isAdvanced ? 120 : null,
-      uploadUsageLimitOverride: isAdvanced ? 120 : null,
+      aiUsageLimitOverride: isAdvanced ? 150 : null,
+      uploadUsageLimitOverride: isAdvanced ? 200 : null,
     });
 
     payment.razorpayPaymentId = razorpay_payment_id;

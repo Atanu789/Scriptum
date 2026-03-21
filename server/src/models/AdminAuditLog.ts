@@ -3,7 +3,7 @@ import mongoose, { Document, Schema, Model } from 'mongoose';
 export interface IAdminAuditLog extends Document {
   _id: mongoose.Types.ObjectId;
   adminUsername: string;
-  action: 'grant_premium' | 'revoke_premium' | 'reset_usage' | 'set_ai_limit' | 'set_upload_limit' | 'delete_user';
+  action: 'grant_premium' | 'revoke_premium' | 'reset_usage' | 'set_ai_limit' | 'set_upload_limit' | 'set_tts_trial' | 'delete_user';
   targetUserId: mongoose.Types.ObjectId;
   targetUserEmail: string;
   reason: string;
@@ -20,7 +20,7 @@ const adminAuditLogSchema = new Schema<IAdminAuditLog>(
     },
     action: {
       type: String,
-      enum: ['grant_premium', 'revoke_premium', 'reset_usage', 'set_ai_limit', 'set_upload_limit', 'delete_user'],
+      enum: ['grant_premium', 'revoke_premium', 'reset_usage', 'set_ai_limit', 'set_upload_limit', 'set_tts_trial', 'delete_user'],
       required: true,
       index: true,
     },

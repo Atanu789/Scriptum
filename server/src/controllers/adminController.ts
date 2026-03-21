@@ -12,6 +12,10 @@ import DiscountRequest from '../models/DiscountRequest';
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
 
+function deriveYearlyPrice(monthlyPriceINR: number): number {
+  return Math.max(0, Math.round(monthlyPriceINR * 12));
+}
+
 interface AdminLoginBody {
   username: string;
   password: string;
@@ -22,6 +26,7 @@ interface AdminUserPatchBody {
   planDays?: number;
   aiUsageLimitOverride?: number | null;
   uploadUsageLimitOverride?: number | null;
+  trialTtsNarrationUsed?: boolean;
   resetUsage?: boolean;
   reason?: string;
 }
@@ -54,6 +59,7 @@ export const patchUserValidation = [
   body('planDays').optional().isInt({ min: 1, max: 3650 }).withMessage('planDays must be between 1 and 3650').toInt(),
   body('aiUsageLimitOverride').optional({ nullable: true }).isInt({ min: -1, max: 100000 }).withMessage('aiUsageLimitOverride must be -1 to 100000').toInt(),
   body('uploadUsageLimitOverride').optional({ nullable: true }).isInt({ min: -1, max: 100000 }).withMessage('uploadUsageLimitOverride must be -1 to 100000').toInt(),
+  body('trialTtsNarrationUsed').optional().isBoolean().withMessage('trialTtsNarrationUsed must be boolean').toBoolean(),
   body('resetUsage').optional().isBoolean().withMessage('resetUsage must be boolean').toBoolean(),
   body('reason').optional().trim().isLength({ min: 5, max: 240 }).withMessage('reason must be 5-240 characters'),
 ];
@@ -253,7 +259,7 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
         .sort({ createdAt: -1 })
         .skip((page - 1) * limit)
         .limit(limit)
-        .select('name email plan planStartDate planExpiryDate aiUsageThisMonth uploadUsageThisMonth aiUsageLimitOverride uploadUsageLimitOverride createdAt updatedAt')
+        .select('name email plan planStartDate planExpiryDate aiUsageThisMonth uploadUsageThisMonth aiUsageLimitOverride uploadUsageLimitOverride trialTtsNarrationUsed createdAt updatedAt')
         .lean(),
       User.countDocuments(filter),
     ]);
@@ -307,6 +313,7 @@ export const listUsers = async (req: Request, res: Response): Promise<void> => {
           uploadUsageThisMonth: user.uploadUsageThisMonth,
           aiUsageLimitOverride: user.aiUsageLimitOverride,
           uploadUsageLimitOverride: user.uploadUsageLimitOverride,
+          trialTtsNarrationUsed: Boolean(user.trialTtsNarrationUsed),
           documentCount: docStats?.count || 0,
           totalAnalyses: usage?.totalAnalyses || 0,
           totalGeminiCalls: usage?.totalGeminiCalls || 0,
@@ -465,7 +472,7 @@ export const getPricingConfig = async (_req: Request, res: Response): Promise<vo
         planId: 'advanced',
         displayName: 'Advanced',
         monthlyPriceINR: 3500,
-        yearlyPriceINR: 36000,
+        yearlyPriceINR: 42000,
         enabled: true,
         discountPercent: 0,
       },
@@ -475,11 +482,12 @@ export const getPricingConfig = async (_req: Request, res: Response): Promise<vo
     const data = planIds.map((planId) => {
       const row = rowMap.get(planId);
       const fb = fallback[planId];
+      const monthlyPriceINR = Number.isFinite(row?.monthlyPriceINR) ? row!.monthlyPriceINR : fb.monthlyPriceINR;
       return {
         planId,
         displayName: row?.displayName || fb.displayName,
-        monthlyPriceINR: Number.isFinite(row?.monthlyPriceINR) ? row!.monthlyPriceINR : fb.monthlyPriceINR,
-        yearlyPriceINR: Number.isFinite(row?.yearlyPriceINR) ? row!.yearlyPriceINR : fb.yearlyPriceINR,
+        monthlyPriceINR,
+        yearlyPriceINR: deriveYearlyPrice(monthlyPriceINR),
         enabled: typeof row?.enabled === 'boolean' ? row.enabled : fb.enabled,
         discountPercent: Number.isFinite(row?.discountPercent) ? Math.max(0, Math.min(100, row!.discountPercent)) : fb.discountPercent,
         updatedAt: row?.updatedAt || null,
@@ -513,7 +521,8 @@ export const updatePricingConfig = async (req: Request, res: Response): Promise<
 
     const update: Record<string, unknown> = {};
     if (typeof monthlyPriceINR === 'number') update.monthlyPriceINR = monthlyPriceINR;
-    if (typeof yearlyPriceINR === 'number') update.yearlyPriceINR = yearlyPriceINR;
+    // Yearly value is derived from monthly x 12; accepted input is ignored intentionally.
+    void yearlyPriceINR;
     if (typeof enabled === 'boolean') update.enabled = enabled;
     if (typeof discountPercent === 'number') update.discountPercent = Math.max(0, Math.min(100, discountPercent));
     if (typeof displayName === 'string' && displayName.trim()) update.displayName = displayName.trim();
@@ -521,14 +530,19 @@ export const updatePricingConfig = async (req: Request, res: Response): Promise<
     const adminUsername = (req as any).user?.username || 'unknown';
     update.updatedBy = adminUsername;
 
+    const resolvedMonthlyPrice =
+      typeof update.monthlyPriceINR === 'number'
+        ? (update.monthlyPriceINR as number)
+        : (planId === 'advanced' ? 3500 : 2500);
+
     const doc = await PricingConfig.findOneAndUpdate(
       { planId },
       {
         $set: {
           planId,
           displayName: update.displayName || (planId === 'advanced' ? 'Advanced' : 'Pro'),
-          monthlyPriceINR: update.monthlyPriceINR ?? (planId === 'advanced' ? 3500 : 2500),
-          yearlyPriceINR: update.yearlyPriceINR ?? (planId === 'advanced' ? 36000 : 24000),
+          monthlyPriceINR: resolvedMonthlyPrice,
+          yearlyPriceINR: deriveYearlyPrice(resolvedMonthlyPrice),
           enabled: update.enabled ?? true,
           discountPercent: update.discountPercent ?? 0,
           updatedBy: adminUsername,
@@ -707,6 +721,7 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
     aiUsageLimitOverride,
     reason,
     uploadUsageLimitOverride,
+    trialTtsNarrationUsed,
     resetUsage,
   } = req.body as AdminUserPatchBody;
 
@@ -742,6 +757,10 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
       user.uploadUsageLimitOverride = uploadOverride;
     }
 
+    if (typeof trialTtsNarrationUsed === 'boolean') {
+      user.trialTtsNarrationUsed = trialTtsNarrationUsed;
+    }
+
     if (resetUsage) {
       user.aiUsageThisMonth = 0;
       user.uploadUsageThisMonth = 0;
@@ -761,11 +780,12 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
     await user.save();
 
     // Log audit trail
-    let action: 'grant_premium' | 'revoke_premium' | 'reset_usage' | 'set_ai_limit' | 'set_upload_limit' = 'reset_usage';
+    let action: 'grant_premium' | 'revoke_premium' | 'reset_usage' | 'set_ai_limit' | 'set_upload_limit' | 'set_tts_trial' = 'reset_usage';
     if (plan === 'pro') action = 'grant_premium';
     else if (plan === 'free') action = 'revoke_premium';
     else if (aiOverride !== undefined) action = 'set_ai_limit';
     else if (uploadOverride !== undefined) action = 'set_upload_limit';
+    else if (typeof trialTtsNarrationUsed === 'boolean') action = 'set_tts_trial';
 
     const adminUsername = (req as any).user?.username || 'unknown';
     const auditReason = reason?.trim() || 'No reason provided';
@@ -774,6 +794,7 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
       planDays: planDays ?? null,
       aiUsageLimitOverride: aiOverride ?? null,
       uploadUsageLimitOverride: uploadOverride ?? null,
+      trialTtsNarrationUsed: user.trialTtsNarrationUsed,
       resetUsage: Boolean(resetUsage),
     };
 
@@ -804,6 +825,7 @@ export const patchUser = async (req: Request, res: Response): Promise<void> => {
         uploadUsageThisMonth: user.uploadUsageThisMonth,
         aiUsageLimitOverride: user.aiUsageLimitOverride,
         uploadUsageLimitOverride: user.uploadUsageLimitOverride,
+        trialTtsNarrationUsed: user.trialTtsNarrationUsed,
       },
       message: 'User updated successfully',
     });
