@@ -288,8 +288,34 @@ function lengthSimilarity(original: string, rewritten: string): number {
 function normalizeAiScore(value: unknown, fallback = 50): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
-  const clamped = Math.max(0, Math.min(100, Math.round(parsed)));
-  return clamped === 0 ? 1 : clamped;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
+function estimateFallbackAiScore(text: string): number {
+  const cleaned = (text || '').trim();
+  if (!cleaned) return 0;
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const sentences = splitIntoSentences(cleaned);
+  const sentenceCount = Math.max(1, sentences.length);
+  const avgWordsPerSentence = words.length / sentenceCount;
+
+  const lowerWords = words.map((w) => w.toLowerCase());
+  const uniqueRatio = words.length > 0 ? new Set(lowerWords).size / words.length : 1;
+  const repeatedBigrams = new Map<string, number>();
+  for (let i = 0; i < lowerWords.length - 1; i += 1) {
+    const gram = `${lowerWords[i]} ${lowerWords[i + 1]}`;
+    repeatedBigrams.set(gram, (repeatedBigrams.get(gram) ?? 0) + 1);
+  }
+  const repeatedBigramCount = Array.from(repeatedBigrams.values()).filter((count) => count >= 3).length;
+
+  let score = 35;
+  if (avgWordsPerSentence > 22) score += 10;
+  if (avgWordsPerSentence < 8) score += 6;
+  if (uniqueRatio < 0.5) score += 12;
+  if (repeatedBigramCount >= 2) score += Math.min(10, repeatedBigramCount * 2);
+
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 function buildLimitedAnalysisPayload(documentId: string, sourceText: string, fallbackWordCount?: number, limitReason?: string) {
@@ -300,7 +326,7 @@ function buildLimitedAnalysisPayload(documentId: string, sourceText: string, fal
 
   return {
     documentId,
-    aiScore: 50,
+    aiScore: estimateFallbackAiScore(sourceText),
     aiReasoning: limitReason || 'AI rate limit reached. Returning lightweight fallback analysis.',
     humanizationTips: [],
     humanizationSuggestions: [],

@@ -6,11 +6,10 @@ export interface ParsedAIResponse {
   improvedText: string;
 }
 
-function clampScore(value: unknown): number {
+function clampScore(value: unknown): number | null {
   const n = Number(value);
-  if (!Number.isFinite(n)) return 50;
-  const clamped = Math.max(0, Math.min(100, Math.round(n)));
-  return clamped === 0 ? 1 : clamped;
+  if (!Number.isFinite(n)) return null;
+  return Math.max(0, Math.min(100, Math.round(n)));
 }
 
 function toStringArray(value: unknown): string[] {
@@ -20,17 +19,7 @@ function toStringArray(value: unknown): string[] {
     .filter(Boolean);
 }
 
-function fallbackParsedAIResponse(): ParsedAIResponse {
-  return {
-    score: 50,
-    readability: 'Fallback: invalid AI response',
-    grammarIssues: [],
-    suggestions: [],
-    improvedText: '',
-  };
-}
-
-export function parseAIResponse(text: string): ParsedAIResponse {
+export function parseAIResponse(text: string): ParsedAIResponse | null {
   try {
     if (!text || !text.trim()) {
       throw new Error('Empty AI response');
@@ -54,8 +43,13 @@ export function parseAIResponse(text: string): ParsedAIResponse {
       improvedText?: unknown;
     };
 
-    const out = {
-      score: clampScore(parsed.score),
+    const score = clampScore(parsed.score);
+    if (score === null) {
+      throw new Error('Invalid numeric score');
+    }
+
+    const out: ParsedAIResponse = {
+      score,
       readability: typeof parsed.readability === 'string' && parsed.readability.trim()
         ? parsed.readability.trim()
         : 'Unknown',
@@ -64,17 +58,9 @@ export function parseAIResponse(text: string): ParsedAIResponse {
       improvedText: typeof parsed.improvedText === 'string' ? parsed.improvedText.trim() : '',
     };
 
-    if (!Number.isFinite(Number(parsed.score))) {
-      return fallbackParsedAIResponse();
-    }
-
-    if (out.score === 0) {
-      out.score = 50;
-    }
-
     return out;
   } catch (err) {
     console.error('AI PARSE ERROR:', err, text);
-    return fallbackParsedAIResponse();
+    return null;
   }
 }

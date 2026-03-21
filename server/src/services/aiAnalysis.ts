@@ -11,11 +11,54 @@ const MAX_GRAMMAR_CHARS = 10_000;
 const SAMPLE_CHUNK_SIZE = 1000;
 const LARGE_TEXT_THRESHOLD = 7000;
 
-function normalizeScore(value: unknown): number {
+function normalizeScore(value: unknown): number | null {
   const score = Number(value);
-  if (!Number.isFinite(score)) return 50;
-  const clamped = Math.max(0, Math.min(100, Math.round(score)));
-  return clamped === 0 ? 1 : clamped;
+  if (!Number.isFinite(score)) return null;
+  return Math.max(0, Math.min(100, Math.round(score)));
+}
+
+function estimateFallbackAiScore(text: string): number {
+  const cleaned = (text || '').trim();
+  if (!cleaned) return 0;
+
+  const words = cleaned.split(/\s+/).filter(Boolean);
+  const sentences = cleaned
+    .split(/(?<=[.!?])\s+/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  const sentenceCount = Math.max(1, sentences.length);
+  const avgWordsPerSentence = words.length / sentenceCount;
+  const uniqueRatio = words.length > 0
+    ? new Set(words.map((w) => w.toLowerCase())).size / words.length
+    : 1;
+
+  let repeatedStarts = 0;
+  const firstWords = sentences
+    .map((s) => s.split(/\s+/)[0]?.toLowerCase() || '')
+    .filter(Boolean);
+  for (let i = 1; i < firstWords.length; i += 1) {
+    if (firstWords[i] === firstWords[i - 1]) repeatedStarts += 1;
+  }
+
+  let score = 35;
+
+  if (avgWordsPerSentence >= 24) score += 12;
+  else if (avgWordsPerSentence >= 18) score += 7;
+  else if (avgWordsPerSentence <= 8) score += 5;
+
+  if (uniqueRatio < 0.45) score += 16;
+  else if (uniqueRatio < 0.55) score += 10;
+  else if (uniqueRatio > 0.72) score -= 8;
+
+  const repeatedStartRatio = firstWords.length > 0 ? repeatedStarts / firstWords.length : 0;
+  if (repeatedStartRatio > 0.25) score += 10;
+  else if (repeatedStartRatio > 0.15) score += 6;
+
+  const punctuationDensity = (cleaned.match(/[,:;()-]/g) || []).length / Math.max(1, words.length);
+  if (punctuationDensity > 0.18) score += 6;
+
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 function splitText(text: string, size: number): string[] {
@@ -68,6 +111,7 @@ async function runAnalysisWithRetry(prompt: string): Promise<{ parsed: ParsedAIR
     temperature: 0.2,
     maxTokens: 900,
     forceFresh: true,
+    validateResult: (text) => parseAIResponse(text) !== null,
   });
   console.log('Analyzer provider:', ai.provider || 'unavailable');
 
@@ -80,6 +124,14 @@ async function runAnalysisWithRetry(prompt: string): Promise<{ parsed: ParsedAIR
   }
 
   const parsed = parseAIResponse(ai.text);
+
+  if (!parsed) {
+    return {
+      parsed: null,
+      provider: ai.provider || 'fallback',
+      warning: 'AI returned invalid JSON payload',
+    };
+  }
 
   return {
     parsed,
@@ -113,7 +165,8 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
     ? `AI engine (${aiOut.provider}) score generated. Readability: ${parsed.readability}`
     : `AI engine (${aiOut.provider}) fallback used. ${aiOut.warning || 'AI temporarily unavailable.'}`;
   const improvedText = parsed?.improvedText ?? sampledText;
-  const aiScore = normalizeScore(parsed?.score ?? 50);
+  const aiScore = normalizeScore(parsed?.score);
+  const fallbackAiScore = estimateFallbackAiScore(sampledText);
   const fallbackTips = [
     'Break long sentences into shorter, natural lines.',
     'Vary sentence openings and transitions to reduce repetition.',
@@ -137,7 +190,7 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
   const tone = detectTone(text);
   const grammarScore = computeGrammarScore(wordCount, grammarIssues);
 
-  const finalScore = aiScore > 0 ? aiScore : 50;
+  const finalScore = aiScore ?? fallbackAiScore;
 
   return {
     aiScore: finalScore,

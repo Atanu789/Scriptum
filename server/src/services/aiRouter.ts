@@ -152,11 +152,8 @@ async function callGroq(params: RunAIParams): Promise<{ text: string; tokensUsed
         if (!response.ok) {
           const msg = payload.error?.message || `Groq HTTP ${response.status}`;
           console.error(`[AI Router] Groq failed (${response.status}): ${msg}`);
-          if (isRetryableProviderError(response.status, msg)) {
-            lastErr = new Error(msg);
-            continue;
-          }
-          throw new Error(msg);
+          lastErr = new Error(msg);
+          continue;
         }
 
         const text = (payload.choices?.[0]?.message?.content || '').trim();
@@ -171,11 +168,8 @@ async function callGroq(params: RunAIParams): Promise<{ text: string; tokensUsed
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Groq call failed';
         console.error(`[AI Router] Groq exception: ${message}`);
-        if (isRetryableProviderError(429, message)) {
-          lastErr = new Error(message);
-          continue;
-        }
-        throw err instanceof Error ? err : new Error('Groq call failed');
+        lastErr = err instanceof Error ? err : new Error('Groq call failed');
+        continue;
       }
     }
   }
@@ -231,11 +225,8 @@ async function callOpenRouter(params: RunAIParams): Promise<{ text: string; toke
         if (!response.ok) {
           const msg = payload.error?.message || `OpenRouter HTTP ${response.status}`;
           console.error(`[AI Router] OpenRouter failed (${response.status}): ${msg}`);
-          if (isRetryableProviderError(response.status, msg)) {
-            lastErr = new Error(msg);
-            continue;
-          }
-          throw new Error(msg);
+          lastErr = new Error(msg);
+          continue;
         }
 
         const text = (payload.choices?.[0]?.message?.content || '').trim();
@@ -250,11 +241,8 @@ async function callOpenRouter(params: RunAIParams): Promise<{ text: string; toke
       } catch (err) {
         const message = err instanceof Error ? err.message : 'OpenRouter call failed';
         console.error(`[AI Router] OpenRouter exception: ${message}`);
-        if (isRetryableProviderError(429, message)) {
-          lastErr = new Error(message);
-          continue;
-        }
-        throw err instanceof Error ? err : new Error('OpenRouter call failed');
+        lastErr = err instanceof Error ? err : new Error('OpenRouter call failed');
+        continue;
       }
     }
   }
@@ -350,8 +338,12 @@ export async function runAI({
 
       if (!validateResult || validateResult(normalized.text || '')) {
         await setCachedAIResult(hash, normalized, 24);
+        return normalized;
       }
-      return normalized;
+
+      providerErrors.push(`${step.provider}: INVALID_RESULT`);
+      // Try the next provider when output validation fails.
+      continue;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Provider call failed';
       console.error(`[AI Router] fallback trigger from ${step.provider}: ${message}`);
