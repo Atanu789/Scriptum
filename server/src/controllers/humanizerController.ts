@@ -8,8 +8,8 @@ import { runAI } from '../services/aiRouter';
 import { buildAICacheHash, getCachedAIResult, setCachedAIResult } from '../services/aiCache';
 
 const CACHE_WINDOW_MS = 24 * 60 * 60 * 1000;
-const PROCESS_TIMEOUT_MS = 8_000;
-const PROCESS_GLOBAL_TIMEOUT_MS = 12_000;
+const PROCESS_TIMEOUT_MS = 20_000;
+const PROCESS_GLOBAL_TIMEOUT_MS = 20_000;
 const HUMANIZER_MAX_CHARS = 4_000;
 const HUMANIZER_CHUNK_SIZE = 1_200;
 const HUMANIZER_MAX_CHUNKS = 3;
@@ -215,6 +215,46 @@ async function runWithTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T
   }
 }
 
+async function runHumanizerChunkAI(userId: string, chunk: string): Promise<{
+  humanizedText: string;
+  aiLikelihoodScore: number;
+  note: string;
+}> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const aiRes = await runWithTimeout(
+        runAI({
+          prompt: buildHumanizerPrompt(chunk),
+          userId,
+          temperature: 0.6,
+          maxTokens: 700,
+          forceFresh: attempt > 0,
+        }),
+        PROCESS_TIMEOUT_MS
+      );
+
+      const rewritten = aiRes.success && aiRes.text ? aiRes.text.trim() : '';
+      if (rewritten && rewritten.length >= 20) {
+        return {
+          humanizedText: rewritten,
+          aiLikelihoodScore: 35,
+          note: `Processed via ${aiRes.provider || 'ai-router'}${attempt > 0 ? ' (retry)' : ''}.`,
+        };
+      }
+    } catch (err) {
+      if (attempt === 1) {
+        console.error('[Humanizer] Chunk failed:', err);
+      }
+    }
+  }
+
+  return {
+    humanizedText: chunk,
+    aiLikelihoodScore: 50,
+    note: 'Chunk fallback applied due to timeout or provider failure.',
+  };
+}
+
 export const getHumanizerPlans = async (_req: AuthenticatedRequest, res: Response): Promise<void> => {
   res.json({
     success: true,
@@ -328,34 +368,7 @@ async function processHumanizerJob({ jobId, userId, mode, forceFresh, sourceText
     const chunks = splitText(workingText, HUMANIZER_CHUNK_SIZE).slice(0, HUMANIZER_MAX_CHUNKS);
 
     const processChunks = async () => {
-      const promises = chunks.map((chunk) =>
-        runWithTimeout(
-          runAI({
-            prompt: buildHumanizerPrompt(chunk),
-            userId,
-            temperature: 0.6,
-            maxTokens: 700,
-            forceFresh: true,
-          }),
-          PROCESS_TIMEOUT_MS
-        ).then((aiRes) => {
-          const rewritten = aiRes.success && aiRes.text ? aiRes.text.trim() : '';
-          return {
-            humanizedText: rewritten || chunk,
-            aiLikelihoodScore: rewritten ? 35 : 50,
-            note: rewritten
-              ? `Processed via ${aiRes.provider || 'ai-router'}.`
-              : 'Chunk fallback applied due to empty AI output.',
-          };
-        }).catch((err) => {
-          console.error('[Humanizer] Chunk failed:', err);
-          return {
-            humanizedText: chunk,
-            aiLikelihoodScore: 50,
-            note: 'Chunk fallback applied due to timeout or provider failure.',
-          };
-        })
-      );
+      const promises = chunks.map((chunk) => runHumanizerChunkAI(userId, chunk));
 
       const results = await Promise.all(promises);
       const finalText = results.map((r) => r.humanizedText || '').join('\n\n').trim();

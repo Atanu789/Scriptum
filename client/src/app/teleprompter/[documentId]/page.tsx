@@ -13,6 +13,10 @@ import { importFileToHtml } from '@/components/problem-editor/utils';
 import { Loader2, AlertCircle, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 
+function isMongoId(value: string): boolean {
+  return /^[a-fA-F0-9]{24}$/.test(value);
+}
+
 function normalizeListNumbering(text: string): string {
   return text
     // 01. Item  ->  1. Item (including indented lines)
@@ -102,9 +106,12 @@ function toTeleprompterScript(input: string): string {
 export default function TeleprompterPage() {
   const params = useParams<{ documentId: string }>();
   const router = useRouter();
-  const { document, isLoading, error } = useDocument(params.documentId);
+  const routeDocumentId = Array.isArray(params.documentId)
+    ? params.documentId[0] || ''
+    : (params.documentId || '');
+  const { document, isLoading, error } = useDocument(routeDocumentId);
   const [availableDocs, setAvailableDocs] = useState<DocumentSummary[]>([]);
-  const [selectedDocId, setSelectedDocId] = useState(params.documentId);
+  const [selectedDocId, setSelectedDocId] = useState(routeDocumentId);
   const [pastedText, setPastedText] = useState('');
   const [importedScript, setImportedScript] = useState('');
   const [importedTitle, setImportedTitle] = useState('');
@@ -112,8 +119,14 @@ export default function TeleprompterPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    setSelectedDocId(params.documentId);
-  }, [params.documentId]);
+    setSelectedDocId(routeDocumentId);
+  }, [routeDocumentId]);
+
+  useEffect(() => {
+    if (!routeDocumentId.trim() || !isMongoId(routeDocumentId)) {
+      router.replace('/teleprompter');
+    }
+  }, [routeDocumentId, router]);
 
   useEffect(() => {
     let mounted = true;
@@ -130,6 +143,18 @@ export default function TeleprompterPage() {
       mounted = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (isLoading) return;
+    if (document) return;
+    if (availableDocs.length === 0) return;
+    if (!routeDocumentId || !isMongoId(routeDocumentId) || error) {
+      const nextId = availableDocs[0]?._id;
+      if (nextId && nextId !== routeDocumentId) {
+        router.replace(`/teleprompter/${nextId}`);
+      }
+    }
+  }, [availableDocs, document, error, isLoading, routeDocumentId, router]);
 
   if (isLoading) {
     return (
@@ -220,12 +245,12 @@ export default function TeleprompterPage() {
           </select>
           <button
             onClick={() => {
-              if (selectedDocId && selectedDocId !== params.documentId) {
+              if (selectedDocId && selectedDocId !== routeDocumentId) {
                 clearImportedSource();
                 router.push(`/teleprompter/${selectedDocId}`);
               }
             }}
-            disabled={!selectedDocId || selectedDocId === params.documentId}
+            disabled={!selectedDocId || selectedDocId === routeDocumentId}
             className="min-h-[36px] rounded-md border border-indigo-500/30 bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-300 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
           >
             Import

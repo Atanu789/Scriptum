@@ -2,7 +2,8 @@ import { AnalysisResult } from '../types';
 import { checkGrammar, computeGrammarScore } from './grammarCheck';
 import { parseAIResponse, ParsedAIResponse } from '../utils/parseAIResponse';
 import { detectTone } from '../utils/tone';
-import { runAI } from './aiEngine';
+import { runAI } from './aiRouter';
+import { analyzeReadability, detectLongSentences } from './ai/readabilityAnalyzer';
 
 const MIN_CHARS = 50;
 const MAX_CHARS = 100_000;
@@ -58,29 +59,31 @@ function buildUnifiedPrompt(text: string): string {
 }
 
 async function runAnalysisWithRetry(prompt: string): Promise<{ parsed: ParsedAIResponse | null; provider: string; warning?: string }> {
-  const ai = await runAI(prompt);
-  console.log('AI Provider:', ai.provider);
+  const ai = await runAI({
+    prompt,
+    modelPreferences: {
+      groq: ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'],
+      openrouter: ['openrouter/auto'],
+    },
+    temperature: 0.2,
+    maxTokens: 900,
+    forceFresh: true,
+  });
+  console.log('Analyzer provider:', ai.provider || 'unavailable');
 
-  if (!ai.result) {
+  if (!ai.success || !ai.text) {
     return {
       parsed: null,
-      provider: ai.provider,
-      warning: 'AI temporarily unavailable',
+      provider: ai.provider || 'fallback',
+      warning: ai.message || 'AI temporarily unavailable',
     };
   }
 
-  const parsed = parseAIResponse(ai.result);
-  if (!parsed) {
-    return {
-      parsed: null,
-      provider: ai.provider,
-      warning: 'AI returned malformed output',
-    };
-  }
+  const parsed = parseAIResponse(ai.text);
 
   return {
     parsed,
-    provider: ai.provider,
+    provider: ai.provider || 'fallback',
   };
 }
 
@@ -94,7 +97,10 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
   }
 
   const sampledText = buildRepresentativeSample(text);
-  const prompt = buildUnifiedPrompt(sampledText);
+  const cleanText = text.trim().slice(0, 4000);
+  const prompt = buildUnifiedPrompt(cleanText);
+  const readability = analyzeReadability(sampledText);
+  const longSentences = detectLongSentences(sampledText);
 
   const [grammarIssues, aiOut] = await Promise.all([
     checkGrammar(sampledText.slice(0, MAX_GRAMMAR_CHARS)),
@@ -127,12 +133,14 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
   }));
 
   const wordCount = sampledText.trim().split(/\s+/).filter(Boolean).length;
-  const readabilityScore = 0;
+  const readabilityScore = readability.score;
   const tone = detectTone(text);
   const grammarScore = computeGrammarScore(wordCount, grammarIssues);
 
+  const finalScore = aiScore > 0 ? aiScore : 50;
+
   return {
-    aiScore,
+    aiScore: finalScore,
     aiReasoning,
     humanizationTips,
     humanizationSuggestions,
@@ -140,12 +148,12 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
     grammarIssues,
     grammarScore,
     readabilityScore,
-    fleschGradeLevel: 'N/A',
-    avgSentenceLength: 0,
-    readingTimeMinutes: 0,
-    longSentences: [],
+    fleschGradeLevel: readability.fleschGradeLevel,
+    avgSentenceLength: readability.avgSentenceLength,
+    readingTimeMinutes: readability.readingTimeMinutes,
+    longSentences,
     wordCount,
-    sentenceCount: 0,
+    sentenceCount: readability.sentenceCount,
     tone,
     analyzedAt: new Date()
   };

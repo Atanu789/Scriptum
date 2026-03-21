@@ -4,6 +4,7 @@ import { useRef, useCallback, useEffect } from 'react';
 import { Token } from './useScriptTokens';
 
 const WORDS_PER_CHUNK = 160;
+const AVG_WPM = 160;
 
 export type TTSStatus = 'idle' | 'loading' | 'playing' | 'paused' | 'error' | 'done';
 
@@ -113,7 +114,8 @@ export function useTTSPlayback({
     const chunk = chunks[idx];
     const utterance = new SpeechSynthesisUtterance(chunk.text);
     const tokenStartOffsets = getTokenStartOffsets(chunk);
-    utterance.rate = 1;
+    const wordDuration = 60 / AVG_WPM;
+    utterance.rate = Math.max(0.8, Math.min(1.4, 0.45 / wordDuration));
     utterance.pitch = 1;
 
     utterance.onstart = () => {
@@ -122,6 +124,7 @@ export function useTTSPlayback({
     };
 
     utterance.onboundary = (event) => {
+      if ((event as SpeechSynthesisEvent).name && (event as SpeechSynthesisEvent).name !== 'word') return;
       if (!chunk.tokens.length) return;
       const charIndex = event.charIndex || 0;
       let offset = 0;

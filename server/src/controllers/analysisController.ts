@@ -285,10 +285,11 @@ function lengthSimilarity(original: string, rewritten: string): number {
   return Math.max(0, Math.min(1, similarity));
 }
 
-function normalizeAiScore(value: unknown, fallback = 0): number {
+function normalizeAiScore(value: unknown, fallback = 50): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(0, Math.min(100, Math.round(parsed)));
+  const clamped = Math.max(0, Math.min(100, Math.round(parsed)));
+  return clamped === 0 ? 1 : clamped;
 }
 
 function buildLimitedAnalysisPayload(documentId: string, sourceText: string, fallbackWordCount?: number, limitReason?: string) {

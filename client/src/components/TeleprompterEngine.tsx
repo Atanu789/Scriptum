@@ -392,6 +392,8 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   const lastHighlightedRef = useRef<number>(-1);
   const lastSentenceRef    = useRef<number>(-1);
   const micInterimWordsRef = useRef<string[]>([]);
+  const micLastInterimRef  = useRef<string>('');
+  const currentPointerRef  = useRef<number>(-1);
   const rafManualRef       = useRef<number>(0);
   const speedRef           = useRef(speed);
   const isManualPlayingRef = useRef(isManualPlaying);
@@ -508,19 +510,38 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   }, []);
 
   const advancePointer = useCallback((pointer: number) => {
-    ensureTokenRendered(pointer);
+    const maxTokenIndex = Math.max(0, tokens.length - 1);
+    let nextPointer = Math.max(0, Math.min(pointer, maxTokenIndex));
+    const currentPointer = currentPointerRef.current;
+
+    // Keep narration tight while preventing noisy mic jumps/backtracking.
+    if (currentPointer >= 0) {
+      const delta = nextPointer - currentPointer;
+      if (delta === 0) return;
+      if (activeModeRef.current === 'mic') {
+        // Never jump backwards during live speech sync.
+        if (delta < 0) return;
+        // Clamp extreme jumps to a smoother forward step.
+        if (delta > 20) {
+          nextPointer = Math.min(maxTokenIndex, currentPointer + 4);
+        }
+      }
+    }
+
+    currentPointerRef.current = nextPointer;
+    ensureTokenRendered(nextPointer);
 
     if (activeModeRef.current === 'tts') {
-      const sentenceIndex = sentenceIndexByToken[pointer] ?? 0;
+      const sentenceIndex = sentenceIndexByToken[nextPointer] ?? 0;
       applySentenceHighlight(sentenceIndex);
-      const sentenceStart = sentenceStartByIndex[sentenceIndex] ?? pointer;
+      const sentenceStart = sentenceStartByIndex[sentenceIndex] ?? nextPointer;
       scrollToToken(sentenceStart);
       return;
     }
 
-    applyHighlight(pointer);
-    scrollToToken(pointer);
-  }, [applyHighlight, applySentenceHighlight, ensureTokenRendered, scrollToToken, sentenceIndexByToken, sentenceStartByIndex]);
+    applyHighlight(nextPointer);
+    scrollToToken(nextPointer);
+  }, [applyHighlight, applySentenceHighlight, ensureTokenRendered, scrollToToken, sentenceIndexByToken, sentenceStartByIndex, tokens.length]);
 
   // ── Full DOM reset helper ──────────────────────────────────────────────────
   const resetDOM = useCallback(() => {
@@ -531,6 +552,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     });
     lastHighlightedRef.current = -1;
     lastSentenceRef.current = -1;
+    currentPointerRef.current = -1;
   }, []);
 
   // ── TTS playback ───────────────────────────────────────────────────────────
@@ -559,6 +581,11 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
         return;
       }
 
+      const normalizedTranscript = words.join(' ');
+      if (!isFinal && normalizedTranscript === micLastInterimRef.current) {
+        return;
+      }
+
       const previousWords = micInterimWordsRef.current;
       let sharedPrefixLength = 0;
       while (
@@ -572,8 +599,12 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       const deltaWords = words.slice(sharedPrefixLength);
       if (deltaWords.length > 0) {
         advancePointer(processChunk(deltaWords.join(' ')));
+      } else if (!isFinal && words.length > 0) {
+        // Interim updates often rewrite earlier words; keep sync by nudging with latest token.
+        advancePointer(processChunk(words[words.length - 1]));
       }
 
+      micLastInterimRef.current = isFinal ? '' : normalizedTranscript;
       micInterimWordsRef.current = isFinal ? [] : words;
     },
     onStatusChange: setSyncStatus,
@@ -627,6 +658,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     resetDOM();
     resetMatcher();
     micInterimWordsRef.current = [];
+    micLastInterimRef.current = '';
     setActiveMode('mic');
     micStart();
   }, [micStart, readingMode, resetDOM, resetMatcher, ttsStop]);
@@ -634,6 +666,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   const handleStopMic = useCallback(() => {
     micStop();
     micInterimWordsRef.current = [];
+    micLastInterimRef.current = '';
     setActiveMode('idle');
   }, [micStop]);
 
@@ -665,6 +698,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     setIsManualPlaying(false);
     setErrorMsg(null);
     micInterimWordsRef.current = [];
+    micLastInterimRef.current = '';
   }, [canUsePremiumAI, micStop, readingMode, ttsStop]);
 
   useEffect(() => {
@@ -687,6 +721,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     setIsManualPlaying(false);
     setErrorMsg(null);
     micInterimWordsRef.current = [];
+    micLastInterimRef.current = '';
     resetDOM();
   }, [micStop, resetDOM, resetMatcher, ttsStop]);
 

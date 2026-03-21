@@ -9,7 +9,8 @@ import toast from 'react-hot-toast';
 function normalizeAiScore(value: unknown, fallback: number | null = null): number | null {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
-  return Math.max(0, Math.min(100, Math.round(parsed)));
+  if (parsed <= 0) return 50;
+  return Math.min(100, Math.round(parsed));
 }
 
 /** Strip HTML from text fields coming from the API (defense-in-depth). */

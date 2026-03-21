@@ -1,6 +1,6 @@
 import { buildAICacheHash, getCachedAIResult, setCachedAIResult } from './aiCache';
 
-export type AIProvider = 'groq' | 'openrouter';
+export type AIProvider = 'groq' | 'openrouter' | 'gemini';
 
 export interface AIResponse {
   success: boolean;
@@ -25,7 +25,8 @@ export interface RunAIParams {
   validateResult?: (text: string) => boolean;
 }
 
-const PROVIDER_TIMEOUT_MS = 200_000;
+const PROVIDER_TIMEOUT_MS = 20_000;
+const MAX_PROMPT_CHARS = 4_000;
 
 const DEFAULT_GROQ_MODELS = ['llama-3.1-8b-instant', 'llama-3.3-70b-versatile'];
 const DEFAULT_OPENROUTER_FREE_MODELS = [
@@ -34,6 +35,7 @@ const DEFAULT_OPENROUTER_FREE_MODELS = [
 const roundRobinCursor: Record<AIProvider, number> = {
   groq: 0,
   openrouter: 0,
+  gemini: 0,
 };
 
 function withTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
@@ -45,6 +47,30 @@ function withTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
   return Promise.race([work, timeout]).finally(() => {
     if (timer) clearTimeout(timer);
   }) as Promise<T>;
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (err) {
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw new Error('REQUEST_TIMEOUT');
+    }
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+function normalizePrompt(prompt: string): string {
+  const cleaned = (prompt || '').trim();
+  if (cleaned.length <= MAX_PROMPT_CHARS) return cleaned;
+  return cleaned.slice(0, MAX_PROMPT_CHARS);
 }
 
 function isRetryableProviderError(status: number, message: string): boolean {
@@ -101,7 +127,7 @@ async function callGroq(params: RunAIParams): Promise<{ text: string; tokensUsed
     for (const model of models) {
       try {
         const response = await withTimeout(
-          fetch('https://api.groq.com/openai/v1/chat/completions', {
+          fetchWithTimeout('https://api.groq.com/openai/v1/chat/completions', {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${key}`,
@@ -113,7 +139,7 @@ async function callGroq(params: RunAIParams): Promise<{ text: string; tokensUsed
               temperature: params.temperature ?? 0.3,
               max_tokens: params.maxTokens ?? 900,
             }),
-          }),
+          }, PROVIDER_TIMEOUT_MS),
           PROVIDER_TIMEOUT_MS
         );
 
@@ -125,6 +151,7 @@ async function callGroq(params: RunAIParams): Promise<{ text: string; tokensUsed
 
         if (!response.ok) {
           const msg = payload.error?.message || `Groq HTTP ${response.status}`;
+          console.error(`[AI Router] Groq failed (${response.status}): ${msg}`);
           if (isRetryableProviderError(response.status, msg)) {
             lastErr = new Error(msg);
             continue;
@@ -133,14 +160,17 @@ async function callGroq(params: RunAIParams): Promise<{ text: string; tokensUsed
         }
 
         const text = (payload.choices?.[0]?.message?.content || '').trim();
-        if (!text) {
-          lastErr = new Error('GROQ_EMPTY_RESPONSE');
+        if (!text || text.length < 10) {
+          console.error('[AI Router] Groq failed: empty response');
+          lastErr = new Error('GROQ_INVALID_RESPONSE');
           continue;
         }
 
+        console.log(`[AI Router] provider used: groq (${model})`);
         return { text, tokensUsed: payload.usage?.total_tokens };
       } catch (err) {
         const message = err instanceof Error ? err.message : 'Groq call failed';
+        console.error(`[AI Router] Groq exception: ${message}`);
         if (isRetryableProviderError(429, message)) {
           lastErr = new Error(message);
           continue;
@@ -176,7 +206,7 @@ async function callOpenRouter(params: RunAIParams): Promise<{ text: string; toke
     for (const model of models) {
       try {
         const response = await withTimeout(
-          fetch('https://openrouter.ai/api/v1/chat/completions', {
+          fetchWithTimeout('https://openrouter.ai/api/v1/chat/completions', {
             method: 'POST',
             headers: {
               Authorization: `Bearer ${key}`,
@@ -188,7 +218,7 @@ async function callOpenRouter(params: RunAIParams): Promise<{ text: string; toke
               temperature: params.temperature ?? 0.3,
               max_tokens: params.maxTokens ?? 900,
             }),
-          }),
+          }, PROVIDER_TIMEOUT_MS),
           PROVIDER_TIMEOUT_MS
         );
 
@@ -200,6 +230,7 @@ async function callOpenRouter(params: RunAIParams): Promise<{ text: string; toke
 
         if (!response.ok) {
           const msg = payload.error?.message || `OpenRouter HTTP ${response.status}`;
+          console.error(`[AI Router] OpenRouter failed (${response.status}): ${msg}`);
           if (isRetryableProviderError(response.status, msg)) {
             lastErr = new Error(msg);
             continue;
@@ -208,14 +239,17 @@ async function callOpenRouter(params: RunAIParams): Promise<{ text: string; toke
         }
 
         const text = (payload.choices?.[0]?.message?.content || '').trim();
-        if (!text) {
-          lastErr = new Error('OPENROUTER_EMPTY_RESPONSE');
+        if (!text || text.length < 10) {
+          console.error('[AI Router] OpenRouter failed: empty response');
+          lastErr = new Error('OPENROUTER_INVALID_RESPONSE');
           continue;
         }
 
+        console.log(`[AI Router] provider used: openrouter (${model})`);
         return { text, tokensUsed: payload.usage?.total_tokens };
       } catch (err) {
         const message = err instanceof Error ? err.message : 'OpenRouter call failed';
+        console.error(`[AI Router] OpenRouter exception: ${message}`);
         if (isRetryableProviderError(429, message)) {
           lastErr = new Error(message);
           continue;
@@ -228,6 +262,47 @@ async function callOpenRouter(params: RunAIParams): Promise<{ text: string; toke
   throw lastErr || new Error('OpenRouter fallback pool exhausted');
 }
 
+async function callGemini(params: RunAIParams): Promise<{ text: string; tokensUsed?: number }> {
+  const key = process.env.GEMINI_API_KEY?.trim();
+  if (!key) throw new Error('GEMINI_KEY_MISSING');
+
+  try {
+    const response = await withTimeout(
+      fetchWithTimeout(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${key}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: params.prompt }] }],
+        }),
+      }, 20_000),
+      20_000
+    );
+
+    const payload = await response.json() as {
+      candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
+      error?: { message?: string };
+    };
+
+    if (!response.ok) {
+      const msg = payload.error?.message || `Gemini HTTP ${response.status}`;
+      console.error(`[AI Router] Gemini failed (${response.status}): ${msg}`);
+      throw new Error(msg);
+    }
+
+    const text = (payload.candidates?.[0]?.content?.parts?.[0]?.text || '').trim();
+    if (!text || text.length < 10) {
+      console.error('[AI Router] Gemini failed: empty response');
+      throw new Error('GEMINI_INVALID_RESPONSE');
+    }
+    console.log('[AI Router] provider used: gemini');
+    return { text };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Gemini call failed';
+    console.error(`[AI Router] Gemini exception: ${message}`);
+    throw err instanceof Error ? err : new Error('Gemini call failed');
+  }
+}
+
 export async function runAI({
   prompt,
   modelPreferences,
@@ -237,7 +312,7 @@ export async function runAI({
   forceFresh = false,
   validateResult,
 }: RunAIParams): Promise<AIResponse> {
-  const cleanedPrompt = (prompt || '').trim();
+  const cleanedPrompt = normalizePrompt(prompt || '');
   if (!cleanedPrompt) {
     return { success: false, message: 'AI temporarily unavailable', fallbackTried: true };
   }
@@ -257,6 +332,7 @@ export async function runAI({
   const providerChain: Array<{ provider: AIProvider; run: () => Promise<{ text: string; tokensUsed?: number }> }> = [
     { provider: 'groq', run: () => callGroq({ prompt: cleanedPrompt, modelPreferences, temperature, maxTokens, userId, forceFresh }) },
     { provider: 'openrouter', run: () => callOpenRouter({ prompt: cleanedPrompt, modelPreferences, temperature, maxTokens, userId, forceFresh }) },
+    { provider: 'gemini', run: () => callGemini({ prompt: cleanedPrompt, modelPreferences, temperature, maxTokens, userId, forceFresh }) },
   ];
 
   const providerErrors: string[] = [];
@@ -278,6 +354,7 @@ export async function runAI({
       return normalized;
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Provider call failed';
+      console.error(`[AI Router] fallback trigger from ${step.provider}: ${message}`);
       providerErrors.push(`${step.provider}: ${message}`);
       // Try next provider in chain.
     }

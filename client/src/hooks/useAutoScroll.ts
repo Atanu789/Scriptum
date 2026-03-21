@@ -63,7 +63,7 @@ export function useAutoScroll(containerRef: React.RefObject<HTMLElement>): UseAu
 
       container.scrollTo({
         top: currentTop + delta * 0.35,
-        behavior: 'auto',
+        behavior: 'smooth',
       });
     });
   }, [containerRef]);
