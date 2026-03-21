@@ -728,14 +728,14 @@ function AnalysisPanel({
                   {humanizeEnabled
                     ? (isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />)
                     : <Lock className="h-4 w-4" />}
-                  {humanizeEnabled ? (isHumanizing ? 'Humanizing…' : 'Humanize') : 'Humanize Text'}
+                  {humanizeEnabled ? (isHumanizing ? 'Humanizing (Beta)…' : 'Humanize (Beta)') : 'Humanize Text (Beta)'}
                   <span
                     className={cn(
                       'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
                       humanizeEnabled ? 'bg-white/20 text-white' : 'bg-amber-400/80 text-white',
                     )}
                   >
-                    Premium
+                    Beta
                   </span>
                   {!humanizeEnabled && <Crown className="h-4 w-4" />}
                 </button>
@@ -744,9 +744,14 @@ function AnalysisPanel({
                     Re-run analysis first to generate AI-flagged passages.
                   </p>
                 )}
+                {humanizeEnabled && (
+                  <p className="mt-1.5 text-center text-[10px] text-amber-500">
+                    Humanizing text is in beta and may not work properly.
+                  </p>
+                )}
                 {!humanizeEnabled && (
                   <p className="mt-1.5 text-center text-[10px] text-amber-500">
-                    Humanize is a Premium feature.
+                    Humanize (Beta) is a Premium feature.
                   </p>
                 )}
               </div>
