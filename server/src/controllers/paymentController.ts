@@ -2,6 +2,8 @@ import { Request, Response } from 'express';
 import { AuthenticatedRequest } from '../types';
 import User, { Plan } from '../models/User';
 import Payment from '../models/Payment';
+import PricingConfig, { PricingPlanId } from '../models/PricingConfig';
+import DiscountRequest from '../models/DiscountRequest';
 import {
   createRazorpayOrder,
   verifyRazorpaySignature,
@@ -17,6 +19,63 @@ const PREMIUM_REDEEM_CODE = 'GOFREEULTI';
 const BILLING_CYCLES: BillingCycle[] = ['monthly', 'yearly'];
 const PAYMENT_RECEIPT_RECIPIENTS = ['atanugm8@gmail.com', 'gdnvision360@gmail.com'];
 
+const DEFAULT_DYNAMIC_PRICING: Record<PricingPlanId, {
+  name: string;
+  monthlyPriceINR: number;
+  yearlyPriceINR: number;
+  enabled: boolean;
+  discountPercent: number;
+}> = {
+  pro: {
+    name: 'Pro',
+    monthlyPriceINR: 2500,
+    yearlyPriceINR: 24000,
+    enabled: true,
+    discountPercent: 0,
+  },
+  advanced: {
+    name: 'Advanced',
+    monthlyPriceINR: 3500,
+    yearlyPriceINR: 36000,
+    enabled: true,
+    discountPercent: 0,
+  },
+};
+
+function clampPercent(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  return Math.max(0, Math.min(100, Math.round(value)));
+}
+
+function toPaise(valueINR: number): number {
+  return Math.max(0, Math.round(valueINR * 100));
+}
+
+async function loadPricingConfigMap(): Promise<Record<PricingPlanId, {
+  name: string;
+  monthlyPriceINR: number;
+  yearlyPriceINR: number;
+  enabled: boolean;
+  discountPercent: number;
+}>> {
+  const rows = await PricingConfig.find({ planId: { $in: ['pro', 'advanced'] } }).lean();
+  const map = { ...DEFAULT_DYNAMIC_PRICING };
+
+  for (const row of rows) {
+    const planId = row.planId as PricingPlanId;
+    if (!map[planId]) continue;
+    map[planId] = {
+      name: row.displayName || map[planId].name,
+      monthlyPriceINR: Number.isFinite(row.monthlyPriceINR) ? Math.max(0, row.monthlyPriceINR) : map[planId].monthlyPriceINR,
+      yearlyPriceINR: Number.isFinite(row.yearlyPriceINR) ? Math.max(0, row.yearlyPriceINR) : map[planId].yearlyPriceINR,
+      enabled: typeof row.enabled === 'boolean' ? row.enabled : map[planId].enabled,
+      discountPercent: clampPercent(Number(row.discountPercent || 0)),
+    };
+  }
+
+  return map;
+}
+
 function getCycleMonths(cycle: BillingCycle): number {
   return cycle === 'yearly' ? 12 : 1;
 }
@@ -24,6 +83,10 @@ function getCycleMonths(cycle: BillingCycle): number {
 // ─── GET /api/payment/plans ───────────────────────────────────────────────────
 
 export async function getPlans(_req: Request, res: Response): Promise<void> {
+  const pricing = await loadPricingConfigMap();
+  const pro = pricing.pro;
+  const advanced = pricing.advanced;
+
   res.json({
     success: true,
     data: {
@@ -34,10 +97,26 @@ export async function getPlans(_req: Request, res: Response): Promise<void> {
         limits:      PLAN_LIMITS.free,
       },
       pro: {
-        name:        'Pro',
-        priceINR:    PLAN_PRICES_PAISE.pro / 100,
-        priceLabel:  '₹499 / month',
+        name:        pro.name,
+        priceINR:    pro.monthlyPriceINR,
+        yearlyPriceINR: pro.yearlyPriceINR,
+        enabled: pro.enabled,
+        discountPercent: pro.discountPercent,
+        priceLabel:  `₹${pro.monthlyPriceINR} / month`,
         limits:      PLAN_LIMITS.pro,
+      },
+      advanced: {
+        name: advanced.name,
+        priceINR: advanced.monthlyPriceINR,
+        yearlyPriceINR: advanced.yearlyPriceINR,
+        enabled: advanced.enabled,
+        discountPercent: advanced.discountPercent,
+        priceLabel: `₹${advanced.monthlyPriceINR} / month`,
+        limits: {
+          ...PLAN_LIMITS.pro,
+          aiUsagePerMonth: 120,
+          uploadsPerMonth: 120,
+        },
       },
     },
   });
@@ -51,12 +130,12 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
     if (!userId) { res.status(401).json({ success: false, error: 'Unauthorized' }); return; }
 
     const { plan, discountCode, billingCycle } = req.body as {
-      plan: string;
+      plan: 'pro' | 'advanced';
       discountCode?: string;
       billingCycle?: BillingCycle;
     };
-    if (!plan || !['pro'].includes(plan)) {
-      res.status(400).json({ success: false, error: 'Invalid plan. Supported: pro' });
+    if (!plan || !['pro', 'advanced'].includes(plan)) {
+      res.status(400).json({ success: false, error: 'Invalid plan. Supported: pro, advanced' });
       return;
     }
 
@@ -66,13 +145,16 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
     const user = await User.findById(userId);
     if (!user) { res.status(404).json({ success: false, error: 'User not found' }); return; }
 
-    // Reject duplicate active subscription
-    if (user.plan === plan && user.planExpiryDate && user.planExpiryDate > new Date()) {
-      res.status(400).json({ success: false, error: `You already have an active ${plan} subscription` });
+    const pricing = await loadPricingConfigMap();
+    const selectedPricing = pricing[plan];
+    if (!selectedPricing.enabled) {
+      res.status(400).json({ success: false, error: `${selectedPricing.name} plan is currently unavailable` });
       return;
     }
 
-    const baseAmount = getPlanPriceForCycle(plan as Exclude<Plan, 'free'>, normalizedBillingCycle);
+    const baseAmount = normalizedBillingCycle === 'yearly'
+      ? toPaise(selectedPricing.yearlyPriceINR)
+      : toPaise(selectedPricing.monthlyPriceINR);
     const configuredCode = (process.env.PRO_DISCOUNT_CODE || '').trim();
     const configuredPercentRaw = Number.parseInt(process.env.PRO_DISCOUNT_PERCENT || '10', 10);
     const configuredPercent = Number.isFinite(configuredPercentRaw)
@@ -86,14 +168,20 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
       normalizedConfiguredCode.length > 0 &&
       normalizedProvidedCode === normalizedConfiguredCode;
 
-    const discountPaise = hasValidDiscountCode
-      ? Math.round((baseAmount * configuredPercent) / 100)
+    const mergedDiscountPercent = Math.max(
+      hasValidDiscountCode ? configuredPercent : 0,
+      clampPercent(selectedPricing.discountPercent),
+    );
+
+    const discountPaise = mergedDiscountPercent > 0
+      ? Math.round((baseAmount * mergedDiscountPercent) / 100)
       : 0;
     const finalAmount = Math.max(100, baseAmount - discountPaise);
 
-    const order = await createRazorpayOrder(plan as Exclude<Plan, 'free'>, userId, {
+    const order = await createRazorpayOrder('pro', userId, {
       amountPaise: finalAmount,
       notes: {
+        pricingTier: plan,
         billingCycle: normalizedBillingCycle,
         ...(hasValidDiscountCode
           ? {
@@ -109,7 +197,8 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
     // Persist a pending payment record
     await Payment.create({
       userId:           userId,
-      plan,
+      plan: 'pro',
+      pricingTier: plan,
       billingCycle:     normalizedBillingCycle,
       amount:           order.amount,
       currency:         order.currency,
@@ -126,7 +215,7 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
         keyId:    process.env.RAZORPAY_KEY_ID,
         originalAmount: baseAmount,
         discountPaise,
-        discountPercent: hasValidDiscountCode ? configuredPercent : 0,
+        discountPercent: mergedDiscountPercent,
         billingCycle: normalizedBillingCycle,
       },
     });
@@ -138,6 +227,52 @@ export async function createOrder(req: AuthenticatedRequest, res: Response): Pro
       return;
     }
     res.status(500).json({ success: false, error: 'Failed to create payment order' });
+  }
+}
+
+// ─── POST /api/payment/discount-request ─────────────────────────────────────
+
+export async function requestDiscount(req: Request, res: Response): Promise<void> {
+  try {
+    const { email, reason, requestedPlan } = req.body as {
+      email?: string;
+      reason?: string;
+      requestedPlan?: 'pro' | 'advanced';
+    };
+
+    const normalizedEmail = (email || '').trim().toLowerCase();
+    const normalizedReason = (reason || '').trim();
+    const normalizedPlan: 'pro' | 'advanced' = requestedPlan === 'advanced' ? 'advanced' : 'pro';
+
+    if (!normalizedEmail || !/^\S+@\S+\.\S+$/.test(normalizedEmail)) {
+      res.status(400).json({ success: false, error: 'Please provide a valid email address' });
+      return;
+    }
+
+    if (normalizedReason.length < 10) {
+      res.status(400).json({ success: false, error: 'Reason must be at least 10 characters' });
+      return;
+    }
+
+    await DiscountRequest.create({
+      email: normalizedEmail,
+      reason: normalizedReason,
+      requestedPlan: normalizedPlan,
+      status: 'pending',
+    });
+
+    res.status(201).json({
+      success: true,
+      data: {
+        email: normalizedEmail,
+        requestedPlan: normalizedPlan,
+        status: 'pending',
+      },
+      message: 'Discount request submitted. Our team will review it shortly.',
+    });
+  } catch (err) {
+    console.error('requestDiscount error:', err);
+    res.status(500).json({ success: false, error: 'Failed to submit discount request' });
   }
 }
 
@@ -181,14 +316,19 @@ export async function verifyPayment(req: AuthenticatedRequest, res: Response): P
     const expiry = new Date(now);
     expiry.setMonth(expiry.getMonth() + getCycleMonths(payment.billingCycle ?? 'monthly'));
 
+    const pricingTier = payment.pricingTier === 'advanced' ? 'advanced' : 'pro';
+    const isAdvanced = pricingTier === 'advanced';
+
     await User.findByIdAndUpdate(userId, {
-      plan:                payment.plan,
+      plan:                'pro',
       planStartDate:        now,
       planExpiryDate:       expiry,
       razorpayPaymentId:    razorpay_payment_id,
       aiUsageThisMonth:     0,
       uploadUsageThisMonth: 0,
       aiUsageResetAt:       now,
+      aiUsageLimitOverride: isAdvanced ? 120 : null,
+      uploadUsageLimitOverride: isAdvanced ? 120 : null,
     });
 
     payment.razorpayPaymentId = razorpay_payment_id;
@@ -222,9 +362,9 @@ export async function verifyPayment(req: AuthenticatedRequest, res: Response): P
     res.json({
       success: true,
       data: {
-        plan:            payment.plan,
+        plan:            pricingTier,
         planExpiryDate:  expiry,
-        message:         `${payment.plan.toUpperCase()} plan activated — valid until ${expiry.toLocaleDateString()}`,
+        message:         `${pricingTier.toUpperCase()} plan activated — valid until ${expiry.toLocaleDateString()}`,
       },
     });
   } catch (err) {
@@ -283,6 +423,7 @@ export async function redeemCode(req: AuthenticatedRequest, res: Response): Prom
     await Payment.create({
       userId,
       plan: 'pro',
+      pricingTier: 'pro',
       billingCycle: 'monthly',
       amount: 0,
       currency: 'INR',

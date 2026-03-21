@@ -21,8 +21,10 @@ import { adminApi } from '@/lib/api';
 import type {
   AdminAuditLogItem,
   AdminMetrics,
+  AdminPricingPlanConfig,
   AdminRevenue,
   AdminUserSummary,
+  DiscountRequestItem,
 } from '@/types';
 
 type SectionKey = 'dashboard' | 'users' | 'revenue' | 'logs' | 'settings';
@@ -72,6 +74,21 @@ export default function AdminPage() {
 
   const [metrics, setMetrics] = useState<AdminMetrics | null>(null);
   const [revenue, setRevenue] = useState<AdminRevenue | null>(null);
+  const [pricingConfigs, setPricingConfigs] = useState<AdminPricingPlanConfig[]>([]);
+  const [pricingSavingPlanId, setPricingSavingPlanId] = useState<string | null>(null);
+
+  const [discountRequests, setDiscountRequests] = useState<DiscountRequestItem[]>([]);
+  const [discountRequestsLoading, setDiscountRequestsLoading] = useState(false);
+  const [discountRequestsPage, setDiscountRequestsPage] = useState(1);
+  const [discountRequestsTotalPages, setDiscountRequestsTotalPages] = useState(1);
+  const [discountRequestsStatusFilter, setDiscountRequestsStatusFilter] = useState<'all' | 'pending' | 'approved' | 'rejected'>('pending');
+  const [discountActionBusyId, setDiscountActionBusyId] = useState<string | null>(null);
+  const [discountDraft, setDiscountDraft] = useState<Record<string, {
+    percent: string;
+    plan: 'free' | 'pro' | 'advanced';
+    notes: string;
+    assignToUser: boolean;
+  }>>({});
 
   const [users, setUsers] = useState<AdminUserSummary[]>([]);
   const [usersLoading, setUsersLoading] = useState(false);
@@ -120,6 +137,47 @@ export default function AdminPage() {
     const nextRevenue = await adminApi.revenue(currentToken);
     setRevenue(nextRevenue);
   }, []);
+
+  const loadPricingConfigs = useCallback(async (currentToken: string) => {
+    const configs = await adminApi.getPricing(currentToken);
+    setPricingConfigs(configs);
+  }, []);
+
+  const loadDiscountRequests = useCallback(async (
+    currentToken: string,
+    page = discountRequestsPage,
+    q = searchTerm,
+    status = discountRequestsStatusFilter,
+  ) => {
+    setDiscountRequestsLoading(true);
+    try {
+      const result = await adminApi.listDiscountRequests(currentToken, {
+        page,
+        limit: 12,
+        q,
+        status,
+      });
+      setDiscountRequests(result.requests);
+      setDiscountDraft((prev) => {
+        const next = { ...prev };
+        for (const item of result.requests) {
+          if (!next[item._id]) {
+            next[item._id] = {
+              percent: item.offeredDiscountPercent == null ? '' : String(item.offeredDiscountPercent),
+              plan: item.assignedPlan || (item.requestedPlan === 'advanced' ? 'advanced' : 'pro'),
+              notes: item.adminNotes || '',
+              assignToUser: false,
+            };
+          }
+        }
+        return next;
+      });
+      setDiscountRequestsPage(result.page);
+      setDiscountRequestsTotalPages(result.totalPages);
+    } finally {
+      setDiscountRequestsLoading(false);
+    }
+  }, [discountRequestsPage, discountRequestsStatusFilter, searchTerm]);
 
   const loadUsers = useCallback(async (currentToken: string, page = usersPage, q = searchTerm) => {
     setUsersLoading(true);
@@ -204,7 +262,16 @@ export default function AdminPage() {
         toast.error(err instanceof Error ? err.message : 'Failed to load revenue');
       });
     }
-  }, [token, section, searchTerm, usersPage, logsPage, logsActionFilter, revenue, loadUsers, loadLogs, loadRevenue]);
+
+    if (section === 'settings') {
+      void loadPricingConfigs(token).catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'Failed to load pricing config');
+      });
+      void loadDiscountRequests(token, discountRequestsPage, searchTerm, discountRequestsStatusFilter).catch((err) => {
+        toast.error(err instanceof Error ? err.message : 'Failed to load discount requests');
+      });
+    }
+  }, [token, section, searchTerm, usersPage, logsPage, logsActionFilter, revenue, loadUsers, loadLogs, loadRevenue, loadPricingConfigs, loadDiscountRequests, discountRequestsPage, discountRequestsStatusFilter]);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -282,6 +349,51 @@ export default function AdminPage() {
     ]);
     if (section === 'logs') {
       await loadLogs(token, 1, searchTerm, logsActionFilter);
+    }
+  };
+
+  const savePricingPlan = async (plan: AdminPricingPlanConfig) => {
+    if (!token) return;
+    setPricingSavingPlanId(plan.planId);
+    try {
+      await adminApi.updatePricing(token, plan.planId, {
+        displayName: plan.displayName,
+        monthlyPriceINR: plan.monthlyPriceINR,
+        yearlyPriceINR: plan.yearlyPriceINR,
+        enabled: plan.enabled,
+        discountPercent: plan.discountPercent,
+      });
+      await Promise.all([loadPricingConfigs(token), loadRevenue(token), loadMetrics(token)]);
+      toast.success(`${plan.displayName} pricing updated`);
+    } finally {
+      setPricingSavingPlanId(null);
+    }
+  };
+
+  const moderateDiscountRequest = async (
+    requestId: string,
+    payload: {
+      status?: 'pending' | 'approved' | 'rejected';
+      offeredDiscountPercent?: number | null;
+      assignedPlan?: 'free' | 'pro' | 'advanced' | null;
+      assignToUser?: boolean;
+      planDays?: number;
+      adminNotes?: string | null;
+      reason?: string;
+    }
+  ) => {
+    if (!token) return;
+    setDiscountActionBusyId(requestId);
+    try {
+      await adminApi.updateDiscountRequest(token, requestId, payload);
+      await Promise.all([
+        loadDiscountRequests(token, discountRequestsPage, searchTerm, discountRequestsStatusFilter),
+        loadUsers(token, usersPage, searchTerm),
+        loadMetrics(token),
+      ]);
+      toast.success('Discount request updated');
+    } finally {
+      setDiscountActionBusyId(null);
     }
   };
 
@@ -739,8 +851,9 @@ export default function AdminPage() {
                       <p className="mt-2 text-2xl font-bold">{formatCurrency(revenue.revenuePerUserINR)}</p>
                     </div>
                     <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0f1020]">
-                      <p className="text-xs uppercase tracking-wide text-slate-500">Plan Distribution</p>
-                      <p className="mt-2 text-xl font-bold">Free {revenue.subscriptionDistribution.free} / Pro {revenue.subscriptionDistribution.pro}</p>
+                      <p className="text-xs uppercase tracking-wide text-slate-500">Active Subscriptions</p>
+                      <p className="mt-2 text-2xl font-bold">{revenue.activeSubscriptions}</p>
+                      <p className="text-xs text-slate-500">Free {revenue.subscriptionDistribution.free} / Pro {revenue.subscriptionDistribution.pro}</p>
                     </div>
                   </div>
 
@@ -862,7 +975,13 @@ export default function AdminPage() {
                   <button
                     onClick={async () => {
                       if (!token) return;
-                      await Promise.all([loadMetrics(token), loadUsers(token, 1, ''), loadRevenue(token)]);
+                      await Promise.all([
+                        loadMetrics(token),
+                        loadUsers(token, 1, ''),
+                        loadRevenue(token),
+                        loadPricingConfigs(token),
+                        loadDiscountRequests(token, 1, searchTerm, discountRequestsStatusFilter),
+                      ]);
                       toast.success('Data refreshed');
                     }}
                     className="rounded-lg bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white"
@@ -874,6 +993,239 @@ export default function AdminPage() {
                     className="rounded-lg border border-red-300 px-3 py-2 text-sm font-semibold text-red-700 hover:bg-red-50 dark:border-red-400/40 dark:text-red-300 dark:hover:bg-red-500/10"
                   >
                     Logout
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0f1020]">
+                <h3 className="text-base font-semibold">Dynamic Pricing Control</h3>
+                <p className="mt-1 text-sm text-slate-600 dark:text-slate-400">Update monthly/yearly INR pricing, enable or disable plans, and set default discounts.</p>
+                <div className="mt-4 grid gap-3 md:grid-cols-2">
+                  {pricingConfigs.map((plan) => (
+                    <div key={plan.planId} className="rounded-lg border border-slate-200 p-3 dark:border-white/10">
+                      <div className="mb-2 flex items-center justify-between">
+                        <h4 className="font-semibold">{plan.displayName}</h4>
+                        <label className="inline-flex items-center gap-2 text-xs">
+                          <input
+                            type="checkbox"
+                            checked={plan.enabled}
+                            onChange={(e) => {
+                              const checked = e.target.checked;
+                              setPricingConfigs((prev) => prev.map((item) => item.planId === plan.planId ? { ...item, enabled: checked } : item));
+                            }}
+                          />
+                          Enabled
+                        </label>
+                      </div>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="number"
+                          min={0}
+                          value={plan.monthlyPriceINR}
+                          onChange={(e) => {
+                            const value = Number(e.target.value || 0);
+                            setPricingConfigs((prev) => prev.map((item) => item.planId === plan.planId ? { ...item, monthlyPriceINR: value } : item));
+                          }}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
+                          placeholder="Monthly INR"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          value={plan.yearlyPriceINR}
+                          onChange={(e) => {
+                            const value = Number(e.target.value || 0);
+                            setPricingConfigs((prev) => prev.map((item) => item.planId === plan.planId ? { ...item, yearlyPriceINR: value } : item));
+                          }}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
+                          placeholder="Yearly INR"
+                        />
+                        <input
+                          type="number"
+                          min={0}
+                          max={100}
+                          value={plan.discountPercent}
+                          onChange={(e) => {
+                            const value = Number(e.target.value || 0);
+                            setPricingConfigs((prev) => prev.map((item) => item.planId === plan.planId ? { ...item, discountPercent: value } : item));
+                          }}
+                          className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
+                          placeholder="Discount %"
+                        />
+                        <button
+                          onClick={() => {
+                            void savePricingPlan(plan);
+                          }}
+                          disabled={pricingSavingPlanId === plan.planId}
+                          className="rounded-md bg-indigo-600 px-2 py-1 text-xs font-semibold text-white hover:bg-indigo-500 disabled:opacity-60"
+                        >
+                          {pricingSavingPlanId === plan.planId ? 'Saving...' : 'Save pricing'}
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0f1020]">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 className="text-base font-semibold">Concession Requests</h3>
+                    <p className="text-sm text-slate-600 dark:text-slate-400">Approve/reject requests and optionally assign plan or custom discount.</p>
+                  </div>
+                  <select
+                    value={discountRequestsStatusFilter}
+                    onChange={(e) => {
+                      const status = e.target.value as 'all' | 'pending' | 'approved' | 'rejected';
+                      setDiscountRequestsStatusFilter(status);
+                      setDiscountRequestsPage(1);
+                    }}
+                    className="rounded-lg border border-slate-300 px-2 py-1.5 text-xs dark:border-white/20 dark:bg-black/20"
+                  >
+                    <option value="all">All</option>
+                    <option value="pending">Pending</option>
+                    <option value="approved">Approved</option>
+                    <option value="rejected">Rejected</option>
+                  </select>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500 dark:border-white/10 dark:bg-[#111327]">
+                      <tr>
+                        <th className="px-3 py-2">Email</th>
+                        <th className="px-3 py-2">Requested</th>
+                        <th className="px-3 py-2">Reason</th>
+                        <th className="px-3 py-2">Offer</th>
+                        <th className="px-3 py-2">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {discountRequestsLoading ? (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-8 text-center text-slate-500">Loading requests...</td>
+                        </tr>
+                      ) : discountRequests.length === 0 ? (
+                        <tr>
+                          <td colSpan={5} className="px-3 py-8 text-center text-slate-500">No concession requests found.</td>
+                        </tr>
+                      ) : discountRequests.map((request) => {
+                        const draft = discountDraft[request._id] || {
+                          percent: '',
+                          plan: request.requestedPlan === 'advanced' ? 'advanced' as const : 'pro' as const,
+                          notes: '',
+                          assignToUser: false,
+                        };
+
+                        return (
+                          <tr key={request._id} className="border-b border-slate-100 align-top dark:border-white/5">
+                            <td className="px-3 py-2">
+                              <p className="font-semibold">{request.email}</p>
+                              <p className="text-[11px] text-slate-500">{new Date(request.createdAt).toLocaleString()}</p>
+                              <p className="text-[11px] text-slate-500">Status: {request.status}</p>
+                            </td>
+                            <td className="px-3 py-2 text-xs uppercase">{request.requestedPlan}</td>
+                            <td className="px-3 py-2 text-xs text-slate-600 dark:text-slate-400">{request.reason}</td>
+                            <td className="px-3 py-2">
+                              <div className="grid gap-1">
+                                <input
+                                  type="number"
+                                  min={0}
+                                  max={100}
+                                  value={draft.percent}
+                                  onChange={(e) => {
+                                    const value = e.target.value;
+                                    setDiscountDraft((prev) => ({
+                                      ...prev,
+                                      [request._id]: { ...draft, percent: value },
+                                    }));
+                                  }}
+                                  className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
+                                  placeholder="Discount %"
+                                />
+                                <select
+                                  value={draft.plan}
+                                  onChange={(e) => {
+                                    const value = e.target.value as 'free' | 'pro' | 'advanced';
+                                    setDiscountDraft((prev) => ({
+                                      ...prev,
+                                      [request._id]: { ...draft, plan: value },
+                                    }));
+                                  }}
+                                  className="rounded-md border border-slate-300 px-2 py-1 text-xs dark:border-white/20 dark:bg-black/20"
+                                >
+                                  <option value="free">free</option>
+                                  <option value="pro">pro</option>
+                                  <option value="advanced">advanced</option>
+                                </select>
+                                <label className="inline-flex items-center gap-1 text-[11px] text-slate-500">
+                                  <input
+                                    type="checkbox"
+                                    checked={draft.assignToUser}
+                                    onChange={(e) => {
+                                      setDiscountDraft((prev) => ({
+                                        ...prev,
+                                        [request._id]: { ...draft, assignToUser: e.target.checked },
+                                      }));
+                                    }}
+                                  />
+                                  Apply to user account
+                                </label>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2">
+                              <div className="flex flex-col gap-1">
+                                <button
+                                  onClick={() => {
+                                    void moderateDiscountRequest(request._id, {
+                                      status: 'approved',
+                                      offeredDiscountPercent: draft.percent.trim() === '' ? null : Number(draft.percent),
+                                      assignedPlan: draft.plan,
+                                      assignToUser: draft.assignToUser,
+                                      adminNotes: draft.notes || null,
+                                    });
+                                  }}
+                                  disabled={discountActionBusyId === request._id}
+                                  className="rounded-md bg-emerald-600 px-2 py-1 text-xs font-semibold text-white hover:bg-emerald-500 disabled:opacity-60"
+                                >
+                                  Approve
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    void moderateDiscountRequest(request._id, {
+                                      status: 'rejected',
+                                      adminNotes: draft.notes || null,
+                                    });
+                                  }}
+                                  disabled={discountActionBusyId === request._id}
+                                  className="rounded-md bg-red-600 px-2 py-1 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div className="mt-3 flex items-center justify-end gap-2 text-xs">
+                  <button
+                    onClick={() => setDiscountRequestsPage((p) => Math.max(1, p - 1))}
+                    disabled={discountRequestsPage <= 1 || discountRequestsLoading}
+                    className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50 dark:border-white/20"
+                  >
+                    Previous
+                  </button>
+                  <span className="text-slate-500">Page {discountRequestsPage} of {discountRequestsTotalPages}</span>
+                  <button
+                    onClick={() => setDiscountRequestsPage((p) => Math.min(discountRequestsTotalPages, p + 1))}
+                    disabled={discountRequestsPage >= discountRequestsTotalPages || discountRequestsLoading}
+                    className="rounded-md border border-slate-300 px-2 py-1 disabled:opacity-50 dark:border-white/20"
+                  >
+                    Next
                   </button>
                 </div>
               </div>

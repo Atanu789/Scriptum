@@ -9,6 +9,12 @@ import {
   getMetrics,
   getRevenue,
   getOverview,
+  getPricingConfig,
+  updatePricingConfig,
+  updatePricingValidation,
+  listDiscountRequests,
+  updateDiscountRequest,
+  updateDiscountRequestValidation,
   getAuditLogs,
   getAuditLogsValidation,
   patchUser,
@@ -26,6 +32,10 @@ router.use(authenticateAdmin);
 router.get('/metrics', getMetrics);
 router.get('/revenue', getRevenue);
 router.get('/overview', getOverview);
+router.get('/pricing', getPricingConfig);
+router.patch('/pricing/:planId', updatePricingValidation, updatePricingConfig);
+router.get('/discount-requests', listDiscountRequests);
+router.patch('/discount-requests/:id', updateDiscountRequestValidation, updateDiscountRequest);
 router.get('/audit-logs', getAuditLogsValidation, getAuditLogs);
 router.get('/users', listUsersValidation, listUsers);
 router.patch('/users/:id', patchUserValidation, patchUser);

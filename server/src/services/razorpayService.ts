@@ -19,21 +19,21 @@ function safeCompareHex(expected: string, provided: string): boolean {
 // ─── Plan config ──────────────────────────────────────────────────────────────
 
 export const PLAN_PRICES_PAISE: Record<Exclude<Plan, 'free'>, number> = {
-  pro: 49900, // ₹499
+  pro: 250000, // ₹2500
 };
 
-const YEARLY_MULTIPLIER = 12;
-const YEARLY_DISCOUNT_FACTOR = 0.6;
+const PLAN_YEARLY_PRICES_PAISE: Record<Exclude<Plan, 'free'>, number> = {
+  pro: 2400000, // ₹24000
+};
 
 export function getPlanPriceForCycle(
   plan: Exclude<Plan, 'free'>,
   billingCycle: BillingCycle,
 ): number {
-  const monthlyPrice = PLAN_PRICES_PAISE[plan];
   if (billingCycle === 'yearly') {
-    return Math.round(monthlyPrice * YEARLY_MULTIPLIER * YEARLY_DISCOUNT_FACTOR);
+    return PLAN_YEARLY_PRICES_PAISE[plan];
   }
-  return monthlyPrice;
+  return PLAN_PRICES_PAISE[plan];
 }
 
 export const PLAN_LIMITS: { [P in Plan]: {

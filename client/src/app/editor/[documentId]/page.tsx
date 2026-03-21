@@ -12,6 +12,7 @@ import {
   ChevronLeft, FileText, AlertCircle,
   Image as ImageIcon, Video, Music, X, Library, AlignLeft, AlignCenter, AlignRight, WrapText, GitCompare,
   Bold, Italic, Underline, List, ListOrdered, Link2, Table2, Upload, Download, History, Eye, EyeOff, MoreHorizontal, PanelRightClose,
+  Sparkles,
 } from 'lucide-react';
 import { formatWordCount, cn } from '@/lib/utils';
 import { documentApi } from '@/lib/api';
@@ -52,6 +53,14 @@ function grammarIssueKey(issue: {
 // proper block elements so the typography styles render correctly.
 function escHtml(s: string) {
   return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function normalizeHyperlinkUrl(input: string): string {
+  const value = input.trim();
+  if (!value) return '';
+  if (/^(https?:|mailto:|tel:|\/)/i.test(value)) return value;
+  if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)) return `mailto:${value}`;
+  return `https://${value}`;
 }
 
 function isHeadingLine(line: string): boolean {
@@ -95,9 +104,9 @@ function toEditorHtml(text: string): string {
       const rest = lines.slice(1).map(escHtml).join('<br>');
       return heading + (rest ? `<p>${rest}</p>` : '');
     }
-    // Check for bullet lists (lines starting with - or * or ���)
-    if (lines.every((l) => /^[-*���]\s/.test(l))) {
-      const items = lines.map((l) => `<li>${escHtml(l.replace(/^[-*���]\s*/, ''))}</li>`).join('');
+    // Check for bullet lists from common editors (dash, star, bullet glyphs).
+    if (lines.every((l) => /^(?:[-*•●▪◦‣⁃–—])\s+/.test(l))) {
+      const items = lines.map((l) => `<li>${escHtml(l.replace(/^(?:[-*•●▪◦‣⁃–—])\s+/, ''))}</li>`).join('');
       return `<ul>${items}</ul>`;
     }
     // Check for numbered lists
@@ -259,7 +268,7 @@ export default function EditorPage() {
   const params = useParams<{ documentId: string }>();
   const documentId = params.documentId;
 
-  const { document: doc, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize, updateContent } =
+  const { document: doc, isLoading, isAnalyzing, isHumanizing, isGeneratingAbstract, error, analysis, analyze, humanize, generateAbstract, updateContent } =
     useDocument(documentId);
   const {
     canUseGrammarFix,
@@ -755,11 +764,12 @@ export default function EditorPage() {
   }, [commitEditorHtml]);
 
   const handleEditorKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
-    if (e.ctrlKey && e.key.toLowerCase() === 'k') {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       const href = window.prompt('Paste link URL');
       if (!href || !editorRef.current) return;
-      const safeHref = href.trim();
+      const safeHref = normalizeHyperlinkUrl(href);
+      if (!safeHref) return;
       const selection = window.getSelection();
       const selectedText = selection?.toString().trim() || '';
 
@@ -826,6 +836,25 @@ export default function EditorPage() {
     setIsDirty(true);
   }, [commitEditorHtml, prepareEditorImages, recalcEditorMetrics, restoreSelectionRange, saveSelectionRange, updateActiveLineFromSelection]);
 
+  const handleEditorPaste = useCallback((e: React.ClipboardEvent<HTMLDivElement>) => {
+    const plainText = e.clipboardData.getData('text/plain');
+    const html = e.clipboardData.getData('text/html');
+
+    // Keep browser default when clipboard is empty.
+    if (!plainText && !html) return;
+
+    e.preventDefault();
+
+    const hasStructuredHtml = /<(p|h[1-6]|ul|ol|li|blockquote|pre|table|figure|div)\b/i.test(html || '');
+    const normalizedHtml = hasStructuredHtml
+      ? sanitizeAndNormalizeEditorHtml(html)
+      : sanitizeAndNormalizeEditorHtml(toEditorHtml(plainText || ''));
+
+    if (!normalizedHtml) return;
+
+    applyCommand('insertHTML', normalizedHtml);
+  }, [applyCommand]);
+
   const handleSave = async () => {
     setIsSaving(true);
     try {
@@ -889,7 +918,8 @@ export default function EditorPage() {
   const insertHyperlink = useCallback(() => {
     const href = window.prompt('Paste link URL');
     if (!href) return;
-    const safeHref = href.trim();
+    const safeHref = normalizeHyperlinkUrl(href);
+    if (!safeHref) return;
     const selection = window.getSelection();
     const selectedText = selection?.toString().trim() || '';
 
@@ -1070,6 +1100,38 @@ export default function EditorPage() {
     });
   }, [doc?.cleanedText, editorHtml, humanize, recalcEditorMetrics]);
 
+  const handleGenerateAbstract = useCallback(async () => {
+    if (!editorRef.current) return;
+    const result = await generateAbstract();
+    if (!result) return;
+
+    const abstractLines = result.abstract
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .filter(Boolean);
+    const abstractHtml = abstractLines.length > 0
+      ? abstractLines.map((line) => `<p>${escHtml(line)}</p>`).join('')
+      : `<p>${escHtml(result.abstract)}</p>`;
+
+    const keyPointItems = (result.keyPoints || []).map((point) => `<li>${escHtml(point)}</li>`).join('');
+    const sectionHtml = [
+      '<section data-generated="abstract" style="border:1px solid #dbeafe;background:#f8fbff;border-radius:10px;padding:12px;margin:10px 0 14px;">',
+      '<h2>Abstract</h2>',
+      abstractHtml,
+      keyPointItems ? '<h3>Key Points</h3>' : '',
+      keyPointItems ? `<ul>${keyPointItems}</ul>` : '',
+      '</section>',
+    ].join('');
+
+    const current = editorRef.current.innerHTML || '<p><br></p>';
+    const next = sanitizeAndNormalizeEditorHtml(`${sectionHtml}${current}`);
+    editorRef.current.innerHTML = next;
+    setEditorHtml(next);
+    recalcEditorMetrics();
+    setIsDirty(true);
+    toast.success('Abstract inserted at top');
+  }, [generateAbstract, recalcEditorMetrics]);
+
   const getIssueLineNumber = useCallback((issue: GrammarIssue) => {
     if (!Number.isInteger(issue.offset)) return null;
     const sourceText = editorRef.current?.innerText || doc?.cleanedText || '';
@@ -1246,6 +1308,16 @@ export default function EditorPage() {
                 ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
                 : <BarChart2 className="h-3.5 w-3.5" />}
               {isAnalyzing ? 'Analysing�Ǫ' : 'Analyse'}
+            </button>
+            <button
+              onClick={handleGenerateAbstract}
+              disabled={isGeneratingAbstract}
+              className="btn-secondary py-1.5 px-3 text-xs"
+            >
+              {isGeneratingAbstract
+                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                : <Sparkles className="h-3.5 w-3.5" />}
+              {isGeneratingAbstract ? 'Generating...' : 'Generate Abstract'}
             </button>
             <button
               onClick={() => setRightPanelMode((prev) => prev === 'analysis' ? 'preview' : 'analysis')}
@@ -1438,6 +1510,7 @@ export default function EditorPage() {
                   onDragStart={handleEditorDragStart}
                   onDragOver={handleEditorDragOver}
                   onDrop={handleEditorDrop}
+                  onPaste={handleEditorPaste}
                   onKeyDown={handleEditorKeyDown}
                   onMouseUp={updateActiveLineFromSelection}
                   onKeyUp={updateActiveLineFromSelection}

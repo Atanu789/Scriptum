@@ -4,13 +4,10 @@ import crypto from 'crypto';
 import DocumentModel from '../models/Document';
 import { analyzeDocument as runAnalysis } from '../services/aiAnalysis';
 import {
-  analyzeAIScore,
-  generateSentenceRewriteSuggestions,
-  lengthSimilarity,
-  rewriteSingleSentenceWithMode,
   splitIntoSentences,
-  validateSentenceRewrite,
 } from '../services/ai/aiScoreAnalyzer';
+import { callGemini } from '../services/ai/geminiClient';
+import { humanizeDocumentText } from '../services/ai/humanizerEngine';
 import { htmlToStructuredModel, plainTextToEditorHtml, structureDocument } from '../services/documentStructure';
 import { AuthenticatedRequest, HumanizeMode } from '../types';
 
@@ -35,6 +32,41 @@ function rebuildTextFromSentences(sentences: string[]): string {
     .replace(/\s+([,.;:!?])/g, '$1')
     .replace(/\s{2,}/g, ' ')
     .trim();
+}
+
+function lengthSimilarity(original: string, rewritten: string): number {
+  const o = Math.max(1, original.trim().length);
+  const r = Math.max(1, rewritten.trim().length);
+  const similarity = 1 - Math.abs(o - r) / o;
+  return Math.max(0, Math.min(1, similarity));
+}
+
+function normalizeAiScore(value: unknown, fallback = 0): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
+function parseAbstractPayload(raw: string): { abstract: string; keyPoints: string[] } {
+  const jsonMatch = raw.match(/\{[\s\S]*\}/);
+  if (!jsonMatch) {
+    throw new Error('Invalid abstract response format');
+  }
+
+  const parsed = JSON.parse(jsonMatch[0]) as { abstract?: unknown; keyPoints?: unknown };
+  const abstract = typeof parsed.abstract === 'string' ? parsed.abstract.trim() : '';
+  const keyPoints = Array.isArray(parsed.keyPoints)
+    ? parsed.keyPoints
+        .map((item) => (typeof item === 'string' ? item.trim() : ''))
+        .filter(Boolean)
+        .slice(0, 8)
+    : [];
+
+  if (!abstract) {
+    throw new Error('Abstract content is empty');
+  }
+
+  return { abstract, keyPoints };
 }
 
 export const analyzeDocumentValidation = [
@@ -136,12 +168,14 @@ export const analyzeDocument = async (
       { new: true }
     );
 
+    const responseAiScore = normalizeAiScore(updated?.aiScore, normalizeAiScore(analysis.aiScore, 0));
+
     res.json({
       success: true,
       cached: false,
       data: {
         documentId: id,
-        aiScore: updated?.aiScore,
+        aiScore: responseAiScore,
         aiReasoning: analysis.aiReasoning,
         humanizationTips: analysis.humanizationTips,
         humanizationSuggestions: analysis.humanizationSuggestions,
@@ -208,6 +242,14 @@ export const humanizeDetectedText = async (
     }
 
     const mode = resolveHumanizeMode((req.body as { mode?: unknown })?.mode);
+    const rawStyleProfile = (req.body as { styleProfile?: unknown })?.styleProfile;
+    const styleProfile = rawStyleProfile === 'student'
+      || rawStyleProfile === 'journalist'
+      || rawStyleProfile === 'casual-speaker'
+      || rawStyleProfile === 'academic'
+      ? rawStyleProfile
+      : undefined;
+
     const originalText = sourceText;
     const originalSentences = splitIntoSentences(sourceText);
     if (originalSentences.length === 0) {
@@ -215,55 +257,14 @@ export const humanizeDetectedText = async (
       return;
     }
 
-    const rewrittenSentences = [...originalSentences];
-    const rewrittenIndices = new Set<number>();
-    const appliedRewrites: Array<{ original: string; replacement: string }> = [];
-    const similaritySamples: number[] = [];
-
-    const indexedSuggestions = await generateSentenceRewriteSuggestions(originalSentences, mode);
-    for (const item of indexedSuggestions) {
-      const idx = item.sentenceIndex;
-      if (idx < 0 || idx >= rewrittenSentences.length) continue;
-
-      const originalSentence = originalSentences[idx];
-      const rewrittenSentence = item.rewrittenSentence;
-      if (!validateSentenceRewrite(originalSentence, rewrittenSentence, mode)) continue;
-
-      rewrittenSentences[idx] = rewrittenSentence;
-      rewrittenIndices.add(idx);
-      appliedRewrites.push({ original: originalSentence, replacement: rewrittenSentence });
-      similaritySamples.push(lengthSimilarity(originalSentence, rewrittenSentence));
-    }
-
-    // If targeted suggestions are too sparse, rewrite the rest sentence-by-sentence (no full-document rewrite fallback).
-    const expectedRewrites = Math.max(1, Math.floor(originalSentences.length * 0.35));
-    if (rewrittenIndices.size < expectedRewrites) {
-      for (let i = 0; i < originalSentences.length; i += 1) {
-        if (rewrittenIndices.has(i)) continue;
-        const rewritten = await rewriteSingleSentenceWithMode(originalSentences[i], mode);
-        if (!validateSentenceRewrite(originalSentences[i], rewritten, mode)) continue;
-        if (rewritten.trim() === originalSentences[i].trim()) continue;
-
-        rewrittenSentences[i] = rewritten;
-        rewrittenIndices.add(i);
-        appliedRewrites.push({ original: originalSentences[i], replacement: rewritten });
-        similaritySamples.push(lengthSimilarity(originalSentences[i], rewritten));
-      }
-    }
-
-    // Final sentence-level validation: never allow empty or non-text sentence output.
-    for (let i = 0; i < rewrittenSentences.length; i += 1) {
-      const candidate = rewrittenSentences[i]?.trim();
-      if (!candidate || !/[A-Za-z0-9]/.test(candidate)) {
-        rewrittenSentences[i] = originalSentences[i];
-      }
-    }
-
-    const humanizedText = rebuildTextFromSentences(rewrittenSentences);
+    const engine = await humanizeDocumentText(sourceText, { mode, styleProfile });
+    const humanizedText = engine.humanizedText;
     if (!humanizedText || humanizedText.length < Math.max(20, Math.floor(sourceText.length * 0.4))) {
       res.status(500).json({ success: false, error: 'Humanization output validation failed' });
       return;
     }
+
+    const appliedRewrites = engine.appliedRewrites;
 
     doc.cleanedText = humanizedText;
     doc.editorHtml = plainTextToEditorHtml(humanizedText);
@@ -298,10 +299,8 @@ export const humanizeDetectedText = async (
     await doc.save();
 
     const totalSentences = originalSentences.length;
-    const rewrittenPercent = Math.round((rewrittenIndices.size / Math.max(1, totalSentences)) * 100);
-    const averageLengthSimilarity = similaritySamples.length > 0
-      ? Math.round((similaritySamples.reduce((sum, n) => sum + n, 0) / similaritySamples.length) * 100) / 100
-      : 1;
+    const rewrittenPercent = Math.max(0, Math.min(100, Math.round((engine.rewrittenChunkCount / Math.max(1, engine.chunkCount)) * 100)));
+    const averageLengthSimilarity = Math.round(lengthSimilarity(originalText, humanizedText) * 100) / 100;
 
     res.json({
       success: true,
@@ -312,11 +311,17 @@ export const humanizeDetectedText = async (
         rewrittenPercent,
         averageLengthSimilarity,
         mode,
+        styleProfile: styleProfile || 'balanced-neutral',
         originalText,
-        appliedRewrites,
+        appliedRewrites: appliedRewrites.slice(0, 200),
         cleanedText: doc.cleanedText,
+        aiLikelihoodScore: engine.aiLikelihoodScore,
+        quality: engine.quality,
+        notes: engine.notes,
+        retryCount: engine.retryCount,
+        evaluationReason: engine.evaluationReason,
         analysis: {
-          aiScore: doc.aiScore,
+          aiScore: normalizeAiScore(doc.aiScore, normalizeAiScore(postAnalysis.aiScore, 0)),
           analyzedAt,
         },
       },
@@ -327,6 +332,77 @@ export const humanizeDetectedText = async (
     res.status(500).json({
       success: false,
       error: err instanceof Error ? err.message : 'Humanization failed',
+    });
+  }
+};
+
+export const generateAbstract = async (
+  req: AuthenticatedRequest,
+  res: Response
+): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(422).json({ success: false, error: errors.array()[0].msg });
+    return;
+  }
+
+  const id = req.params?.id;
+  if (!id) {
+    res.status(400).json({ success: false, error: 'Document ID required' });
+    return;
+  }
+
+  try {
+    const doc = await DocumentModel.findOne({
+      _id: id,
+      userId: req.user!.userId,
+    }).lean();
+
+    if (!doc) {
+      res.status(404).json({ success: false, error: 'Document not found' });
+      return;
+    }
+
+    const sourceText = (doc.cleanedText || '').trim();
+    if (!sourceText) {
+      res.status(400).json({ success: false, error: 'Document text is empty' });
+      return;
+    }
+
+    const prompt = `You are an expert technical editor.
+
+Create a concise abstract for the provided document.
+
+Return ONLY valid JSON with this exact shape:
+{
+  "abstract": "3-5 lines summary",
+  "keyPoints": ["Point 1", "Point 2", "Point 3"]
+}
+
+Rules:
+- Keep abstract in 3 to 5 short lines.
+- Provide 3 to 6 key points as clear bullet-ready strings.
+- Do not include markdown or extra text.
+
+Document:\n${sourceText.slice(0, 12000)}`;
+
+    const responseText = await callGemini(prompt);
+    const parsed = parseAbstractPayload(responseText);
+
+    res.json({
+      success: true,
+      data: {
+        documentId: id,
+        abstract: parsed.abstract,
+        keyPoints: parsed.keyPoints,
+      },
+      message: 'Abstract generated successfully',
+    });
+  } catch (err) {
+    console.error('[Abstract] Error:', err);
+    res.status(500).json({
+      success: false,
+      error: err instanceof Error ? err.message : 'Failed to generate abstract',
     });
   }
 };

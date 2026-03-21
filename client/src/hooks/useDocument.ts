@@ -1,10 +1,16 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Document, AnalysisResult, HumanizeResult } from '@/types';
+import { Document, AnalysisResult, HumanizeResult, DocumentAbstractResult } from '@/types';
 import { documentApi, analysisApi } from '@/lib/api';
 import { sanitize, sanitizeContent } from '@/lib/sanitize';
 import toast from 'react-hot-toast';
+
+function normalizeAiScore(value: unknown, fallback: number | null = null): number | null {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed)) return fallback;
+  return Math.max(0, Math.min(100, Math.round(parsed)));
+}
 
 /** Strip HTML from text fields coming from the API (defense-in-depth). */
 function sanitizeDoc(doc: Document): Document {
@@ -47,11 +53,13 @@ interface UseDocumentReturn {
   isLoading: boolean;
   isAnalyzing: boolean;
   isHumanizing: boolean;
+  isGeneratingAbstract: boolean;
   error: string | null;
   analysis: AnalysisResult | null;
   refresh: () => Promise<void>;
   analyze: () => Promise<void>;
   humanize: () => Promise<HumanizeResult | null>;
+  generateAbstract: () => Promise<DocumentAbstractResult | null>;
   updateContent: (editorHtml: string, fixedGrammarIssueKeys?: string[]) => Promise<void>;
 }
 
@@ -60,6 +68,7 @@ export function useDocument(documentId: string): UseDocumentReturn {
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [isHumanizing, setIsHumanizing] = useState(false);
+  const [isGeneratingAbstract, setIsGeneratingAbstract] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
 
@@ -75,7 +84,7 @@ export function useDocument(documentId: string): UseDocumentReturn {
       if (doc.analysisRunAt && (doc.grammarScore !== null || doc.readabilityScore !== null)) {
         setAnalysis({
           documentId:       doc._id,
-          aiScore:          doc.aiScore         ?? null,
+          aiScore:          normalizeAiScore(doc.aiScore, 0),
           grammarScore:     doc.grammarScore     ?? 0,
           readabilityScore: doc.readabilityScore ?? 0,
           grammarIssues:    doc.grammarIssues    ?? [],
@@ -109,8 +118,12 @@ export function useDocument(documentId: string): UseDocumentReturn {
     const toastId = toast.loading('Running AI analysis…');
     try {
       const result = await analysisApi.analyze(documentId, true);
-      console.log('[useDocument] Fresh analysis result. aiScore:', result.aiScore);
-      setAnalysis(sanitizeAnalysis(result));
+      const normalizedResult: AnalysisResult = {
+        ...result,
+        aiScore: normalizeAiScore(result.aiScore, 0),
+      };
+      console.log('[useDocument] Fresh analysis result. aiScore:', normalizedResult.aiScore);
+      setAnalysis(sanitizeAnalysis(normalizedResult));
       toast.success('Analysis complete', { id: toastId });
       // Refresh doc to get updated status
       await refresh();
@@ -178,16 +191,38 @@ export function useDocument(documentId: string): UseDocumentReturn {
     }
   }, [documentId]);
 
+  const generateAbstract = useCallback(async (): Promise<DocumentAbstractResult | null> => {
+    if (!documentId) return null;
+    setIsGeneratingAbstract(true);
+    const toastId = toast.loading('Generating abstract...');
+    try {
+      const result = await analysisApi.generateAbstract(documentId);
+      toast.success('Abstract generated', { id: toastId });
+      return result;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Abstract generation failed';
+      toast.error(msg, { id: toastId });
+      if (typeof window !== 'undefined' && (msg.toLowerCase().includes('ai analysis limit') || msg.toLowerCase().includes('upgrade'))) {
+        window.location.href = '/pricing';
+      }
+      return null;
+    } finally {
+      setIsGeneratingAbstract(false);
+    }
+  }, [documentId]);
+
   return {
     document,
     isLoading,
     isAnalyzing,
     isHumanizing,
+    isGeneratingAbstract,
     error,
     analysis,
     refresh,
     analyze,
     humanize,
+    generateAbstract,
     updateContent,
   };
 }

@@ -5,6 +5,7 @@ import { checkAIUsage, requireFeature } from '../middleware/planAccess';
 import {
   analyzeDocument,
   analyzeDocumentValidation,
+  generateAbstract,
   humanizeDetectedText,
 } from '../controllers/analysisController';
 
@@ -18,5 +19,6 @@ router.use(analysisLimiter);
 // or via SameSite cookie attributes + custom headers for API requests
 router.post('/:id', checkAIUsage, analyzeDocumentValidation, analyzeDocument);
 router.post('/:id/humanize', checkAIUsage, requireFeature('humanizeText'), analyzeDocumentValidation, humanizeDetectedText);
+router.post('/:id/abstract', checkAIUsage, analyzeDocumentValidation, generateAbstract);
 
 export default router;

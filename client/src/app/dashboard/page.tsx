@@ -379,6 +379,8 @@ export default function DashboardPage() {
   const aiRemaining = monthlyAiLimit === -1 ? Infinity : Math.max(0, monthlyAiLimit - aiUsed);
   const uploadLimitReached = monthlyUploadLimit !== -1 && uploadUsed >= monthlyUploadLimit;
   const aiLimitReached = monthlyAiLimit !== -1 && aiUsed >= monthlyAiLimit;
+  const uploadNearLimit = monthlyUploadLimit !== -1 && !uploadLimitReached && uploadUsed / Math.max(1, monthlyUploadLimit) >= 0.8;
+  const aiNearLimit = monthlyAiLimit !== -1 && !aiLimitReached && aiUsed / Math.max(1, monthlyAiLimit) >= 0.8;
   const uploadBlocked = uploadLimitReached && !hasUploadOverageTrial;
   const aiBlocked = aiLimitReached && !hasAiOverageTrial;
 
@@ -532,6 +534,23 @@ export default function DashboardPage() {
                 </CardSpotlight>
               ))}
         </div>
+
+        {(uploadNearLimit || aiNearLimit || uploadBlocked || aiBlocked) && (
+          <div className="mb-6 rounded-xl border border-amber-300/70 bg-amber-50/80 px-4 py-3 text-sm text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200">
+            <p className="font-semibold">Usage alert</p>
+            <p className="mt-1 text-xs">
+              {uploadBlocked || aiBlocked
+                ? 'You have reached monthly limits on your current plan. Upgrade to keep working without interruptions.'
+                : 'You are close to monthly limits. Upgrade now to avoid interruptions in uploads or AI analyses.'}
+            </p>
+            <Link
+              href="/pricing"
+              className="mt-2 inline-flex items-center gap-1 rounded-lg bg-amber-500 px-2.5 py-1 text-xs font-semibold text-white hover:bg-amber-400"
+            >
+              Upgrade plan
+            </Link>
+          </div>
+        )}
 
         {/* ── Premium section ─────────────────────────────────────── */}
         <div className="mb-8 rounded-2xl border border-amber-200/70 bg-gradient-to-r from-amber-50 via-white to-indigo-50 p-4 sm:p-5 dark:border-amber-500/20 dark:from-amber-500/10 dark:via-[#0d0d1a] dark:to-indigo-500/10">

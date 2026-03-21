@@ -6,6 +6,8 @@ import DocumentModel from '../models/Document';
 import UsageModel from '../models/Usage';
 import Payment from '../models/Payment';
 import AdminAuditLog from '../models/AdminAuditLog';
+import PricingConfig from '../models/PricingConfig';
+import DiscountRequest from '../models/DiscountRequest';
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
@@ -53,6 +55,27 @@ export const patchUserValidation = [
   body('aiUsageLimitOverride').optional({ nullable: true }).isInt({ min: -1, max: 100000 }).withMessage('aiUsageLimitOverride must be -1 to 100000').toInt(),
   body('uploadUsageLimitOverride').optional({ nullable: true }).isInt({ min: -1, max: 100000 }).withMessage('uploadUsageLimitOverride must be -1 to 100000').toInt(),
   body('resetUsage').optional().isBoolean().withMessage('resetUsage must be boolean').toBoolean(),
+  body('reason').optional().trim().isLength({ min: 5, max: 240 }).withMessage('reason must be 5-240 characters'),
+];
+
+export const updatePricingValidation = [
+  param('planId').isIn(['pro', 'advanced']).withMessage('Invalid pricing plan'),
+  body('monthlyPriceINR').optional().isFloat({ min: 0 }).withMessage('monthlyPriceINR must be >= 0').toFloat(),
+  body('yearlyPriceINR').optional().isFloat({ min: 0 }).withMessage('yearlyPriceINR must be >= 0').toFloat(),
+  body('enabled').optional().isBoolean().withMessage('enabled must be boolean').toBoolean(),
+  body('discountPercent').optional().isFloat({ min: 0, max: 100 }).withMessage('discountPercent must be between 0 and 100').toFloat(),
+  body('displayName').optional().trim().isLength({ min: 2, max: 60 }).withMessage('displayName must be 2-60 characters'),
+  body('reason').optional().trim().isLength({ min: 5, max: 240 }).withMessage('reason must be 5-240 characters'),
+];
+
+export const updateDiscountRequestValidation = [
+  param('id').isMongoId().withMessage('Invalid request ID'),
+  body('status').optional().isIn(['pending', 'approved', 'rejected']).withMessage('Invalid status'),
+  body('offeredDiscountPercent').optional({ nullable: true }).isFloat({ min: 0, max: 100 }).withMessage('offeredDiscountPercent must be 0-100').toFloat(),
+  body('assignedPlan').optional({ nullable: true }).isIn(['free', 'pro', 'advanced']).withMessage('assignedPlan must be free/pro/advanced'),
+  body('assignToUser').optional().isBoolean().withMessage('assignToUser must be boolean').toBoolean(),
+  body('planDays').optional().isInt({ min: 1, max: 3650 }).withMessage('planDays must be between 1 and 3650').toInt(),
+  body('adminNotes').optional({ nullable: true }).trim().isLength({ max: 2000 }).withMessage('adminNotes max length is 2000'),
   body('reason').optional().trim().isLength({ min: 5, max: 240 }).withMessage('reason must be 5-240 characters'),
 ];
 
@@ -344,7 +367,7 @@ export const getRevenue = async (_req: Request, res: Response): Promise<void> =>
     const start = new Date(now.getFullYear(), now.getMonth() - 11, 1);
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
-    const [capturedAgg, monthAgg, planAgg, usersCount, monthlySeries] = await Promise.all([
+    const [capturedAgg, monthAgg, planAgg, usersCount, activeSubscriptions, monthlySeries] = await Promise.all([
       Payment.aggregate<{ total: number }>([
         { $match: { status: 'captured' } },
         { $group: { _id: null, total: { $sum: '$amount' } } },
@@ -357,6 +380,7 @@ export const getRevenue = async (_req: Request, res: Response): Promise<void> =>
         { $group: { _id: '$plan', count: { $sum: 1 } } },
       ]),
       User.countDocuments(),
+      User.countDocuments({ plan: 'pro', planExpiryDate: { $gt: now } }),
       Payment.aggregate<{ _id: { year: number; month: number }; totalAmount: number; payments: number }>([
         {
           $match: {
@@ -411,6 +435,7 @@ export const getRevenue = async (_req: Request, res: Response): Promise<void> =>
       data: {
         totalRevenueINR: Number(totalRevenueINR.toFixed(2)),
         monthlyRevenueINR: Number(monthlyRevenueINR.toFixed(2)),
+        activeSubscriptions,
         revenuePerUserINR: usersCount ? Number((totalRevenueINR / usersCount).toFixed(2)) : 0,
         subscriptionDistribution: planDistribution,
         monthlyRevenue,
@@ -419,6 +444,252 @@ export const getRevenue = async (_req: Request, res: Response): Promise<void> =>
   } catch (err) {
     console.error('Admin revenue error:', err);
     res.status(500).json({ success: false, error: 'Failed to fetch admin revenue' });
+  }
+};
+
+export const getPricingConfig = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const rows = await PricingConfig.find({ planId: { $in: ['pro', 'advanced'] } }).sort({ planId: 1 }).lean();
+    const rowMap = new Map(rows.map((row) => [row.planId, row]));
+
+    const fallback = {
+      pro: {
+        planId: 'pro',
+        displayName: 'Pro',
+        monthlyPriceINR: 2500,
+        yearlyPriceINR: 24000,
+        enabled: true,
+        discountPercent: 0,
+      },
+      advanced: {
+        planId: 'advanced',
+        displayName: 'Advanced',
+        monthlyPriceINR: 3500,
+        yearlyPriceINR: 36000,
+        enabled: true,
+        discountPercent: 0,
+      },
+    } as const;
+
+    const planIds = ['pro', 'advanced'] as const;
+    const data = planIds.map((planId) => {
+      const row = rowMap.get(planId);
+      const fb = fallback[planId];
+      return {
+        planId,
+        displayName: row?.displayName || fb.displayName,
+        monthlyPriceINR: Number.isFinite(row?.monthlyPriceINR) ? row!.monthlyPriceINR : fb.monthlyPriceINR,
+        yearlyPriceINR: Number.isFinite(row?.yearlyPriceINR) ? row!.yearlyPriceINR : fb.yearlyPriceINR,
+        enabled: typeof row?.enabled === 'boolean' ? row.enabled : fb.enabled,
+        discountPercent: Number.isFinite(row?.discountPercent) ? Math.max(0, Math.min(100, row!.discountPercent)) : fb.discountPercent,
+        updatedAt: row?.updatedAt || null,
+      };
+    });
+
+    res.json({ success: true, data });
+  } catch (err) {
+    console.error('Admin pricing config error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch pricing config' });
+  }
+};
+
+export const updatePricingConfig = async (req: Request, res: Response): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(422).json({ success: false, error: errors.array()[0].msg });
+    return;
+  }
+
+  try {
+    const planId = req.params.id || req.params.planId;
+    const { monthlyPriceINR, yearlyPriceINR, enabled, discountPercent, displayName, reason } = req.body as {
+      monthlyPriceINR?: number;
+      yearlyPriceINR?: number;
+      enabled?: boolean;
+      discountPercent?: number;
+      displayName?: string;
+      reason?: string;
+    };
+
+    const update: Record<string, unknown> = {};
+    if (typeof monthlyPriceINR === 'number') update.monthlyPriceINR = monthlyPriceINR;
+    if (typeof yearlyPriceINR === 'number') update.yearlyPriceINR = yearlyPriceINR;
+    if (typeof enabled === 'boolean') update.enabled = enabled;
+    if (typeof discountPercent === 'number') update.discountPercent = Math.max(0, Math.min(100, discountPercent));
+    if (typeof displayName === 'string' && displayName.trim()) update.displayName = displayName.trim();
+
+    const adminUsername = (req as any).user?.username || 'unknown';
+    update.updatedBy = adminUsername;
+
+    const doc = await PricingConfig.findOneAndUpdate(
+      { planId },
+      {
+        $set: {
+          planId,
+          displayName: update.displayName || (planId === 'advanced' ? 'Advanced' : 'Pro'),
+          monthlyPriceINR: update.monthlyPriceINR ?? (planId === 'advanced' ? 3500 : 2500),
+          yearlyPriceINR: update.yearlyPriceINR ?? (planId === 'advanced' ? 36000 : 24000),
+          enabled: update.enabled ?? true,
+          discountPercent: update.discountPercent ?? 0,
+          updatedBy: adminUsername,
+        },
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true }
+    );
+
+    await AdminAuditLog.create({
+      adminUsername,
+      action: 'update_pricing',
+      targetUserEmail: `pricing:${planId}`,
+      reason: reason?.trim() || 'Pricing updated from admin panel',
+      changes: {
+        planId,
+        monthlyPriceINR: doc.monthlyPriceINR,
+        yearlyPriceINR: doc.yearlyPriceINR,
+        enabled: doc.enabled,
+        discountPercent: doc.discountPercent,
+      },
+    });
+
+    res.json({ success: true, data: doc, message: 'Pricing updated' });
+  } catch (err) {
+    console.error('Admin update pricing error:', err);
+    res.status(500).json({ success: false, error: 'Failed to update pricing config' });
+  }
+};
+
+export const listDiscountRequests = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const status = ((req.query.status as string) || 'all').trim();
+    const page = Number(req.query.page || 1);
+    const limit = Number(req.query.limit || 20);
+    const q = ((req.query.q as string) || '').trim();
+
+    const filter: Record<string, unknown> = {};
+    if (status !== 'all') {
+      filter.status = status;
+    }
+    if (q) {
+      filter.$or = [
+        { email: { $regex: q, $options: 'i' } },
+        { reason: { $regex: q, $options: 'i' } },
+      ];
+    }
+
+    const [items, total] = await Promise.all([
+      DiscountRequest.find(filter)
+        .sort({ createdAt: -1 })
+        .skip((page - 1) * limit)
+        .limit(limit)
+        .lean(),
+      DiscountRequest.countDocuments(filter),
+    ]);
+
+    res.json({
+      success: true,
+      data: items,
+      page,
+      limit,
+      total,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (err) {
+    console.error('Admin list discount requests error:', err);
+    res.status(500).json({ success: false, error: 'Failed to fetch discount requests' });
+  }
+};
+
+export const updateDiscountRequest = async (req: Request, res: Response): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(422).json({ success: false, error: errors.array()[0].msg });
+    return;
+  }
+
+  try {
+    const requestId = req.params.id;
+    const {
+      status,
+      offeredDiscountPercent,
+      assignedPlan,
+      assignToUser,
+      planDays,
+      adminNotes,
+      reason,
+    } = req.body as {
+      status?: 'pending' | 'approved' | 'rejected';
+      offeredDiscountPercent?: number | null;
+      assignedPlan?: 'free' | 'pro' | 'advanced' | null;
+      assignToUser?: boolean;
+      planDays?: number;
+      adminNotes?: string | null;
+      reason?: string;
+    };
+
+    const requestDoc = await DiscountRequest.findById(requestId);
+    if (!requestDoc) {
+      res.status(404).json({ success: false, error: 'Discount request not found' });
+      return;
+    }
+
+    if (status) requestDoc.status = status;
+    if (offeredDiscountPercent !== undefined) {
+      requestDoc.offeredDiscountPercent = offeredDiscountPercent === null
+        ? null
+        : Math.max(0, Math.min(100, offeredDiscountPercent));
+    }
+    if (assignedPlan !== undefined) requestDoc.assignedPlan = assignedPlan;
+    if (adminNotes !== undefined) requestDoc.adminNotes = adminNotes?.trim() || null;
+
+    const adminUsername = (req as any).user?.username || 'unknown';
+    requestDoc.decidedBy = adminUsername;
+    requestDoc.decidedAt = new Date();
+    await requestDoc.save();
+
+    if (assignToUser && requestDoc.assignedPlan) {
+      const user = await User.findOne({ email: requestDoc.email });
+      if (user) {
+        if (requestDoc.assignedPlan === 'free') {
+          user.plan = 'free';
+          user.planStartDate = null;
+          user.planExpiryDate = null;
+          user.aiUsageLimitOverride = null;
+          user.uploadUsageLimitOverride = null;
+        } else {
+          const now = new Date();
+          const expiry = new Date(now);
+          expiry.setDate(expiry.getDate() + (planDays || 30));
+          user.plan = 'pro';
+          user.planStartDate = now;
+          user.planExpiryDate = expiry;
+
+          if (requestDoc.assignedPlan === 'advanced') {
+            user.aiUsageLimitOverride = -1;
+            user.uploadUsageLimitOverride = -1;
+          }
+        }
+        await user.save();
+      }
+    }
+
+    await AdminAuditLog.create({
+      adminUsername,
+      action: 'discount_request_update',
+      targetUserEmail: requestDoc.email,
+      reason: reason?.trim() || 'Discount request updated',
+      changes: {
+        requestId: requestDoc._id,
+        status: requestDoc.status,
+        offeredDiscountPercent: requestDoc.offeredDiscountPercent,
+        assignedPlan: requestDoc.assignedPlan,
+        assignToUser: Boolean(assignToUser),
+      },
+    });
+
+    res.json({ success: true, data: requestDoc, message: 'Discount request updated' });
+  } catch (err) {
+    console.error('Admin update discount request error:', err);
+    res.status(500).json({ success: false, error: 'Failed to update discount request' });
   }
 };
 

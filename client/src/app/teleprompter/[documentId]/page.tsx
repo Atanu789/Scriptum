@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -9,7 +9,9 @@ import { useDocument } from '@/hooks/useDocument';
 import { sanitizeContent } from '@/lib/sanitize';
 import { documentApi } from '@/lib/api';
 import type { DocumentSummary } from '@/types';
+import { importFileToHtml } from '@/components/problem-editor/utils';
 import { Loader2, AlertCircle, ChevronLeft } from 'lucide-react';
+import toast from 'react-hot-toast';
 
 function normalizeListNumbering(text: string): string {
   return text
@@ -103,6 +105,11 @@ export default function TeleprompterPage() {
   const { document, isLoading, error } = useDocument(params.documentId);
   const [availableDocs, setAvailableDocs] = useState<DocumentSummary[]>([]);
   const [selectedDocId, setSelectedDocId] = useState(params.documentId);
+  const [pastedText, setPastedText] = useState('');
+  const [importedScript, setImportedScript] = useState('');
+  const [importedTitle, setImportedTitle] = useState('');
+  const [isImportingFile, setIsImportingFile] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     setSelectedDocId(params.documentId);
@@ -148,6 +155,44 @@ export default function TeleprompterPage() {
   }
 
   const script = toTeleprompterScript(document.editorHtml || document.cleanedText || document.rawText);
+  const effectiveScript = importedScript || script;
+  const effectiveTitle = importedTitle || document.originalFileName;
+
+  const handlePasteImport = () => {
+    const next = toTeleprompterScript(pastedText);
+    if (!next.trim()) {
+      toast.error('Paste some text before importing');
+      return;
+    }
+    setImportedScript(next);
+    setImportedTitle('Pasted text');
+    toast.success('Imported pasted text');
+  };
+
+  const handleLocalFileImport = async (file: File) => {
+    try {
+      setIsImportingFile(true);
+      const html = await importFileToHtml(file);
+      const next = toTeleprompterScript(html);
+      if (!next.trim()) {
+        toast.error('Could not extract readable text from this file');
+        return;
+      }
+      setImportedScript(next);
+      setImportedTitle(file.name);
+      toast.success('Imported local file');
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Failed to import file';
+      toast.error(msg);
+    } finally {
+      setIsImportingFile(false);
+    }
+  };
+
+  const clearImportedSource = () => {
+    setImportedScript('');
+    setImportedTitle('');
+  };
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#07070f]">
@@ -176,6 +221,7 @@ export default function TeleprompterPage() {
           <button
             onClick={() => {
               if (selectedDocId && selectedDocId !== params.documentId) {
+                clearImportedSource();
                 router.push(`/teleprompter/${selectedDocId}`);
               }
             }}
@@ -185,13 +231,57 @@ export default function TeleprompterPage() {
             Import
           </button>
         </div>
+
+        <div className="flex w-full flex-wrap items-center gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
+            className="hidden"
+            onChange={(e) => {
+              const file = e.target.files?.[0];
+              if (file) {
+                void handleLocalFileImport(file);
+              }
+              e.currentTarget.value = '';
+            }}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isImportingFile}
+            className="min-h-[34px] rounded-md border border-emerald-500/30 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {isImportingFile ? 'Importing file...' : 'Import local file'}
+          </button>
+          <textarea
+            value={pastedText}
+            onChange={(e) => setPastedText(e.target.value)}
+            rows={2}
+            placeholder="Paste text here and click Import pasted text"
+            className="min-h-[34px] flex-1 rounded-md border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs text-white/80 focus:border-indigo-500/60 focus:outline-none"
+          />
+          <button
+            onClick={handlePasteImport}
+            className="min-h-[34px] rounded-md border border-sky-500/30 bg-sky-500/20 px-3 py-1 text-xs font-semibold text-sky-200 transition-colors hover:bg-sky-500/30"
+          >
+            Import pasted text
+          </button>
+          {importedScript && (
+            <button
+              onClick={clearImportedSource}
+              className="min-h-[34px] rounded-md border border-white/15 bg-white/[0.05] px-3 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/[0.09]"
+            >
+              Clear imported source
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Engine — fills remaining height */}
       <div className="flex-1 overflow-hidden">
         <TeleprompterEngine
-          script={script}
-          documentTitle={document.originalFileName}
+          script={effectiveScript}
+          documentTitle={effectiveTitle}
         />
       </div>
     </div>

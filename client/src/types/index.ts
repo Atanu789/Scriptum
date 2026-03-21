@@ -16,7 +16,10 @@ export interface PlanLimits {
 export interface PlanConfig {
   name:       string;
   priceINR:   number;
+  yearlyPriceINR?: number;
   priceLabel: string;
+  enabled?: boolean;
+  discountPercent?: number;
   limits:     PlanLimits;
 }
 
@@ -39,6 +42,7 @@ export interface SubscriptionInfo {
 export interface PaymentRecord {
   _id:                string;
   plan:               Plan;
+  pricingTier?:       'pro' | 'advanced';
   billingCycle:       BillingCycle;
   amount:             number;
   currency:           string;
@@ -110,6 +114,7 @@ export type AdminMetrics = Omit<AdminOverview, 'totalPayments'>;
 export interface AdminRevenue {
   totalRevenueINR: number;
   monthlyRevenueINR: number;
+  activeSubscriptions: number;
   revenuePerUserINR: number;
   subscriptionDistribution: {
     free: number;
@@ -129,6 +134,32 @@ export interface AdminAuditLogItem {
   targetUserEmail: string;
   reason: string;
   timestamp: string;
+}
+
+export interface AdminPricingPlanConfig {
+  _id?: string;
+  planId: 'pro' | 'advanced';
+  displayName: string;
+  monthlyPriceINR: number;
+  yearlyPriceINR: number;
+  enabled: boolean;
+  discountPercent: number;
+  updatedAt?: string | null;
+}
+
+export interface DiscountRequestItem {
+  _id: string;
+  email: string;
+  reason: string;
+  requestedPlan: 'pro' | 'advanced';
+  status: 'pending' | 'approved' | 'rejected';
+  offeredDiscountPercent: number | null;
+  assignedPlan: 'free' | 'pro' | 'advanced' | null;
+  adminNotes: string | null;
+  decidedBy: string | null;
+  decidedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 // ─── Document ────────────────────────────────────────────────────────────────
@@ -337,13 +368,25 @@ export interface HumanizeResult {
   rewrittenPercent?: number;
   averageLengthSimilarity?: number;
   mode?: HumanizeMode;
+  styleProfile?: 'student' | 'journalist' | 'casual-speaker' | 'academic' | 'balanced-neutral';
   originalText?: string;
   appliedRewrites: Array<{ original: string; replacement: string }>;
   cleanedText: string;
+  aiLikelihoodScore?: number;
+  quality?: 'high' | 'medium' | 'low';
+  notes?: string[];
+  retryCount?: number;
+  evaluationReason?: string;
   analysis?: {
     aiScore: number | null;
     analyzedAt: string;
   };
+}
+
+export interface DocumentAbstractResult {
+  documentId: string;
+  abstract: string;
+  keyPoints: string[];
 }
 
 // ─── Audio ───────────────────────────────────────────────────────────────────

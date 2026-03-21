@@ -6,6 +6,7 @@ export type BillingCycle = 'monthly' | 'yearly';
 export interface IPayment extends Document {
   userId:             mongoose.Types.ObjectId;
   plan:               Plan;
+  pricingTier:        'pro' | 'advanced';
   billingCycle:       BillingCycle;
   amount:             number;   // in paise
   currency:           string;
@@ -20,6 +21,7 @@ const paymentSchema = new Schema<IPayment>(
   {
     userId:            { type: Schema.Types.ObjectId, ref: 'User', required: true, index: true },
     plan:              { type: String, enum: ['free', 'pro'], required: true },
+    pricingTier:       { type: String, enum: ['pro', 'advanced'], default: 'pro', index: true },
     billingCycle:      { type: String, enum: ['monthly', 'yearly'], default: 'monthly' },
     amount:            { type: Number, required: true },
     currency:          { type: String, default: 'INR' },

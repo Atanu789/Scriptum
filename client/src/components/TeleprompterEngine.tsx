@@ -378,6 +378,19 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       .replace(/(^|\s)0+(?=[A-Za-z])/g, '$1');
   }, [script]);
   const tokens = useScriptTokens(cleanedScript);
+  const wordCount = useMemo(() => {
+    const words = cleanedScript.trim().split(/\s+/).filter(Boolean);
+    return words.length;
+  }, [cleanedScript]);
+
+  const readingTimes = useMemo(() => {
+    const toMinutes = (wpm: number) => (wordCount > 0 ? Number((wordCount / wpm).toFixed(1)) : 0);
+    return {
+      slow: toMinutes(150),
+      normal: toMinutes(180),
+      fast: toMinutes(200),
+    };
+  }, [wordCount]);
 
   const sentenceIndexByToken = useMemo(() => {
     if (tokens.length === 0) return [] as number[];
@@ -640,11 +653,19 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
       {/* Title bar */}
       {documentTitle && (
-        <div className="flex items-center gap-2 border-b border-white/[0.04] px-5 py-2">
+        <div className="flex flex-wrap items-center gap-3 border-b border-white/[0.04] px-5 py-2">
           <span className="truncate text-xs text-white/25">{documentTitle}</span>
-          <span className="ml-auto rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-indigo-400 ring-1 ring-indigo-500/20">
-            Teleprompter
-          </span>
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <div className="rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[10px] text-white/70">
+              <p className="font-semibold">Words: {wordCount}</p>
+              <p>Slow (150 wpm): {readingTimes.slow} min</p>
+              <p>Normal (180 wpm): {readingTimes.normal} min</p>
+              <p>Fast (200 wpm): {readingTimes.fast} min</p>
+            </div>
+            <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-indigo-400 ring-1 ring-indigo-500/20">
+              Teleprompter
+            </span>
+          </div>
         </div>
       )}
 

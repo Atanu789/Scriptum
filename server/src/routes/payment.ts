@@ -8,12 +8,14 @@ import {
   getSubscription,
   getPaymentHistory,
   handleWebhook,
+  requestDiscount,
 } from '../controllers/paymentController';
 
 const router = Router();
 
 // ─── Public ───────────────────────────────────────────────────────────────────
 router.get('/plans', getPlans);
+router.post('/discount-request', requestDiscount);
 
 // ─── Webhook — raw body required for signature verification ──────────────────
 router.post(

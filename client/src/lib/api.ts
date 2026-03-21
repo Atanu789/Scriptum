@@ -17,12 +17,15 @@ import {
   UploadResult,
   AnalysisResult,
   HumanizeResult,
+  DocumentAbstractResult,
   AudioSegment,
   UsageStats,
   SubscriptionInfo,
   PaymentRecord,
   PlanConfig,
   BillingCycle,
+  AdminPricingPlanConfig,
+  DiscountRequestItem,
 } from '@/types';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -232,8 +235,16 @@ export const analysisApi = {
     return unwrap(data);
   },
 
-  humanize: async (documentId: string): Promise<HumanizeResult> => {
-    const { data } = await api.post<ApiResponse<HumanizeResult>>(`/analyze/${documentId}/humanize`);
+  humanize: async (
+    documentId: string,
+    options?: { mode?: 'conservative' | 'balanced' | 'aggressive'; styleProfile?: 'student' | 'journalist' | 'casual-speaker' | 'academic' }
+  ): Promise<HumanizeResult> => {
+    const { data } = await api.post<ApiResponse<HumanizeResult>>(`/analyze/${documentId}/humanize`, options || {});
+    return unwrap(data);
+  },
+
+  generateAbstract: async (documentId: string): Promise<DocumentAbstractResult> => {
+    const { data } = await api.post<ApiResponse<DocumentAbstractResult>>(`/analyze/${documentId}/abstract`);
     return unwrap(data);
   },
 };
@@ -364,6 +375,15 @@ export const paymentApi = {
 
   redeem: async (code: string): Promise<{ plan: string; planExpiryDate: string; message: string }> => {
     const { data } = await api.post<ApiResponse<{ plan: string; planExpiryDate: string; message: string }>>('/payment/redeem', { code });
+    return unwrap(data);
+  },
+
+  requestDiscount: async (payload: {
+    email: string;
+    reason: string;
+    requestedPlan: 'pro' | 'advanced';
+  }): Promise<{ email: string; requestedPlan: 'pro' | 'advanced'; status: 'pending' }> => {
+    const { data } = await api.post<ApiResponse<{ email: string; requestedPlan: 'pro' | 'advanced'; status: 'pending' }>>('/payment/discount-request', payload);
     return unwrap(data);
   },
 };
@@ -526,6 +546,74 @@ export const adminApi = {
       total: json.total || 0,
       totalPages: json.totalPages || 1,
     };
+  },
+
+  getPricing: async (token: string): Promise<AdminPricingPlanConfig[]> => {
+    return adminRequest<AdminPricingPlanConfig[]>('/pricing', { method: 'GET' }, token);
+  },
+
+  updatePricing: async (
+    token: string,
+    planId: 'pro' | 'advanced',
+    payload: Partial<Pick<AdminPricingPlanConfig, 'displayName' | 'monthlyPriceINR' | 'yearlyPriceINR' | 'enabled' | 'discountPercent'>> & { reason?: string },
+  ): Promise<AdminPricingPlanConfig> => {
+    return adminRequest<AdminPricingPlanConfig>(`/pricing/${planId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token);
+  },
+
+  listDiscountRequests: async (
+    token: string,
+    params?: { status?: 'all' | 'pending' | 'approved' | 'rejected'; q?: string; page?: number; limit?: number },
+  ): Promise<{ requests: DiscountRequestItem[]; total: number; page: number; limit: number; totalPages: number }> => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set('status', params.status);
+    if (params?.q) qs.set('q', params.q);
+    if (params?.page) qs.set('page', String(params.page));
+    if (params?.limit) qs.set('limit', String(params.limit));
+
+    const rawResponse = await fetch(`${BASE_URL}/api/admin/discount-requests${qs.toString() ? `?${qs.toString()}` : ''}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+
+    const json = (await rawResponse.json()) as ApiResponse<DiscountRequestItem[]> & {
+      page?: number;
+      limit?: number;
+      total?: number;
+      totalPages?: number;
+    };
+
+    if (!rawResponse.ok || !json.success) {
+      throw new Error(json.error || 'Failed to fetch discount requests');
+    }
+
+    return {
+      requests: json.data || [],
+      total: json.total || 0,
+      page: json.page || 1,
+      limit: json.limit || 20,
+      totalPages: json.totalPages || 1,
+    };
+  },
+
+  updateDiscountRequest: async (
+    token: string,
+    requestId: string,
+    payload: {
+      status?: 'pending' | 'approved' | 'rejected';
+      offeredDiscountPercent?: number | null;
+      assignedPlan?: 'free' | 'pro' | 'advanced' | null;
+      assignToUser?: boolean;
+      planDays?: number;
+      adminNotes?: string | null;
+      reason?: string;
+    },
+  ): Promise<DiscountRequestItem> => {
+    return adminRequest<DiscountRequestItem>(`/discount-requests/${requestId}`, {
+      method: 'PATCH',
+      body: JSON.stringify(payload),
+    }, token);
   },
 };
 

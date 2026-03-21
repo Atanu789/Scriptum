@@ -72,7 +72,7 @@ export default function BugReportFab() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-4 z-40 inline-flex h-11 items-center gap-2 rounded-full bg-red-900 px-4 text-sm font-semibold text-white shadow-lg shadow-red-600/30 transition hover:bg-red-800 sm:bottom-7"
+        className="fixed bottom-24 right-4 z-40 inline-flex h-11 items-center gap-2 rounded-full bg-red-700 px-4 text-sm font-semibold text-white shadow-lg shadow-red-600/30 transition hover:bg-red-800 sm:bottom-7"
       >
         <AlertCircle className="h-4 w-4" />
         

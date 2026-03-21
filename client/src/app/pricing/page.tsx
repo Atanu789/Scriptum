@@ -38,16 +38,16 @@ type DisplayPlan = PlanEntry & {
 type BillingMode = 'monthly' | 'yearly';
 
 const PLAN_COMPARE_ROWS = [
-  { label: 'Uploads / month', values: { free: '5', pro: '50', custom: 'Custom' } },
-  { label: 'AI analyses / month', values: { free: '5', pro: '50', custom: 'Custom' } },
-  { label: 'Grammar fix', values: { free: false, pro: true, custom: true } },
-  { label: 'Humanize text', values: { free: false, pro: true, custom: true } },
-  { label: 'AI teleprompter', values: { free: false, pro: true, custom: true } },
-  { label: 'TTS narration', values: { free: false, pro: true, custom: true } },
-  { label: 'PDF + DOCX export', values: { free: true, pro: true, custom: true } },
-  { label: 'PPTX export', values: { free: false, pro: true, custom: true } },
-  { label: 'Support', values: { free: 'Standard', pro: 'Priority', custom: 'Priority+' } },
-  { label: 'Teams / onboarding', values: { free: false, pro: false, custom: true } },
+  { label: 'Uploads / month', values: { free: '5', pro: '50', advanced: '120' } },
+  { label: 'AI analyses / month', values: { free: '5', pro: '50', advanced: '120' } },
+  { label: 'Grammar fix', values: { free: false, pro: true, advanced: true } },
+  { label: 'Humanize text', values: { free: false, pro: true, advanced: true } },
+  { label: 'AI teleprompter', values: { free: false, pro: true, advanced: true } },
+  { label: 'TTS narration', values: { free: false, pro: true, advanced: true } },
+  { label: 'PDF + DOCX export', values: { free: true, pro: true, advanced: true } },
+  { label: 'PPTX export', values: { free: false, pro: true, advanced: true } },
+  { label: 'Support', values: { free: 'Standard', pro: 'Priority', advanced: 'Priority+' } },
+  { label: 'Teams / onboarding', values: { free: false, pro: false, advanced: true } },
 ] as const;
 
 const SOCIAL_USERS = ['AK', 'RM', 'JS', 'PT', 'LU'];
@@ -120,6 +120,10 @@ export default function PricingPage() {
   const [redeeming, setRedeeming] = useState(false);
   const [redeemCode, setRedeemCode] = useState('');
   const [promoCode, setPromoCode] = useState('');
+  const [discountEmail, setDiscountEmail] = useState(user?.email || '');
+  const [discountReason, setDiscountReason] = useState('');
+  const [discountPlan, setDiscountPlan] = useState<'pro' | 'advanced'>('pro');
+  const [submittingDiscountRequest, setSubmittingDiscountRequest] = useState(false);
   const [successMsg, setSuccessMsg] = useState('');
   const [error, setError] = useState('');
 
@@ -148,7 +152,13 @@ export default function PricingPage() {
     fetchData();
   }, [fetchData]);
 
-  const handleUpgrade = async () => {
+  useEffect(() => {
+    if (user?.email) {
+      setDiscountEmail(user.email);
+    }
+  }, [user?.email]);
+
+  const handleUpgrade = async (planId: 'pro' | 'advanced') => {
     if (!user) {
       router.push('/login?redirect=/pricing');
       return;
@@ -161,7 +171,7 @@ export default function PricingPage() {
       const loaded = await loadRazorpayScript();
       if (!loaded) throw new Error('Could not load payment SDK. Check your internet connection.');
 
-      const order = await paymentApi.createOrder('pro', billingMode, promoCode.trim() || undefined);
+      const order = await paymentApi.createOrder(planId, billingMode, promoCode.trim() || undefined);
 
       await new Promise<void>((resolve, reject) => {
         const rz = new window.Razorpay({
@@ -169,7 +179,7 @@ export default function PricingPage() {
           amount: order.amount,
           currency: order.currency,
           name: 'Intern Narrator',
-          description: `Pro Plan - ${billingMode === 'yearly' ? 'yearly' : 'monthly'} billing`,
+          description: `${planId === 'advanced' ? 'Advanced' : 'Pro'} Plan - ${billingMode === 'yearly' ? 'yearly' : 'monthly'} billing`,
           order_id: order.orderId,
           prefill: { name: user.name, email: user.email },
           theme: { color: '#4f46e5' },
@@ -219,6 +229,25 @@ export default function PricingPage() {
     }
   };
 
+  const handleRequestDiscount = async () => {
+    try {
+      setSubmittingDiscountRequest(true);
+      setError('');
+      setSuccessMsg('');
+      await paymentApi.requestDiscount({
+        email: discountEmail.trim(),
+        reason: discountReason.trim(),
+        requestedPlan: discountPlan,
+      });
+      setDiscountReason('');
+      setSuccessMsg('Discount request submitted. Our team will contact you on email.');
+    } catch (err) {
+      setError((err as Error).message || 'Failed to submit discount request');
+    } finally {
+      setSubmittingDiscountRequest(false);
+    }
+  };
+
   if (loading) {
     return (
       <main className="flex min-h-screen items-center justify-center">
@@ -231,27 +260,14 @@ export default function PricingPage() {
   const expiry = sub?.planExpiryDate ? new Date(sub.planExpiryDate) : null;
   const expired = expiry ? expiry < new Date() : false;
   const effectivePlan = expired ? 'free' : activePlan;
+  const isAdvancedActive = effectivePlan === 'pro' && (sub?.limits.aiUsagePerMonth === 120 || sub?.limits.uploadsPerMonth === 120);
+  const activePaidTier = effectivePlan === 'free' ? null : (isAdvancedActive ? 'advanced' : 'pro');
+  const activePaidRecord = activePaidTier
+    ? history.find((rec) => rec.status === 'captured' && (rec.pricingTier || rec.plan) === activePaidTier)
+    : null;
+  const activeBillingMode = activePaidRecord?.billingCycle;
   const aiLimitReached = !!sub && sub.limits.aiUsagePerMonth !== -1 && sub.aiUsageThisMonth >= sub.limits.aiUsagePerMonth;
   const uploadLimitReached = !!sub && sub.limits.uploadsPerMonth !== -1 && sub.uploadUsageThisMonth >= sub.limits.uploadsPerMonth;
-
-  const customPlan: DisplayPlan = {
-    id: 'custom',
-    name: 'Custom',
-    priceINR: 0,
-    priceLabel: 'Talk to sales',
-    limits: {
-      aiUsagePerMonth: -1,
-      uploadsPerMonth: -1,
-      teleprompterAI: true,
-      exportPPT: true,
-      ttsNarration: true,
-      grammarFix: true,
-      humanizeText: true,
-    },
-    description: 'Unlimited usage with custom onboarding and billing.',
-    ctaLabel: 'Contact sales',
-    bestFor: 'For teams and institutes',
-  };
 
   const displayPlans: DisplayPlan[] = plans
     .map((plan) => {
@@ -266,12 +282,14 @@ export default function PricingPage() {
 
       return {
         ...plan,
-        description: '50 uploads, 50 AI analyses, plus full premium toolkit.',
-        ctaLabel: 'Upgrade to Pro',
-        bestFor: 'For regular publishing',
+        description: plan.id === 'advanced'
+          ? 'Higher limits and priority support for heavy usage.'
+          : '50 uploads, 50 AI analyses, plus full premium toolkit.',
+        ctaLabel: plan.id === 'advanced' ? 'Request discount' : 'Upgrade to Pro',
+        bestFor: plan.id === 'advanced' ? 'For teams and power users' : 'For regular publishing',
       };
     })
-    .concat(customPlan);
+    .filter((plan) => plan.id === 'free' || plan.id === 'pro' || plan.id === 'advanced');
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-indigo-50 via-white to-violet-50 px-4 py-8 text-slate-900 dark:from-[#090b17] dark:via-[#0d1021] dark:to-[#130e1f] dark:text-white">
@@ -289,7 +307,7 @@ export default function PricingPage() {
             onClick={() => setBillingMode('yearly')}
             className={cn('rounded-full px-4 py-1.5 font-semibold transition', billingMode === 'yearly' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-white/65')}
           >
-            Yearly <span className="ml-1 text-[10px] text-emerald-300">Save 40%</span>
+            Yearly <span className="ml-1 text-[10px] text-emerald-300">Save with annual billing</span>
           </button>
         </div>
 
@@ -343,18 +361,19 @@ export default function PricingPage() {
 
         <div className="grid items-stretch gap-4 sm:grid-cols-3">
           {displayPlans.map((plan) => {
-            const isCurrent = effectivePlan === plan.id;
+            const isPlanTierActive = plan.id === 'advanced' ? isAdvancedActive : effectivePlan === plan.id;
+            const isCurrent = plan.id === 'free'
+              ? isPlanTierActive
+              : isPlanTierActive && (!activeBillingMode || activeBillingMode === billingMode);
             const isPro = plan.id === 'pro';
-            const isCustom = plan.id === 'custom';
-            const icon = isCustom ? <Building2 className="h-4 w-4" /> : plan.id === 'free' ? <GraduationCap className="h-4 w-4" /> : <Zap className="h-4 w-4" />;
+            const isAdvanced = plan.id === 'advanced';
+            const icon = isAdvanced ? <Building2 className="h-4 w-4" /> : plan.id === 'free' ? <GraduationCap className="h-4 w-4" /> : <Zap className="h-4 w-4" />;
 
-            const monthlyStrikePrice = !isCustom && plan.priceINR > 0 ? plan.priceINR * 2 : 0;
             const monthlyPrice = plan.priceINR;
-            const yearlyPrice = !isCustom && plan.priceINR > 0 ? Math.round(plan.priceINR * 12 * 0.6) : 0;
-            const yearlyStrikePrice = monthlyStrikePrice > 0 ? monthlyStrikePrice * 12 : 0;
-            const strikePrice = billingMode === 'yearly' ? yearlyStrikePrice : monthlyStrikePrice;
+            const yearlyPrice = plan.yearlyPriceINR ?? monthlyPrice * 12;
             const currentPrice = billingMode === 'yearly' ? yearlyPrice : monthlyPrice;
-            const dailyPrice = !isCustom && plan.priceINR > 0
+            const yearlySavings = monthlyPrice > 0 ? Math.max(0, monthlyPrice * 12 - yearlyPrice) : 0;
+            const dailyPrice = plan.priceINR > 0
               ? billingMode === 'yearly'
                 ? Math.max(1, Math.round(yearlyPrice / 365))
                 : Math.max(1, Math.round(plan.priceINR / 30))
@@ -392,9 +411,7 @@ export default function PricingPage() {
                 </div>
 
                 <div className="mb-2 space-y-1">
-                  {isCustom ? (
-                    <span className="text-2xl font-bold text-slate-900 dark:text-white">Custom</span>
-                  ) : plan.priceINR === 0 ? (
+                  {plan.priceINR === 0 ? (
                     <span className="text-2xl font-bold text-slate-900 dark:text-white">₹0</span>
                   ) : (
                     <>
@@ -404,10 +421,12 @@ export default function PricingPage() {
                         </span>
                         <span className="mb-1 text-xs font-semibold text-emerald-700/80 dark:text-emerald-300/90">/{billingMode === 'yearly' ? 'year' : 'month'}</span>
                       </div>
-                      <p className="text-xs font-extrabold uppercase tracking-wide text-rose-600 dark:text-rose-300">
-                        Was <span className="ml-1 text-sm line-through decoration-2">₹{strikePrice}</span>
+                      <p className="text-xs font-semibold text-slate-600 dark:text-slate-300">
+                        {billingMode === 'yearly'
+                          ? `₹${yearlyPrice}/year (Save ₹${yearlySavings})`
+                          : `₹${monthlyPrice}/month`}
                       </p>
-                      <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">~₹{dailyPrice}/day (less than coffee)</p>
+                      <p className="text-xs font-semibold text-emerald-600 dark:text-emerald-300">Approx ₹{dailyPrice} per day</p>
                       {isPro && <p className="text-[11px] font-semibold text-amber-500">⏳ Limited time offer</p>}
                     </>
                   )}
@@ -458,28 +477,13 @@ export default function PricingPage() {
                   <div className="rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 dark:border-white/[0.08] dark:text-white/65">
                     Current plan
                   </div>
-                ) : isCustom ? (
-                  <div className="space-y-2">
-                    <a
-                      href="mailto:atanugm8@gmail.com,gdnvision360@gmail.com?subject=Custom%20Plan%20Inquiry"
-                      className="block rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.08] dark:text-white/70 dark:hover:bg-white/[0.05]"
-                    >
-                      Contact sales
-                    </a>
-                    <a
-                      href="mailto:atanugm8@gmail.com,gdnvision360@gmail.com?subject=Contact%20Us"
-                      className="block rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50 dark:border-white/[0.08] dark:text-white/70 dark:hover:bg-white/[0.05]"
-                    >
-                      Contact us
-                    </a>
-                  </div>
-                ) : isPro ? (
+                ) : (plan.id === 'pro' || plan.id === 'advanced') ? (
                   <button
-                    onClick={handleUpgrade}
+                    onClick={() => handleUpgrade(plan.id as 'pro' | 'advanced')}
                     disabled={paying}
                     className="rounded-lg bg-gradient-to-r from-indigo-500 to-violet-500 px-3 py-2 text-center text-xs font-bold text-white transition duration-300 hover:scale-105 hover:from-indigo-400 hover:to-violet-400 disabled:cursor-not-allowed disabled:opacity-60"
                   >
-                    {paying ? 'Processing...' : '🚀 Upgrade to Pro'}
+                    {paying ? 'Processing...' : plan.id === 'advanced' ? '🚀 Upgrade to Advanced' : '🚀 Upgrade to Pro'}
                   </button>
                 ) : (
                   <div className="rounded-lg border border-slate-200 px-3 py-2 text-center text-xs font-semibold text-slate-700 dark:border-white/[0.08] dark:text-white/65">
@@ -531,6 +535,46 @@ export default function PricingPage() {
           </div>
         </section>
 
+        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200/80 bg-white/90 p-4 dark:border-white/[0.08] dark:bg-white/[0.05]">
+          <div className="mb-2.5 flex items-center justify-between gap-2">
+            <p className="text-sm font-semibold text-slate-700 dark:text-white/80">Request Discount</p>
+            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70">
+              Concession review
+            </span>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-3">
+            <input
+              value={discountEmail}
+              onChange={(e) => setDiscountEmail(e.target.value)}
+              placeholder="you@example.com"
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-indigo-400 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/80 dark:focus:border-indigo-500/50"
+            />
+            <select
+              value={discountPlan}
+              onChange={(e) => setDiscountPlan(e.target.value as 'pro' | 'advanced')}
+              className="h-10 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-indigo-400 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/80 dark:focus:border-indigo-500/50"
+            >
+              <option value="pro">Pro</option>
+              <option value="advanced">Advanced</option>
+            </select>
+            <button
+              onClick={handleRequestDiscount}
+              disabled={submittingDiscountRequest || !discountEmail.trim() || !discountReason.trim()}
+              className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {submittingDiscountRequest ? 'Submitting...' : 'Request discount'}
+            </button>
+          </div>
+          <textarea
+            value={discountReason}
+            onChange={(e) => setDiscountReason(e.target.value)}
+            placeholder="Why do you need a concession? (student, startup, bulk seats, etc.)"
+            rows={3}
+            className="mt-2 w-full rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm text-slate-700 outline-none transition-colors focus:border-indigo-400 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/80 dark:focus:border-indigo-500/50"
+          />
+        </section>
+
         <section className="rounded-2xl border border-slate-200/90 bg-white/90 px-5 py-3 dark:border-white/[0.08] dark:bg-white/[0.05]">
           <div className="flex flex-wrap items-center justify-center gap-3 text-xs font-semibold text-slate-600 dark:text-white/60">
             <span className="inline-flex items-center gap-1.5"><ShieldCheck className="h-3.5 w-3.5 text-emerald-500" /> Razorpay secure payments</span>
@@ -555,7 +599,7 @@ export default function PricingPage() {
                   <div className="px-5 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/35">Feature</div>
                   <div className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-white/55">Free</div>
                   <div className="bg-indigo-50/80 px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-indigo-700 dark:bg-indigo-500/10 dark:text-indigo-300">Pro</div>
-                  <div className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-white/55">Custom</div>
+                  <div className="px-4 py-3 text-center text-xs font-semibold uppercase tracking-wide text-slate-600 dark:text-white/55">Advanced</div>
                 </div>
 
                 {PLAN_COMPARE_ROWS.map((row, index) => (
@@ -569,7 +613,7 @@ export default function PricingPage() {
                     <div className="px-5 py-3 text-sm font-medium text-slate-700 dark:text-white/80">{row.label}</div>
                     <div className="px-4 py-3 text-center"><PlanCompareCell value={row.values.free} /></div>
                     <div className="bg-indigo-50/60 px-4 py-3 text-center dark:bg-indigo-500/5"><PlanCompareCell value={row.values.pro} /></div>
-                    <div className="px-4 py-3 text-center"><PlanCompareCell value={row.values.custom} /></div>
+                    <div className="px-4 py-3 text-center"><PlanCompareCell value={row.values.advanced} /></div>
                   </div>
                 ))}
               </div>
@@ -592,7 +636,7 @@ export default function PricingPage() {
                 {history.map((rec) => (
                   <div key={rec._id} className="flex flex-wrap items-center justify-between gap-2 px-6 py-3 text-sm">
                     <div className="space-y-0.5">
-                      <p className="font-medium capitalize">{rec.plan} plan ({rec.billingCycle})</p>
+                      <p className="font-medium capitalize">{(rec.pricingTier || rec.plan)} plan ({rec.billingCycle})</p>
                       <p className="text-xs text-slate-500 dark:text-white/35">{new Date(rec.createdAt).toLocaleString()}</p>
                     </div>
                     <div className="flex items-center gap-3">
@@ -620,7 +664,7 @@ export default function PricingPage() {
         )}
 
         <p className="text-center text-[11px] text-slate-400 dark:text-white/25">
-          Need procurement support, GST invoice, or bulk onboarding? Use Custom plan and we will help you set up.
+          Need procurement support, GST invoice, or bulk onboarding? Choose Advanced and we will help you set up.
         </p>
       </div>
     </main>

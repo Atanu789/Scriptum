@@ -1,13 +1,16 @@
 import sanitizeHtml from 'sanitize-html';
 
 const ALLOWED_TAGS = [
-  'p', 'h1', 'h2', 'h3',
+  'p', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6',
   'ul', 'ol', 'li',
   'strong', 'b', 'em', 'i', 'u',
   'a',
   'img',
+  'video', 'audio', 'source',
+  'span',
   'br', 'blockquote', 'pre', 'code',
   'figure', 'figcaption', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+  'hr',
   'div',
 ];
 
@@ -16,8 +19,12 @@ export function sanitizeEditorHtml(input: string): string {
     allowedTags: ALLOWED_TAGS,
     allowedAttributes: {
       a: ['href', 'target', 'rel'],
-      img: ['src', 'alt', 'loading', 'draggable'],
-      div: ['class', 'data-align', 'data-width', 'data-padding'],
+      img: ['src', 'alt', 'loading', 'draggable', 'style', 'width', 'height'],
+      video: ['src', 'controls', 'style'],
+      audio: ['src', 'controls', 'style'],
+      source: ['src', 'type'],
+      span: ['class', 'style'],
+      div: ['class', 'data-align', 'data-width', 'data-padding', 'style'],
       '*': ['class'],
     },
     allowedClasses: {
@@ -25,6 +32,9 @@ export function sanitizeEditorHtml(input: string): string {
     },
     allowedSchemesByTag: {
       img: ['http', 'https', 'data'],
+      video: ['http', 'https'],
+      audio: ['http', 'https'],
+      source: ['http', 'https'],
       a: ['http', 'https', 'mailto', 'tel'],
     },
     disallowedTagsMode: 'discard',
@@ -43,11 +53,24 @@ export function sanitizeEditorHtml(input: string): string {
         }
         return { tagName: 'p', attribs: {} };
       },
-      '*': (tagName, attribs) => {
-        const cleaned = { ...attribs };
-        delete cleaned.style;
-        return { tagName, attribs: cleaned };
-      },
+      img: (tagName, attribs) => ({
+        tagName,
+        attribs: /^(\/uploads\/|https?:\/\/|data:image\/)/i.test(attribs.src ?? '')
+          ? attribs
+          : { ...attribs, src: '' },
+      }),
+      video: (tagName, attribs) => ({
+        tagName,
+        attribs: /^(\/uploads\/|https?:\/\/)/i.test(attribs.src ?? '')
+          ? attribs
+          : { ...attribs, src: '' },
+      }),
+      audio: (tagName, attribs) => ({
+        tagName,
+        attribs: /^(\/uploads\/|https?:\/\/)/i.test(attribs.src ?? '')
+          ? attribs
+          : { ...attribs, src: '' },
+      }),
     },
   });
 }
@@ -64,7 +87,7 @@ export function normalizeEditorHtml(input: string): string {
     .trim();
 
   if (!normalized) return '<p><br></p>';
-  if (!/^\s*<(p|h1|h2|h3|ul|ol|blockquote|pre|table|figure|div)\b/i.test(normalized)) {
+  if (!/^\s*<(p|h1|h2|h3|h4|h5|h6|ul|ol|blockquote|pre|table|figure|div|video|audio|hr)\b/i.test(normalized)) {
     return `<p>${normalized}</p>`;
   }
 
