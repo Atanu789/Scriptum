@@ -6,7 +6,7 @@ import { analyzeDocument as runAnalysis } from '../services/aiAnalysis';
 import {
   splitIntoSentences,
 } from '../services/ai/aiScoreAnalyzer';
-import { callGemini } from '../services/ai/geminiClient';
+import { runAI } from '../services/aiRouter';
 import { humanizeDocumentText } from '../services/ai/humanizerEngine';
 import { htmlToStructuredModel, plainTextToEditorHtml, structureDocument } from '../services/documentStructure';
 import { AuthenticatedRequest, HumanizeMode } from '../types';
@@ -110,6 +110,9 @@ export const analyzeDocument = async (
       doc.aiScore !== null;
 
     if (isCacheHit) {
+      const cachedToneScore = doc.tone?.confidence != null
+        ? Math.round(doc.tone.confidence * 100)
+        : 50;
       res.json({
         success: true,
         cached: true,
@@ -123,6 +126,7 @@ export const analyzeDocument = async (
           grammarScore: doc.grammarScore,
           grammarIssues: doc.grammarIssues,
           readabilityScore: doc.readabilityScore,
+          toneScore: cachedToneScore,
           wordCount: doc.wordCount,
           sentenceCount: doc.sentenceCount,
           readingTimeMinutes: doc.readingTimeMinutes,
@@ -139,7 +143,15 @@ export const analyzeDocument = async (
 
     await DocumentModel.findByIdAndUpdate(id, { status: 'processing' });
 
-    const analysis = await runAnalysis(doc.cleanedText);
+    const analysis = await runAnalysis(doc.cleanedText, req.user?.userId);
+    if (analysis.aiScore === null || analysis.aiScore <= 0) {
+      await DocumentModel.findByIdAndUpdate(id, { status: 'pending' }).catch(() => {});
+      res.status(503).json({
+        success: false,
+        error: 'AI failed to generate valid response',
+      });
+      return;
+    }
     const analyzedAt = new Date();
 
     const updated = await DocumentModel.findByIdAndUpdate(
@@ -183,6 +195,7 @@ export const analyzeDocument = async (
         grammarScore: updated?.grammarScore,
         grammarIssues: updated?.grammarIssues,
         readabilityScore: updated?.readabilityScore,
+        toneScore: analysis.tone?.confidence != null ? Math.round(analysis.tone.confidence * 100) : 50,
         wordCount: doc.wordCount,
         sentenceCount: analysis.sentenceCount,
         readingTimeMinutes: analysis.readingTimeMinutes,
@@ -275,7 +288,7 @@ export const humanizeDetectedText = async (
 
     // Immediately re-analyze so the user gets an updated AI likelihood after humanization.
     doc.status = 'processing';
-    const postAnalysis = await runAnalysis(humanizedText);
+    const postAnalysis = await runAnalysis(humanizedText, req.user?.userId);
     const analyzedAt = new Date();
 
     doc.contentHash = hashText(humanizedText);
@@ -386,8 +399,26 @@ Rules:
 
 Document:\n${sourceText.slice(0, 12000)}`;
 
-    const responseText = await callGemini(prompt);
-    const parsed = parseAbstractPayload(responseText);
+    const ai = await runAI({
+      prompt,
+      modelPreferences: {
+        groq: ['llama-3.1-8b-instant'],
+        openrouter: ['meta-llama/llama-3.1-8b-instruct:free'],
+      },
+      temperature: 0.2,
+      maxTokens: 700,
+      userId: req.user?.userId,
+    });
+
+    if (!ai.success || !ai.text) {
+      res.status(503).json({
+        success: false,
+        error: 'AI temporarily unavailable',
+      });
+      return;
+    }
+
+    const parsed = parseAbstractPayload(ai.text);
 
     res.json({
       success: true,

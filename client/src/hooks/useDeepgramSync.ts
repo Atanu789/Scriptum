@@ -28,7 +28,24 @@ export interface UseDeepgramSyncReturn {
   status: React.MutableRefObject<SyncStatus>;
 }
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
+type BrowserRecognition = {
+  lang: string;
+  interimResults: boolean;
+  continuous: boolean;
+  onstart: (() => void) | null;
+  onerror: ((event: { error?: string }) => void) | null;
+  onend: (() => void) | null;
+  onresult: ((event: {
+    resultIndex: number;
+    results: ArrayLike<{
+      isFinal: boolean;
+      0: { transcript: string };
+    }>;
+  }) => void) | null;
+  start: () => void;
+  stop: () => void;
+  abort: () => void;
+};
 
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
@@ -46,10 +63,7 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
   const { onTranscript, onStatusChange, onError, maxDurationMs = 15 * 60 * 1000 } = options;
 
   const statusRef        = useRef<SyncStatus>('idle');
-  const wsRef            = useRef<WebSocket | null>(null);
-  const mediaStreamRef   = useRef<MediaStream | null>(null);
-  const processorRef     = useRef<ScriptProcessorNode | null>(null);
-  const audioCtxRef      = useRef<AudioContext | null>(null);
+  const recognitionRef   = useRef<BrowserRecognition | null>(null);
   const sessionTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const setStatus = useCallback((s: SyncStatus) => {
@@ -60,50 +74,20 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
   // ── Cleanup helper ────────────────────────────────────────────────────────
 
   const cleanup = useCallback(() => {
-    // Stop media tracks
-    mediaStreamRef.current?.getTracks().forEach((t) => t.stop());
-    mediaStreamRef.current = null;
-
-    // Disconnect script processor
-    processorRef.current?.disconnect();
-    processorRef.current = null;
-
-    // Close audio context
-    audioCtxRef.current?.close().catch(() => {});
-    audioCtxRef.current = null;
-
-    // Close WebSocket
-    if (wsRef.current && wsRef.current.readyState <= WebSocket.OPEN) {
-      wsRef.current.close(1000, 'session ended');
+    if (recognitionRef.current) {
+      recognitionRef.current.onstart = null;
+      recognitionRef.current.onend = null;
+      recognitionRef.current.onerror = null;
+      recognitionRef.current.onresult = null;
+      recognitionRef.current.abort();
     }
-    wsRef.current = null;
+    recognitionRef.current = null;
 
     // Clear session timer
     if (sessionTimerRef.current) {
       clearTimeout(sessionTimerRef.current);
       sessionTimerRef.current = null;
     }
-  }, []);
-
-  // ── Fetch temporary key from our backend ─────────────────────────────────
-
-  const fetchTempKey = useCallback(async (): Promise<string> => {
-    const token = typeof window !== 'undefined'
-      ? localStorage.getItem('ultimoversio_token')
-      : null;
-
-    const res = await fetch(`${API_BASE}/api/deepgram/token`, {
-      headers: {
-        Authorization: `Bearer ${token ?? ''}`,
-      },
-    });
-
-    if (!res.ok) throw new Error(`Token fetch failed: ${res.status}`);
-
-    const json = (await res.json()) as { success: boolean; data?: { key: string } };
-    if (!json.success || !json.data?.key) throw new Error('Invalid token response');
-
-    return json.data.key;
   }, []);
 
   // ── Start session ─────────────────────────────────────────────────────────
@@ -114,92 +98,59 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
     setStatus('connecting');
 
     try {
-      // 1. Get mic stream
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
-      mediaStreamRef.current = stream;
+      const ctor = (window as typeof window & {
+        webkitSpeechRecognition?: new () => BrowserRecognition;
+        SpeechRecognition?: new () => BrowserRecognition;
+      }).SpeechRecognition || (window as typeof window & { webkitSpeechRecognition?: new () => BrowserRecognition }).webkitSpeechRecognition;
 
-      // 2. Get temp key
-      const tempKey = await fetchTempKey();
+      if (!ctor) {
+        throw new Error('Speech recognition not supported in this browser.');
+      }
 
-      // 3. Open Deepgram WebSocket
-      const wsUrl = [
-        'wss://api.deepgram.com/v1/listen',
-        '?model=nova-3',
-        '&language=en-US',
-        '&punctuate=true',
-        '&interim_results=true',
-        '&endpointing=300',
-        '&utterance_end_ms=1000',
-      ].join('');
+      const recognition = new ctor();
+      recognitionRef.current = recognition;
+      recognition.lang = 'en-US';
+      recognition.interimResults = true;
+      recognition.continuous = true;
 
-      const ws = new WebSocket(wsUrl, ['token', tempKey]);
-      wsRef.current = ws;
-
-      ws.onopen = () => {
+      recognition.onstart = () => {
         setStatus('listening');
-
-        // 4. Pipe mic audio via ScriptProcessor → WS
-        const audioCtx = new AudioContext({ sampleRate: 16000 });
-        audioCtxRef.current = audioCtx;
-
-        const source    = audioCtx.createMediaStreamSource(stream);
-        // bufferSize 4096 gives ~256 ms chunks at 16 kHz — good balance
-        const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-        processorRef.current = processor;
-
-        processor.onaudioprocess = (e: AudioProcessingEvent) => {
-          if (ws.readyState !== WebSocket.OPEN) return;
-          const pcm  = e.inputBuffer.getChannelData(0);
-          const i16  = floatTo16BitPCM(pcm);
-          ws.send(i16.buffer);
-        };
-
-        source.connect(processor);
-        processor.connect(audioCtx.destination);
-
-        // 5. Enforce max session duration
         sessionTimerRef.current = setTimeout(() => {
           onError('Max session duration reached (15 min). Mic stopped.');
-          stop(); // eslint-disable-line @typescript-eslint/no-use-before-define
+          setStatus('stopped');
+          cleanup();
         }, maxDurationMs);
       };
 
-      ws.onmessage = (event: MessageEvent<string>) => {
-        try {
-          const msg = JSON.parse(event.data) as DeepgramTranscriptMessage;
-          if (msg.type !== 'Results') return;
-
-          const channel   = msg.channel?.alternatives?.[0];
-          const transcript = channel?.transcript ?? '';
-          if (!transcript) return;
-
-          const isFinal = msg.is_final ?? false;
-          onTranscript(transcript, isFinal);
-        } catch {
-          // parse error — ignore silently
+      recognition.onresult = (event) => {
+        for (let i = event.resultIndex; i < event.results.length; i += 1) {
+          const result = event.results[i];
+          const transcript = result?.[0]?.transcript?.trim() || '';
+          if (!transcript) continue;
+          onTranscript(transcript, result.isFinal);
         }
       };
 
-      ws.onerror = () => {
+      recognition.onerror = (event) => {
+        const reason = event?.error || 'unknown';
         setStatus('error');
-        onError('WebSocket connection to Deepgram failed');
+        onError(`Speech recognition failed: ${reason}`);
         cleanup();
       };
 
-      ws.onclose = (e: CloseEvent) => {
+      recognition.onend = () => {
         if (statusRef.current !== 'stopped') {
           setStatus('stopped');
         }
-        if (e.code !== 1000) {
-          onError(`Connection closed unexpectedly (code ${e.code})`);
-        }
         cleanup();
       };
+
+      recognition.start();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setStatus('error');
 
-      if (message.includes('Permission denied') || message.includes('NotAllowedError')) {
+      if (message.includes('Permission denied') || message.includes('NotAllowedError') || message.includes('not-allowed')) {
         onError('Microphone permission denied. Please allow mic access and try again.');
       } else {
         onError(message);
@@ -207,7 +158,7 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
 
       cleanup();
     }
-  }, [cleanup, fetchTempKey, maxDurationMs, onError, onTranscript, setStatus]);
+  }, [cleanup, maxDurationMs, onError, onTranscript, setStatus]);
 
   // ── Stop session ──────────────────────────────────────────────────────────
 
@@ -221,25 +172,4 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
   useEffect(() => () => { cleanup(); }, [cleanup]);
 
   return { start, stop, status: statusRef };
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function floatTo16BitPCM(float32: Float32Array): Int16Array {
-  const pcm = new Int16Array(float32.length);
-  for (let i = 0; i < float32.length; i++) {
-    const s = Math.max(-1, Math.min(1, float32[i]));
-    pcm[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
-  }
-  return pcm;
-}
-
-// ─── Deepgram message types ───────────────────────────────────────────────────
-
-interface DeepgramTranscriptMessage {
-  type: string;
-  is_final?: boolean;
-  channel?: {
-    alternatives?: Array<{ transcript: string }>;
-  };
 }

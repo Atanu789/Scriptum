@@ -206,20 +206,20 @@ function DocRow({ doc, isLast, deletingId, onDelete }: DocRowProps) {
 
       {/* Actions — visible on hover */}
       <div
-        className="relative z-10 flex-shrink-0 flex items-center gap-0.5 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity"
+        className="relative z-10 flex-shrink-0 flex items-center gap-0.5 opacity-100"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           onClick={(e) => { e.stopPropagation(); router.push(`/editor/${doc._id}`); }}
           title="Edit"
-          className="rounded-lg p-2 text-slate-300 dark:text-white/25 hover:text-slate-700 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors"
+          className="rounded-lg p-2 text-slate-600 dark:text-white/70 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors"
         >
           <Pencil className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); router.push(`/analysis/${doc._id}`); }}
           title="Analysis"
-          className="rounded-lg p-2 text-slate-300 dark:text-white/25 hover:text-indigo-500 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
+          className="rounded-lg p-2 text-slate-600 dark:text-white/70 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
         >
           <ArrowUpRight className="h-3.5 w-3.5" />
         </button>

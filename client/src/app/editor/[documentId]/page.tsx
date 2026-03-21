@@ -24,6 +24,7 @@ import { SavedSelection, restoreSelection as restoreEditorSelection, saveSelecti
 import { applyCommand as applyExecCommand } from '@/editor/commands';
 import { replaceInBlocks } from '@/editor/aiReplace';
 import { applyImageWrapperLayout, buildImageWrapperHtml, ensureImageWrappers } from '@/editor/imageHandler';
+import { ErrorBanner } from '@/components/ui/ErrorBanner';
 
 interface LocalVersionSnapshot {
   id: string;
@@ -297,6 +298,7 @@ export default function EditorPage() {
   const [editorScrollTop, setEditorScrollTop] = useState(0);
   const [isDirty, setIsDirty]     = useState(false);
   const [isSaving, setIsSaving]   = useState(false);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<'edit' | 'analysis'>('edit');
   const [rightPanelMode, setRightPanelMode] = useState<'analysis' | 'preview'>('analysis');
   const [isAnalysisCollapsed, setIsAnalysisCollapsed] = useState(false);
@@ -513,13 +515,19 @@ export default function EditorPage() {
     }
     if (html) {
       editorRef.current.focus();
-      applyCommand('insertHTML', html);
+      applyExecCommand({
+        container: editorRef.current,
+        command: 'insertHTML',
+        value: html,
+        before: saveSelectionRange,
+        after: restoreSelectionRange,
+      });
       prepareEditorImages();
       setIsDirty(true);
       commitEditorHtml(editorRef.current?.innerHTML || '<p><br></p>', { restoreSelection: true });
       setShowMediaLib(false);
     }
-  }, [commitEditorHtml, prepareEditorImages]);
+  }, [commitEditorHtml, prepareEditorImages, restoreSelectionRange, saveSelectionRange]);
 
   const insertImageByUrl = useCallback(() => {
     if (!editorRef.current) return;
@@ -531,11 +539,17 @@ export default function EditorPage() {
       return;
     }
     editorRef.current.focus();
-    applyCommand('insertHTML', wrapMediaHtml(safe, 'Inserted image'));
+    applyExecCommand({
+      container: editorRef.current,
+      command: 'insertHTML',
+      value: wrapMediaHtml(safe, 'Inserted image'),
+      before: saveSelectionRange,
+      after: restoreSelectionRange,
+    });
     prepareEditorImages();
     setIsDirty(true);
     commitEditorHtml(editorRef.current?.innerHTML || '<p><br></p>', { restoreSelection: true });
-  }, [commitEditorHtml, prepareEditorImages]);
+  }, [commitEditorHtml, prepareEditorImages, restoreSelectionRange, saveSelectionRange]);
 
   // Hydrate editor when a new/updated document arrives; do not overwrite active edits.
   const recalcEditorMetrics = useCallback(() => {
@@ -775,10 +789,22 @@ export default function EditorPage() {
 
       editorRef.current.focus();
       if (selectedText) {
-        applyCommand('createLink', safeHref);
+        applyExecCommand({
+          container: editorRef.current,
+          command: 'createLink',
+          value: safeHref,
+          before: saveSelectionRange,
+          after: restoreSelectionRange,
+        });
       } else {
         const label = window.prompt('Link text', safeHref) || safeHref;
-        applyCommand('insertHTML', `<a href="${safeHref.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${label.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</a>`);
+        applyExecCommand({
+          container: editorRef.current,
+          command: 'insertHTML',
+          value: `<a href="${safeHref.replace(/"/g, '%22')}" target="_blank" rel="noopener noreferrer">${label.replace(/</g, '&lt;').replace(/>/g, '&gt;')}</a>`,
+          before: saveSelectionRange,
+          after: restoreSelectionRange,
+        });
       }
       setIsDirty(true);
       recalcEditorMetrics();
@@ -807,7 +833,7 @@ export default function EditorPage() {
     wrapper.style.top = `${Math.round(currentTop + dy)}px`;
     setIsDirty(true);
     commitEditorHtml(editorRef.current?.innerHTML || '<p><br></p>', { restoreSelection: true });
-  }, [commitEditorHtml, parsePxStyle, recalcEditorMetrics, selectedImageEl]);
+  }, [commitEditorHtml, parsePxStyle, recalcEditorMetrics, restoreSelectionRange, saveSelectionRange, selectedImageEl]);
 
   useEffect(() => {
     return () => {
@@ -855,20 +881,29 @@ export default function EditorPage() {
     applyCommand('insertHTML', normalizedHtml);
   }, [applyCommand]);
 
-  const handleSave = async () => {
+  const handleSave = useCallback(async () => {
     setIsSaving(true);
     try {
       const html = sanitizeAndNormalizeEditorHtml(editorHtml || editorRef.current?.innerHTML || '<p><br></p>');
       setEditorHtml(html);
       await updateContent(html, pendingFixedGrammarIssueKeys);
       setIsDirty(false);
+      setLastSavedAt(new Date().toLocaleTimeString());
       if (pendingFixedGrammarIssueKeys.length > 0) {
         setPendingFixedGrammarIssueKeys([]);
       }
     } finally {
       setIsSaving(false);
     }
-  };
+  }, [editorHtml, pendingFixedGrammarIssueKeys, updateContent]);
+
+  useEffect(() => {
+    if (!isDirty || isSaving) return;
+    const timer = window.setTimeout(() => {
+      void handleSave();
+    }, 3000);
+    return () => window.clearTimeout(timer);
+  }, [handleSave, isDirty, isSaving]);
 
   const snapshotVersion = useCallback((label = 'Draft Snapshot') => {
     if (!editorRef.current) return;
@@ -968,13 +1003,13 @@ export default function EditorPage() {
     if (!editorRef.current) return;
     const filename = `${doc?.originalFileName || 'document'}.md`;
     exportFile(filename, toMarkdown(editorHtml || editorRef.current.innerHTML), 'text/markdown;charset=utf-8');
-  }, [doc?.originalFileName]);
+  }, [doc?.originalFileName, editorHtml]);
 
   const handleExportHtml = useCallback(() => {
     if (!editorRef.current) return;
     const filename = `${doc?.originalFileName || 'document'}.html`;
     exportFile(filename, editorHtml || editorRef.current.innerHTML, 'text/html;charset=utf-8');
-  }, [doc?.originalFileName]);
+  }, [doc?.originalFileName, editorHtml]);
 
   const handlePublish = useCallback(async () => {
     await handleSave();
@@ -1004,7 +1039,7 @@ export default function EditorPage() {
       setIsDirty(true);
       commitEditorHtml(editorRef.current?.innerHTML || '<p><br></p>', { restoreSelection: true });
     }
-  }, [commitEditorHtml, doc, prepareEditorImages]);
+  }, [applyCommand, commitEditorHtml, doc, prepareEditorImages]);
 
   // Apply a humanization suggestion by replacing the original text in the editor
   const handleApplySuggestion = useCallback((original: string, replacement: string) => {
@@ -1155,7 +1190,7 @@ export default function EditorPage() {
   }
 
   /* ������ Error ������ */
-  if (error || !doc) {
+  if (!doc) {
     return (
       <div className="flex min-h-screen flex-col items-center justify-center gap-4">
         <AlertCircle className="h-12 w-12 text-red-400" />
@@ -1460,7 +1495,10 @@ export default function EditorPage() {
                   </div>
                 )}
                 {isDirty && (
-                  <span className="text-xs text-amber-500">��� Unsaved changes</span>
+                  <span className="text-xs text-amber-500">Unsaved changes</span>
+                )}
+                {!isDirty && lastSavedAt && (
+                  <span className="text-xs text-emerald-600 dark:text-emerald-400">Saved at {lastSavedAt}</span>
                 )}
               </div>
             </div>
@@ -1650,6 +1688,12 @@ export default function EditorPage() {
 
               <div>
                 <div className="bg-slate-50 px-3 py-2 text-xs font-semibold text-slate-600 dark:bg-zinc-800 dark:text-zinc-300">After</div>
+
+            {error && (
+              <div className="mx-auto mt-3 w-full max-w-7xl px-4 sm:px-6">
+                <ErrorBanner message={error} />
+              </div>
+            )}
                 <div className="max-h-[62vh] overflow-auto font-mono text-xs">
                   {compareRows.map((row, idx) => (
                     <div key={`r-${idx}`} className={cn('flex border-b border-slate-100 dark:border-zinc-800', row.changed ? 'bg-emerald-50/70 dark:bg-emerald-950/20' : 'bg-transparent')}>

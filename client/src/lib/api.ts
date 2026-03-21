@@ -26,6 +26,10 @@ import {
   BillingCycle,
   AdminPricingPlanConfig,
   DiscountRequestItem,
+  HumanizerPlans,
+  HumanizerProcessResult,
+  HumanizerHistoryRecord,
+  HumanizerUiMode,
 } from '@/types';
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
@@ -74,7 +78,7 @@ function normalizeDocument(doc: Document): Document {
 const api: AxiosInstance = axios.create({
   baseURL: `${BASE_URL}/api`,
   headers: { 'Content-Type': 'application/json' },
-  timeout: 60_000,
+  timeout: 15_000,
 });
 
 // Attach JWT token from localStorage
@@ -245,6 +249,90 @@ export const analysisApi = {
 
   generateAbstract: async (documentId: string): Promise<DocumentAbstractResult> => {
     const { data } = await api.post<ApiResponse<DocumentAbstractResult>>(`/analyze/${documentId}/abstract`);
+    return unwrap(data);
+  },
+};
+
+export const humanizerApi = {
+  getPlans: async (): Promise<HumanizerPlans> => {
+    const { data } = await api.get<ApiResponse<HumanizerPlans>>('/humanizer/plans');
+    return unwrap(data);
+  },
+
+  process: async (payload: { text: string; mode: HumanizerUiMode }): Promise<HumanizerProcessResult> => {
+    const submit = await api.post('/humanizer/process', payload);
+    const submitBody = submit.data as ApiResponse<unknown> & {
+      jobId?: string;
+      status?: string;
+      data?: unknown;
+    };
+
+    const submitData = (submitBody?.data ?? submitBody) as {
+      jobId?: string;
+      status?: 'processing' | 'done' | 'failed';
+      result?: HumanizerProcessResult;
+      humanizedText?: string;
+    };
+
+    // Backward compatibility: some server versions return immediate result.
+    if (submitData?.humanizedText) {
+      return submitData as HumanizerProcessResult;
+    }
+
+    if (submitData?.result?.humanizedText) {
+      return submitData.result;
+    }
+
+    const jobId = submitData?.jobId || submitBody?.jobId;
+    if (!jobId) {
+      throw new Error('Humanizer did not return a job id or result');
+    }
+
+    const maxAttempts = 90;
+    for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+      const poll = await api.get(`/humanizer/process/${jobId}`);
+      const pollBody = poll.data as ApiResponse<unknown> & {
+        status?: string;
+        result?: HumanizerProcessResult | null;
+        error?: string;
+        data?: unknown;
+      };
+
+      const state = (pollBody?.data ?? pollBody) as {
+        jobId?: string;
+        status?: 'processing' | 'done' | 'failed';
+        result?: HumanizerProcessResult | null;
+        error?: string;
+        humanizedText?: string;
+      };
+
+      // Backward compatibility: endpoint may return direct result payload.
+      if (state?.humanizedText) {
+        return state as HumanizerProcessResult;
+      }
+
+      if (state.status === 'done' && state.result) {
+        return state.result;
+      }
+
+      if (state.status === 'failed') {
+        if (state.result) return state.result;
+        throw new Error(state.error || 'Humanizer job failed');
+      }
+
+      await new Promise((resolve) => setTimeout(resolve, 1000));
+    }
+
+    throw new Error('Humanizer job timed out while waiting for completion.');
+  },
+
+  listHistory: async (limit = 20): Promise<HumanizerHistoryRecord[]> => {
+    const { data } = await api.get<ApiResponse<HumanizerHistoryRecord[]>>('/humanizer/history', { params: { limit } });
+    return unwrap(data);
+  },
+
+  save: async (payload: { originalText: string; humanizedText: string; mode: HumanizerUiMode }): Promise<HumanizerHistoryRecord> => {
+    const { data } = await api.post<ApiResponse<HumanizerHistoryRecord>>('/humanizer/save', payload);
     return unwrap(data);
   },
 };

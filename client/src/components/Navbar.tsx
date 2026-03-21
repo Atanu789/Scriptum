@@ -4,13 +4,14 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useAuth } from '@/context/AuthContext';
 import { useTheme } from '@/components/providers/ThemeProvider';
-import { BookOpen, LayoutDashboard, Upload, LogOut, Menu, X, Sun, Moon } from 'lucide-react';
+import { BookOpen, LayoutDashboard, Upload, LogOut, Menu, X, Sun, Moon, Wand2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useState } from 'react';
 
 const NAV_ITEMS = [
   { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
   { href: '/upload', label: 'Upload', icon: Upload },
+  { href: '/humanizer', label: 'Humanizer', icon: Wand2 },
 ];
 
 function UserAvatar({ name }: { name?: string }) {

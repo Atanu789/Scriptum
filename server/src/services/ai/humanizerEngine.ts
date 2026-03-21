@@ -1,11 +1,12 @@
 import { HumanizeMode } from '../../types';
-import { callGemini } from './geminiClient';
+import { runAI } from '../aiRouter';
 
 type StyleProfile = 'student' | 'journalist' | 'casual-speaker' | 'academic';
 
 interface HumanizerOptions {
   mode: HumanizeMode;
   styleProfile?: StyleProfile;
+  pipelinePreset?: 'standard' | 'creative' | 'advanced';
 }
 
 interface EvaluationResult {
@@ -264,6 +265,16 @@ function shufflePassOrder(): PassDef[] {
   return passes;
 }
 
+function selectPasses(preset: 'standard' | 'creative' | 'advanced'): PassDef[] {
+  if (preset === 'standard') {
+    return [PASS_LIBRARY[0], PASS_LIBRARY[4]];
+  }
+  if (preset === 'creative') {
+    return [PASS_LIBRARY[0], PASS_LIBRARY[1], PASS_LIBRARY[2], PASS_LIBRARY[4]];
+  }
+  return shufflePassOrder();
+}
+
 function buildPassPrompt(chunk: string, pass: PassDef, mode: HumanizeMode, styleProfile?: StyleProfile): string {
   const variant = chooseVariant(pass.variants);
   return [
@@ -296,8 +307,14 @@ async function runPass(chunk: string, pass: PassDef, mode: HumanizeMode, stylePr
   const prompt = buildPassPrompt(chunk, pass, mode, styleProfile);
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
-      const out = await callGemini(prompt, { temperature: pass.id === 5 ? 0.5 : 0.8, preferKeyIndex: keyOffset + attempt });
-      const cleaned = cleanGeminiText(out);
+      const ai = await runAI({
+        prompt,
+        temperature: pass.id === 5 ? 0.5 : 0.8,
+        maxTokens: 900,
+        forceFresh: attempt > 0,
+      });
+      if (!ai.success || !ai.text) continue;
+      const cleaned = cleanGeminiText(ai.text);
       if (cleaned && cleaned.length >= Math.max(16, Math.floor(chunk.length * 0.5))) {
         return cleaned;
       }
@@ -340,15 +357,24 @@ async function evaluateText(text: string, keyOffset: number): Promise<Evaluation
   ].join('\n');
 
   try {
-    const raw = await callGemini(prompt, { temperature: 0.2, preferKeyIndex: keyOffset });
-    return parseEvaluation(raw);
+    const ai = await runAI({
+      prompt,
+      temperature: 0.2,
+      maxTokens: 300,
+      forceFresh: keyOffset > 0,
+    });
+    if (!ai.success || !ai.text) {
+      return { score: 50, reason: 'Evaluation failed; fallback score applied.' };
+    }
+    return parseEvaluation(ai.text);
   } catch {
     return { score: 50, reason: 'Evaluation failed; fallback score applied.' };
   }
 }
 
 async function humanizeChunk(chunk: string, options: HumanizerOptions, keyOffset: number): Promise<string> {
-  const passOrder = shufflePassOrder();
+  const preset = options.pipelinePreset ?? 'advanced';
+  const passOrder = selectPasses(preset);
   let current = chunk;
 
   for (let i = 0; i < passOrder.length; i += 1) {
@@ -472,7 +498,8 @@ export async function humanizeDocumentText(inputText: string, options: Humanizer
   let evaluation = await evaluateText(assembled, keyOffset);
   let retryCount = 0;
 
-  while (evaluation.score > 40 && retryCount < 2) {
+  const allowRetry = (options.pipelinePreset ?? 'advanced') === 'advanced';
+  while (allowRetry && evaluation.score > 40 && retryCount < 2) {
     const retryBlocks = toBlocks(assembled);
     for (let i = 0; i < retryBlocks.length; i += 1) {
       const block = retryBlocks[i];

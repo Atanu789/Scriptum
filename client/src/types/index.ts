@@ -351,6 +351,7 @@ export interface AnalysisResult {
   grammarScore:        number;
   grammarIssues:       GrammarIssue[];
   readabilityScore:    number;
+  toneScore?:          number;
   wordCount:           number;
   sentenceCount:       number;
   analyzedAt:          string;
@@ -387,6 +388,54 @@ export interface DocumentAbstractResult {
   documentId: string;
   abstract: string;
   keyPoints: string[];
+}
+
+export type HumanizerUiMode = 'standard' | 'creative' | 'advanced';
+
+export interface HumanizerPlanLimits {
+  maxWordsPerRequest: number;
+  maxRequestsPerDay: number;
+  maxWordsPerDay: number;
+}
+
+export interface HumanizerPlans {
+  free: HumanizerPlanLimits;
+  pro: HumanizerPlanLimits;
+  advanced: HumanizerPlanLimits;
+}
+
+export interface HumanizerUsageToday {
+  requestsUsed: number;
+  wordsProcessed: number;
+}
+
+export interface HumanizerProcessResult {
+  id?: string;
+  originalText: string;
+  humanizedText: string;
+  wordCount: number;
+  mode: HumanizerUiMode;
+  quality: 'high' | 'medium' | 'low';
+  aiLikelihoodScore: number;
+  notes: string[];
+  cached: boolean;
+  processingMs?: number;
+  planTier: 'free' | 'pro' | 'advanced';
+  limits: HumanizerPlanLimits;
+  usageToday: HumanizerUsageToday;
+}
+
+export interface HumanizerHistoryRecord {
+  _id: string;
+  mode: HumanizerUiMode;
+  originalText: string;
+  humanizedText: string;
+  wordCount: number;
+  quality: 'high' | 'medium' | 'low';
+  aiLikelihoodScore: number;
+  notes: string[];
+  processingMs: number;
+  createdAt: string;
 }
 
 // ─── Audio ───────────────────────────────────────────────────────────────────

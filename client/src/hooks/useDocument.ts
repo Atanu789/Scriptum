@@ -33,8 +33,17 @@ function sanitizeDoc(doc: Document): Document {
 }
 
 function sanitizeAnalysis(a: AnalysisResult): AnalysisResult {
+  const resolvedTone = a.tone ?? {
+    dominantTone: 'neutral',
+    confidence: Math.max(0, Math.min(1, (a.toneScore ?? 50) / 100)),
+    breakdown: { neutral: 1 },
+    biasFlags: [],
+  };
+
   return {
     ...a,
+    readabilityScore: a.readabilityScore ?? 0,
+    tone: resolvedTone,
     aiReasoning:      a.aiReasoning      ? sanitize(a.aiReasoning) : a.aiReasoning,
     humanizationTips: a.humanizationTips?.map(sanitize),
     claimFlags:       a.claimFlags       ?? [],
@@ -115,20 +124,53 @@ export function useDocument(documentId: string): UseDocumentReturn {
   const analyze = useCallback(async () => {
     if (!documentId) return;
     setIsAnalyzing(true);
+    setError(null);
     const toastId = toast.loading('Running AI analysis…');
     try {
       const result = await analysisApi.analyze(documentId, true);
-      const normalizedResult: AnalysisResult = {
+      let normalizedResult: AnalysisResult = {
         ...result,
         aiScore: normalizeAiScore(result.aiScore, 0),
+        readabilityScore: result.readabilityScore ?? 0,
+        toneScore: result.toneScore ?? 50,
+        tone: result.tone ?? {
+          dominantTone: 'neutral',
+          confidence: Math.max(0, Math.min(1, (result.toneScore ?? 50) / 100)),
+          breakdown: { neutral: 1 },
+          biasFlags: [],
+        },
       };
+
+      if (normalizedResult.aiScore === null || normalizedResult.aiScore <= 0) {
+        setError('AI temporarily busy, retrying...');
+        const retry = await analysisApi.analyze(documentId, true);
+        normalizedResult = {
+          ...retry,
+          aiScore: normalizeAiScore(retry.aiScore, 0),
+          readabilityScore: retry.readabilityScore ?? 0,
+          toneScore: retry.toneScore ?? 50,
+          tone: retry.tone ?? {
+            dominantTone: 'neutral',
+            confidence: Math.max(0, Math.min(1, (retry.toneScore ?? 50) / 100)),
+            breakdown: { neutral: 1 },
+            biasFlags: [],
+          },
+        };
+      }
+
+      if (normalizedResult.aiScore === null || normalizedResult.aiScore <= 0) {
+        throw new Error('AI analysis failed. Please retry.');
+      }
+
       console.log('[useDocument] Fresh analysis result. aiScore:', normalizedResult.aiScore);
       setAnalysis(sanitizeAnalysis(normalizedResult));
+      setError(null);
       toast.success('Analysis complete', { id: toastId });
       // Refresh doc to get updated status
       await refresh();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'Analysis failed';
+      setError('AI analysis failed. Please retry.');
       toast.error(msg, { id: toastId });
       if (typeof window !== 'undefined' && (msg.toLowerCase().includes('ai analysis limit') || msg.toLowerCase().includes('monthly ai analysis limit') || msg.toLowerCase().includes('upgrade to pro'))) {
         window.location.href = '/pricing';

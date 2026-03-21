@@ -62,11 +62,11 @@ const ScriptRenderer = memo(function ScriptRenderer({
   return (
     <div
       ref={containerRef}
-      className="relative h-full overflow-y-auto px-6 py-14 leading-[1.9] focus:outline-none"
+      className="relative h-full overflow-y-auto px-6 pt-3 pb-24 leading-[1.9] focus:outline-none"
       style={{ fontSize: `${fontSize}px` }}
       tabIndex={-1}
     >
-      <div className="mx-auto max-w-3xl select-none" aria-live="off">
+      <div className="mx-auto max-w-5xl select-none" aria-live="off">
         {visibleTokens.map((token) => {
   return (
     <React.Fragment key={token.index}>
@@ -111,6 +111,7 @@ interface ControlsProps {
   isManualPlaying: boolean;
   speed:           number;
   fontSize:        number;
+  voiceMode:       'system' | 'ai';
   onStartTTS:      () => void;
   onPauseTTS:      () => void;
   onResumeTTS:     () => void;
@@ -121,6 +122,7 @@ interface ControlsProps {
   onReset:         () => void;
   onSpeedChange:   (v: number) => void;
   onFontSizeChange:(v: number) => void;
+  onVoiceModeChange: (v: 'system' | 'ai') => void;
 }
 
 function Controls({
@@ -131,9 +133,11 @@ function Controls({
   readingMode, onReadingModeChange,
   activeMode, ttsStatus, syncStatus, isManualPlaying,
   speed, fontSize,
+  voiceMode,
   onStartTTS, onPauseTTS, onResumeTTS, onStopTTS,
   onStartMic, onStopMic, onToggleManual, onReset,
   onSpeedChange, onFontSizeChange,
+  onVoiceModeChange,
 }: ControlsProps) {
 
   const isTTSLoading = ttsStatus === 'loading';
@@ -185,6 +189,30 @@ function Controls({
           )}
         >
           Presenter Reading
+        </button>
+      </div>
+
+      <div className="h-5 w-px bg-white/20" />
+
+      {/* ── Voice Mode ────────────────────────────────────────────── */}
+      <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+        <button
+          onClick={() => onVoiceModeChange('system')}
+          className={cn(
+            'rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors',
+            voiceMode === 'system' ? 'bg-indigo-600 text-white' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/85',
+          )}
+        >
+          System Voice
+        </button>
+        <button
+          onClick={() => onVoiceModeChange('ai')}
+          className={cn(
+            'rounded-lg px-2.5 py-1 text-[11px] font-semibold transition-colors',
+            voiceMode === 'ai' ? 'bg-indigo-600 text-white' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/85',
+          )}
+        >
+          AI Voice (soon)
         </button>
       </div>
 
@@ -357,6 +385,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   const [speed,           setSpeed]           = useState(3);
   const [fontSize,        setFontSize]        = useState(26);
   const [renderedCount,   setRenderedCount]   = useState(0);
+  const [voiceMode, setVoiceMode] = useState<'system' | 'ai'>('system');
 
   // ── Refs ───────────────────────────────────────────────────────────────────
   const containerRef       = useRef<HTMLDivElement>(null);
@@ -378,19 +407,6 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       .replace(/(^|\s)0+(?=[A-Za-z])/g, '$1');
   }, [script]);
   const tokens = useScriptTokens(cleanedScript);
-  const wordCount = useMemo(() => {
-    const words = cleanedScript.trim().split(/\s+/).filter(Boolean);
-    return words.length;
-  }, [cleanedScript]);
-
-  const readingTimes = useMemo(() => {
-    const toMinutes = (wpm: number) => (wordCount > 0 ? Number((wordCount / wpm).toFixed(1)) : 0);
-    return {
-      slow: toMinutes(150),
-      normal: toMinutes(180),
-      fast: toMinutes(200),
-    };
-  }, [wordCount]);
 
   const sentenceIndexByToken = useMemo(() => {
     if (tokens.length === 0) return [] as number[];
@@ -520,6 +536,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   const { start: ttsStart, pause: ttsPause, resume: ttsResume, stop: ttsStop } = useTTSPlayback({
     tokens,
     script,
+    voiceMode,
     onPointerChange: advancePointer,
     onStatusChange: (s) => {
       setTTSStatus(s);
@@ -653,19 +670,11 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
 
       {/* Title bar */}
       {documentTitle && (
-        <div className="flex flex-wrap items-center gap-3 border-b border-white/[0.04] px-5 py-2">
+        <div className="flex flex-wrap items-center gap-3 border-b border-white/[0.04] px-5 py-1.5">
           <span className="truncate text-xs text-white/25">{documentTitle}</span>
-          <div className="ml-auto flex flex-wrap items-center gap-2">
-            <div className="rounded-lg border border-white/10 bg-white/[0.02] px-2.5 py-1 text-[10px] text-white/70">
-              <p className="font-semibold">Words: {wordCount}</p>
-              <p>Slow (150 wpm): {readingTimes.slow} min</p>
-              <p>Normal (180 wpm): {readingTimes.normal} min</p>
-              <p>Fast (200 wpm): {readingTimes.fast} min</p>
-            </div>
-            <span className="rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-indigo-400 ring-1 ring-indigo-500/20">
-              Teleprompter
-            </span>
-          </div>
+          <span className="ml-auto rounded-full bg-indigo-500/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-widest text-indigo-400 ring-1 ring-indigo-500/20">
+            Teleprompter
+          </span>
         </div>
       )}
 
@@ -695,30 +704,34 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       </div>
 
       {/* Controls */}
-      <Controls
-        isPremium={isPremium}
-        hasNarrationTrial={canUseNarrationTrial}
-        canUsePremiumAI={canUsePremiumAI}
-        onGoPremium={() => { window.location.href = '/pricing'; }}
-        readingMode={readingMode}
-        onReadingModeChange={handleReadingModeChange}
-        activeMode={activeMode}
-        ttsStatus={ttsStatus}
-        syncStatus={syncStatus}
-        isManualPlaying={isManualPlaying}
-        speed={speed}
-        fontSize={fontSize}
-        onStartTTS={handleStartTTS}
-        onPauseTTS={handlePauseTTS}
-        onResumeTTS={handleResumeTTS}
-        onStopTTS={handleStopTTS}
-        onStartMic={handleStartMic}
-        onStopMic={handleStopMic}
-        onToggleManual={handleToggleManual}
-        onReset={handleReset}
-        onSpeedChange={setSpeed}
-        onFontSizeChange={setFontSize}
-      />
+      <div className="sticky bottom-0 z-30 mt-auto">
+        <Controls
+          isPremium={isPremium}
+          hasNarrationTrial={canUseNarrationTrial}
+          canUsePremiumAI={canUsePremiumAI}
+          onGoPremium={() => { window.location.href = '/pricing'; }}
+          readingMode={readingMode}
+          onReadingModeChange={handleReadingModeChange}
+          activeMode={activeMode}
+          ttsStatus={ttsStatus}
+          syncStatus={syncStatus}
+          isManualPlaying={isManualPlaying}
+          speed={speed}
+          fontSize={fontSize}
+          voiceMode={voiceMode}
+          onStartTTS={handleStartTTS}
+          onPauseTTS={handlePauseTTS}
+          onResumeTTS={handleResumeTTS}
+          onStopTTS={handleStopTTS}
+          onStartMic={handleStartMic}
+          onStopMic={handleStopMic}
+          onToggleManual={handleToggleManual}
+          onReset={handleReset}
+          onSpeedChange={setSpeed}
+          onFontSizeChange={setFontSize}
+          onVoiceModeChange={setVoiceMode}
+        />
+      </div>
     </div>
   );
 }
