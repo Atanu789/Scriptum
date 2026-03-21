@@ -1,7 +1,15 @@
 import { Response, NextFunction } from 'express';
+import crypto from 'crypto';
 import { AuthenticatedRequest } from '../types';
 import User, { Plan } from '../models/User';
+import DocumentModel from '../models/Document';
 import { PLAN_LIMITS } from '../services/razorpayService';
+
+const ANALYSIS_CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+
+function hashText(text: string): string {
+  return crypto.createHash('sha256').update(text).digest('hex').slice(0, 16);
+}
 
 type PlanLimitShape = typeof PLAN_LIMITS['free'];
 type FeatureKey = {
@@ -124,6 +132,34 @@ export async function checkAIUsage(
       user.aiUsageThisMonth = 0;
       user.aiUsageResetAt   = now;
       usageMutated = true;
+    }
+
+    // Do not charge usage when this analyze request would be served from cache.
+    const isAnalyzeRequest = req.method === 'POST' && /^\/[^/]+$/.test(req.path || '');
+    const isForced = req.query.force === '1';
+    const docId = req.params?.id;
+    if (isAnalyzeRequest && docId && !isForced) {
+      const doc = await DocumentModel.findOne({ _id: docId, userId })
+        .select('cleanedText contentHash analysisRunAt aiScore')
+        .lean();
+
+      if (doc) {
+        const sourceText = typeof doc.cleanedText === 'string' ? doc.cleanedText : '';
+        const newHash = hashText(sourceText);
+        const isCacheHit =
+          doc.contentHash === newHash &&
+          doc.analysisRunAt !== null &&
+          Date.now() - new Date(doc.analysisRunAt).getTime() < ANALYSIS_CACHE_TTL_MS &&
+          doc.aiScore !== null;
+
+        if (isCacheHit) {
+          if (usageMutated) {
+            await user.save();
+          }
+          next();
+          return;
+        }
+      }
     }
 
     const effectivePlan = resolveEffectivePlan(user.plan, user.planExpiryDate);

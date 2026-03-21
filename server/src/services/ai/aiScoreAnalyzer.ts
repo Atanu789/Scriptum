@@ -399,7 +399,7 @@ export async function analyzeAIScore(text: string): Promise<AIScoreResult> {
   const prompt = buildMasterPrompt(sample);
 
   const fallback: AIScoreResult = {
-    aiScore: 0,
+    aiScore: 50,
     aiReasoning: 'Analysis unavailable. Using safe fallback output.',
     humanizationTips: ensureSpecificTips([]),
     humanizationSuggestions: [],

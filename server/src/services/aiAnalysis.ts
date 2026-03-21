@@ -1,15 +1,21 @@
 import { AnalysisResult } from '../types';
 import { checkGrammar, computeGrammarScore } from './grammarCheck';
-import { runAI } from './aiRouter';
 import { parseAIResponse, ParsedAIResponse } from '../utils/parseAIResponse';
 import { detectTone } from '../utils/tone';
+import { runAI } from './aiEngine';
 
 const MIN_CHARS = 50;
 const MAX_CHARS = 100_000;
 const MAX_GRAMMAR_CHARS = 10_000;
-const ANALYSIS_RETRY_ATTEMPTS = 2;
 const SAMPLE_CHUNK_SIZE = 1000;
 const LARGE_TEXT_THRESHOLD = 7000;
+
+function normalizeScore(value: unknown): number {
+  const score = Number(value);
+  if (!Number.isFinite(score)) return 50;
+  const clamped = Math.max(0, Math.min(100, Math.round(score)));
+  return clamped === 0 ? 1 : clamped;
+}
 
 function splitText(text: string, size: number): string[] {
   const out: string[] = [];
@@ -51,47 +57,31 @@ function buildUnifiedPrompt(text: string): string {
   ].join('\n');
 }
 
-async function runAnalysisWithRetry(prompt: string, userId?: string): Promise<{ parsed: ParsedAIResponse; provider: string }> {
-  let lastFailureMessage = 'AI failed to generate valid response';
+async function runAnalysisWithRetry(prompt: string): Promise<{ parsed: ParsedAIResponse | null; provider: string; warning?: string }> {
+  const ai = await runAI(prompt);
+  console.log('AI Provider:', ai.provider);
 
-  for (let attempt = 1; attempt <= ANALYSIS_RETRY_ATTEMPTS; attempt += 1) {
-    const aiRes = await runAI({
-      prompt,
-      userId,
-      modelPreferences: {
-        groq: ['llama-3.1-8b-instant'],
-        openrouter: ['openrouter/auto'],
-      },
-      temperature: 0.2,
-      maxTokens: 900,
-      forceFresh: attempt > 1,
-      validateResult: (text) => {
-        const parsed = parseAIResponse(text);
-        return Boolean(parsed && parsed.score > 0);
-      },
-    });
-
-    if (!aiRes.success || !aiRes.text) {
-      if (aiRes.message) {
-        lastFailureMessage = aiRes.message;
-      }
-      continue;
-    }
-
-    console.log('RAW AI RESPONSE:', aiRes.text);
-    const parsed = parseAIResponse(aiRes.text);
-
-    if (parsed && parsed.score > 0) {
-      return {
-        parsed,
-        provider: aiRes.provider || 'unknown',
-      };
-    }
-
-    console.warn(`[Analysis] Invalid AI response, retrying... attempt ${attempt}`);
+  if (!ai.result) {
+    return {
+      parsed: null,
+      provider: ai.provider,
+      warning: 'AI temporarily unavailable',
+    };
   }
 
-  throw new Error(lastFailureMessage);
+  const parsed = parseAIResponse(ai.result);
+  if (!parsed) {
+    return {
+      parsed: null,
+      provider: ai.provider,
+      warning: 'AI returned malformed output',
+    };
+  }
+
+  return {
+    parsed,
+    provider: ai.provider,
+  };
 }
 
 export async function analyzeDocument(text: string, userId?: string): Promise<AnalysisResult> {
@@ -108,14 +98,16 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
 
   const [grammarIssues, aiOut] = await Promise.all([
     checkGrammar(sampledText.slice(0, MAX_GRAMMAR_CHARS)),
-    runAnalysisWithRetry(prompt, userId),
+    runAnalysisWithRetry(prompt),
   ]);
 
   const parsed = aiOut.parsed;
-  const aiScore = parsed.score;
-  const aiSuggestions = parsed.suggestions;
-  const aiReasoning = `AI router (${aiOut.provider}) score generated. Readability: ${parsed.readability}`;
-  const improvedText = parsed.improvedText;
+  const aiSuggestions = parsed?.suggestions ?? [];
+  const aiReasoning = parsed
+    ? `AI engine (${aiOut.provider}) score generated. Readability: ${parsed.readability}`
+    : `AI engine (${aiOut.provider}) fallback used. ${aiOut.warning || 'AI temporarily unavailable.'}`;
+  const improvedText = parsed?.improvedText ?? sampledText;
+  const aiScore = normalizeScore(parsed?.score ?? 50);
   const fallbackTips = [
     'Break long sentences into shorter, natural lines.',
     'Vary sentence openings and transitions to reduce repetition.',
@@ -144,7 +136,7 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
     aiReasoning,
     humanizationTips,
     humanizationSuggestions,
-    claimFlags: parsed.grammarIssues.slice(0, 10),
+    claimFlags: (parsed?.grammarIssues ?? []).slice(0, 10),
     grammarIssues,
     grammarScore,
     readabilityScore,

@@ -299,7 +299,7 @@ function buildLimitedAnalysisPayload(documentId: string, sourceText: string, fal
 
   return {
     documentId,
-    aiScore: 0,
+    aiScore: 50,
     aiReasoning: limitReason || 'AI rate limit reached. Returning lightweight fallback analysis.',
     humanizationTips: [],
     humanizationSuggestions: [],
@@ -369,6 +369,9 @@ export const analyzeDocument = async (
     return;
   }
 
+  let sourceTextForFallback = '';
+  let fallbackWordCount: number | undefined;
+
   try {
     const doc = await DocumentModel.findOne({
       _id: id,
@@ -381,6 +384,8 @@ export const analyzeDocument = async (
     }
 
     const sourceText = typeof doc.cleanedText === 'string' ? doc.cleanedText : '';
+    sourceTextForFallback = sourceText;
+    fallbackWordCount = doc.wordCount ?? undefined;
     if (!sourceText.trim()) {
       res.status(400).json({ success: false, error: 'Document text is empty' });
       return;
@@ -442,11 +447,20 @@ export const analyzeDocument = async (
     await DocumentModel.findByIdAndUpdate(id, { status: 'processing' });
 
     const analysis = await runAnalysis(sourceText, userId);
-    if (analysis.aiScore === null || analysis.aiScore <= 0) {
+    if (analysis.aiScore === null || !Number.isFinite(analysis.aiScore) || analysis.aiScore < 0) {
       await DocumentModel.findByIdAndUpdate(id, { status: 'pending' }).catch(() => {});
-      res.status(503).json({
-        success: false,
-        error: 'AI failed to generate valid response',
+      const limitedResult = buildLimitedAnalysisPayload(
+        id,
+        sourceText,
+        doc.wordCount ?? undefined,
+        'AI output could not be validated. Showing fallback analysis.'
+      );
+      res.json({
+        success: true,
+        cached: false,
+        limited: true,
+        data: limitedResult,
+        message: 'AI output could not be validated. Showing fallback analysis.',
       });
       return;
     }
@@ -528,6 +542,19 @@ export const analyzeDocument = async (
         lower.includes('document text is empty');
 
       if (isAiTransient) {
+        const fallbackText = sourceTextForFallback.trim();
+        if (fallbackText) {
+          const limitedResult = buildLimitedAnalysisPayload(id, fallbackText, fallbackWordCount, message);
+          res.json({
+            success: true,
+            cached: false,
+            limited: true,
+            data: limitedResult,
+            message,
+          });
+          return;
+        }
+
         res.status(503).json({ success: false, error: message });
         return;
       }
@@ -591,14 +618,14 @@ export const humanizeDetectedText = async (
         originalText: sourceText,
         appliedRewrites: [],
         cleanedText: sourceText,
-        aiLikelihoodScore: 0,
+        aiLikelihoodScore: 50,
         quality: 'medium',
         notes: ['AI rate limit reached. Returning original text.'],
         evaluationReason: req.aiLimitReason || 'AI rate limit reached',
         limited: true,
         limitReason: req.aiLimitReason || 'AI rate limit reached. Returning original text.',
         analysis: {
-          aiScore: 0,
+          aiScore: 50,
           analyzedAt: now,
         },
       };

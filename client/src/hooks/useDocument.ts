@@ -57,6 +57,23 @@ function sanitizeAnalysis(a: AnalysisResult): AnalysisResult {
   };
 }
 
+function resolveLimitedNotice(limitReason?: string): string {
+  const message = (limitReason || '').trim();
+  if (!message) return 'Analysis is running in fallback mode.';
+  const lower = message.toLowerCase();
+  if (lower.includes('monthly ai analysis limit')) {
+    return 'Free limit reached - showing basic results.';
+  }
+  if (
+    lower.includes('failed to generate valid response') ||
+    lower.includes('could not be validated') ||
+    lower.includes('ai temporarily unavailable')
+  ) {
+    return 'AI is temporarily unstable. Showing fallback analysis.';
+  }
+  return message;
+}
+
 interface UseDocumentReturn {
   document: Document | null;
   isLoading: boolean;
@@ -131,7 +148,7 @@ export function useDocument(documentId: string): UseDocumentReturn {
     setAiLimitedNotice(null);
     const toastId = toast.loading('Running AI analysis…');
     try {
-      const result = await analysisApi.analyze(documentId, true);
+      const result = await analysisApi.analyze(documentId, false);
       let normalizedResult: AnalysisResult = {
         ...result,
         aiScore: normalizeAiScore(result.aiScore, 0),
@@ -145,9 +162,9 @@ export function useDocument(documentId: string): UseDocumentReturn {
         },
       };
 
-      if (!normalizedResult.limited && (normalizedResult.aiScore === null || normalizedResult.aiScore <= 0)) {
+      if (!normalizedResult.limited && (normalizedResult.aiScore === null || normalizedResult.aiScore < 0)) {
         setError('AI temporarily busy, retrying...');
-        const retry = await analysisApi.analyze(documentId, true);
+        const retry = await analysisApi.analyze(documentId, false);
         normalizedResult = {
           ...retry,
           aiScore: normalizeAiScore(retry.aiScore, 0),
@@ -162,16 +179,16 @@ export function useDocument(documentId: string): UseDocumentReturn {
         };
       }
 
-      if (!normalizedResult.limited && (normalizedResult.aiScore === null || normalizedResult.aiScore <= 0)) {
+      if (!normalizedResult.limited && (normalizedResult.aiScore === null || normalizedResult.aiScore < 0)) {
         throw new Error('AI analysis failed. Please retry.');
       }
 
       console.log('[useDocument] Fresh analysis result. aiScore:', normalizedResult.aiScore);
       setAnalysis(sanitizeAnalysis(normalizedResult));
       if (normalizedResult.limited) {
-        const notice = normalizedResult.limitReason || 'Free limit reached - showing basic results.';
+        const notice = resolveLimitedNotice(normalizedResult.limitReason);
         setAiLimitedNotice(notice);
-        toast.success('Free limit reached - showing basic results.', { id: toastId });
+        toast.success(notice, { id: toastId });
       } else {
         setAiLimitedNotice(null);
         toast.success('Analysis complete', { id: toastId });
@@ -233,7 +250,7 @@ export function useDocument(documentId: string): UseDocumentReturn {
       }
 
       if (result.limited) {
-        setAiLimitedNotice(result.limitReason || 'Free limit reached - showing basic results.');
+        setAiLimitedNotice(resolveLimitedNotice(result.limitReason));
       }
 
       await refresh();

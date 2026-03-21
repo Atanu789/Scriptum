@@ -426,7 +426,7 @@ export async function humanizeDocumentText(inputText: string, options: Humanizer
   if (!normalized) {
     return {
       humanizedText: '',
-      aiLikelihoodScore: 0,
+      aiLikelihoodScore: 50,
       quality: 'high',
       notes: ['No text to process.'],
       evaluationReason: 'Empty input.',

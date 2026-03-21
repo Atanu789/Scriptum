@@ -67,11 +67,12 @@ app.options('*', cors(corsOptions));
 
 
 // 🔥 FORCE HANDLE PREFLIGHT (CRITICAL)
-app.use((req, res, next) => {
+app.use((req, res, next): void => {
   if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
+    res.sendStatus(200);
+  } else {
+    next();
   }
-  next();
 });
 
 
