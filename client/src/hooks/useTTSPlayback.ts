@@ -15,6 +15,7 @@ export interface UseTTSPlaybackOptions {
   onStatusChange: (status: TTSStatus) => void;
   onError: (msg: string) => void;
   voiceMode?: 'system' | 'ai';
+  narrationSpeed?: number;
 }
 
 export interface UseTTSPlaybackReturn {
@@ -62,6 +63,7 @@ export function useTTSPlayback({
   onStatusChange,
   onError,
   voiceMode = 'system',
+  narrationSpeed = 1,
 }: UseTTSPlaybackOptions): UseTTSPlaybackReturn {
   const synthRef = useRef<SpeechSynthesis | null>(null);
   const queueRef = useRef<Chunk[]>([]);
@@ -72,25 +74,60 @@ export function useTTSPlayback({
   const onPointerRef = useRef(onPointerChange);
   const onStatusRef = useRef(onStatusChange);
   const onErrorRef = useRef(onError);
+  const narrationSpeedRef = useRef(narrationSpeed);
+  const fallbackTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const fallbackChunkStartRef = useRef(0);
+  const fallbackChunkLengthRef = useRef(0);
+  const fallbackWordOffsetRef = useRef(0);
+  const lastBoundaryAtRef = useRef(0);
 
   useEffect(() => { onPointerRef.current = onPointerChange; }, [onPointerChange]);
   useEffect(() => { onStatusRef.current = onStatusChange; }, [onStatusChange]);
   useEffect(() => { onErrorRef.current = onError; }, [onError]);
+  useEffect(() => { narrationSpeedRef.current = narrationSpeed; }, [narrationSpeed]);
 
   const setStatus = useCallback((status: TTSStatus) => {
     statusRef.current = status;
     onStatusRef.current(status);
   }, []);
 
+  const clearFallbackTimer = useCallback(() => {
+    if (fallbackTimerRef.current) {
+      clearInterval(fallbackTimerRef.current);
+      fallbackTimerRef.current = null;
+    }
+  }, []);
+
+  const startFallbackTimer = useCallback((chunkStart: number, chunkLength: number, wordMs: number) => {
+    clearFallbackTimer();
+    fallbackChunkStartRef.current = chunkStart;
+    fallbackChunkLengthRef.current = chunkLength;
+    fallbackWordOffsetRef.current = 0;
+    lastBoundaryAtRef.current = Date.now();
+
+    fallbackTimerRef.current = setInterval(() => {
+      if (!isActiveRef.current) return;
+      if (statusRef.current !== 'playing') return;
+      if (fallbackWordOffsetRef.current >= Math.max(0, fallbackChunkLengthRef.current - 1)) return;
+
+      // Let real boundary events lead; fallback only when boundaries go quiet.
+      if (Date.now() - lastBoundaryAtRef.current < Math.max(700, wordMs * 2)) return;
+
+      fallbackWordOffsetRef.current += 1;
+      onPointerRef.current(fallbackChunkStartRef.current + fallbackWordOffsetRef.current);
+    }, Math.max(140, wordMs));
+  }, [clearFallbackTimer]);
+
   const stop = useCallback(() => {
     isActiveRef.current = false;
     chunkIndexRef.current = 0;
     queueRef.current = [];
+    clearFallbackTimer();
     if (synthRef.current) {
       synthRef.current.cancel();
     }
     setStatus('idle');
-  }, [setStatus]);
+  }, [clearFallbackTimer, setStatus]);
 
   const speakNext = useCallback(() => {
     if (!isActiveRef.current) return;
@@ -115,12 +152,15 @@ export function useTTSPlayback({
     const utterance = new SpeechSynthesisUtterance(chunk.text);
     const tokenStartOffsets = getTokenStartOffsets(chunk);
     const wordDuration = 60 / AVG_WPM;
-    utterance.rate = Math.max(0.8, Math.min(1.4, 0.45 / wordDuration));
+    const clampedNarrationSpeed = Math.max(0.7, Math.min(1.8, narrationSpeedRef.current));
+    utterance.rate = clampedNarrationSpeed;
+    const effectiveWordMs = Math.round((wordDuration * 1000) / utterance.rate);
     utterance.pitch = 1;
 
     utterance.onstart = () => {
       setStatus('playing');
       onPointerRef.current(chunk.start);
+      startFallbackTimer(chunk.start, chunk.tokens.length, effectiveWordMs);
     };
 
     utterance.onboundary = (event) => {
@@ -135,23 +175,27 @@ export function useTTSPlayback({
           break;
         }
       }
+      lastBoundaryAtRef.current = Date.now();
+      fallbackWordOffsetRef.current = Math.max(fallbackWordOffsetRef.current, offset);
       onPointerRef.current(chunk.start + offset);
     };
 
     utterance.onerror = () => {
+      clearFallbackTimer();
       setStatus('error');
       onErrorRef.current('System voice playback failed.');
       isActiveRef.current = false;
     };
 
     utterance.onend = () => {
+      clearFallbackTimer();
       onPointerRef.current(chunk.start + Math.max(0, chunk.tokens.length - 1));
       chunkIndexRef.current += 1;
       speakNext();
     };
 
     synth.speak(utterance);
-  }, [setStatus]);
+  }, [clearFallbackTimer, setStatus, startFallbackTimer]);
 
   const start = useCallback(async (): Promise<void> => {
     if (voiceMode === 'ai') {
@@ -184,12 +228,14 @@ export function useTTSPlayback({
   const pause = useCallback(() => {
     if (!synthRef.current || !isActiveRef.current) return;
     synthRef.current.pause();
+    clearFallbackTimer();
     setStatus('paused');
-  }, [setStatus]);
+  }, [clearFallbackTimer, setStatus]);
 
   const resume = useCallback(() => {
     if (!synthRef.current || !isActiveRef.current) return;
     synthRef.current.resume();
+    lastBoundaryAtRef.current = Date.now();
     setStatus('playing');
   }, [setStatus]);
 

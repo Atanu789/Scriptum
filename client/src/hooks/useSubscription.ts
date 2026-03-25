@@ -60,13 +60,18 @@ export function useSubscription() {
   const uploadBlocked = uploadLimitReached && !hasUploadOverageTrial;
   const aiBlocked = aiLimitReached && !hasAiOverageTrial;
 
+  // Be resilient to partial limits payloads for paid users.
+  // If plan is Pro and a feature flag is missing, default to enabled.
+  const proTeleprompterAI = isPremium && (limits?.teleprompterAI ?? true);
+  const proTTSNarration = isPremium && (limits?.ttsNarration ?? true);
+
   return {
     subscription,
     isLoading,
     isPremium,
-    canUseTeleprompterAI: Boolean((isPremium && limits?.teleprompterAI) || canUseNarrationTrial),
+    canUseTeleprompterAI: Boolean(proTeleprompterAI || canUseNarrationTrial),
     canUseExportPPT: Boolean((isPremium && limits?.exportPPT) || canUseExportTrial),
-    canUseTTSNarration: Boolean((isPremium && limits?.ttsNarration) || canUseNarrationTrial),
+    canUseTTSNarration: Boolean(proTTSNarration || canUseNarrationTrial),
     canUseExportTrial,
     canUseNarrationTrial,
     canUseGrammarFix: Boolean(isPremium && limits?.grammarFix),

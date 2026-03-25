@@ -34,8 +34,14 @@ export function useAutoScroll(containerRef: React.RefObject<HTMLElement>): UseAu
   const targetTopRef       = useRef<number>(0);
 
   const scrollToToken = useCallback((pointer: number): void => {
+    const previousPointer = lastPointerRef.current;
+
     // Same pointer — nothing to do
-    if (pointer === lastPointerRef.current) return;
+    if (pointer === previousPointer) return;
+
+    // Ignore tiny backward jitter from interim STT corrections.
+    if (previousPointer >= 0 && pointer < previousPointer && previousPointer - pointer <= 2) return;
+
     lastPointerRef.current = pointer;
 
     const now = performance.now();
@@ -61,8 +67,11 @@ export function useAutoScroll(containerRef: React.RefObject<HTMLElement>): UseAu
       const delta = targetTopRef.current - currentTop;
       if (Math.abs(delta) < 2) return;
 
+      // Ease toward the target; larger jumps move a bit faster, small moves stay smooth.
+      const ease = Math.abs(delta) > 260 ? 0.5 : 0.32;
+
       container.scrollTo({
-        top: currentTop + delta * 0.35,
+        top: currentTop + delta * ease,
         behavior: 'smooth',
       });
     });

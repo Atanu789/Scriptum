@@ -65,35 +65,76 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
   const statusRef        = useRef<SyncStatus>('idle');
   const recognitionRef   = useRef<BrowserRecognition | null>(null);
   const sessionTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const restartTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const shouldRunRef     = useRef(false);
+  const retryCountRef    = useRef(0);
 
   const setStatus = useCallback((s: SyncStatus) => {
     statusRef.current = s;
     onStatusChange(s);
   }, [onStatusChange]);
 
-  // ── Cleanup helper ────────────────────────────────────────────────────────
-
-  const cleanup = useCallback(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.onstart = null;
-      recognitionRef.current.onend = null;
-      recognitionRef.current.onerror = null;
-      recognitionRef.current.onresult = null;
-      recognitionRef.current.abort();
+  const clearRestartTimer = useCallback(() => {
+    if (restartTimerRef.current) {
+      clearTimeout(restartTimerRef.current);
+      restartTimerRef.current = null;
     }
-    recognitionRef.current = null;
+  }, []);
 
-    // Clear session timer
+  const clearSessionTimer = useCallback(() => {
     if (sessionTimerRef.current) {
       clearTimeout(sessionTimerRef.current);
       sessionTimerRef.current = null;
     }
   }, []);
 
+  const detachRecognition = useCallback(() => {
+    if (!recognitionRef.current) return;
+    recognitionRef.current.onstart = null;
+    recognitionRef.current.onend = null;
+    recognitionRef.current.onerror = null;
+    recognitionRef.current.onresult = null;
+    recognitionRef.current = null;
+  }, []);
+
+  // ── Cleanup helper ────────────────────────────────────────────────────────
+
+  const cleanup = useCallback((abort = true) => {
+    clearRestartTimer();
+    clearSessionTimer();
+
+    if (recognitionRef.current) {
+      recognitionRef.current.onstart = null;
+      recognitionRef.current.onend = null;
+      recognitionRef.current.onerror = null;
+      recognitionRef.current.onresult = null;
+      try {
+        if (abort) recognitionRef.current.abort();
+        else recognitionRef.current.stop();
+      } catch {
+        // ignore cleanup errors
+      }
+    }
+
+    recognitionRef.current = null;
+  }, [clearRestartTimer, clearSessionTimer]);
+
   // ── Start session ─────────────────────────────────────────────────────────
 
   const start = useCallback(async (): Promise<void> => {
     if (statusRef.current === 'listening' || statusRef.current === 'connecting') return;
+
+    shouldRunRef.current = true;
+    retryCountRef.current = 0;
+    clearRestartTimer();
+
+    clearSessionTimer();
+    sessionTimerRef.current = setTimeout(() => {
+      shouldRunRef.current = false;
+      onError('Max session duration reached (15 min). Mic stopped.');
+      setStatus('stopped');
+      cleanup();
+    }, maxDurationMs);
 
     setStatus('connecting');
 
@@ -107,6 +148,16 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
         throw new Error('Speech recognition not supported in this browser.');
       }
 
+      const scheduleRestart = (delayMs: number) => {
+        if (!shouldRunRef.current) return;
+        clearRestartTimer();
+        setStatus('connecting');
+        restartTimerRef.current = setTimeout(() => {
+          if (!shouldRunRef.current) return;
+          void start();
+        }, delayMs);
+      };
+
       const recognition = new ctor();
       recognitionRef.current = recognition;
       recognition.lang = 'en-US';
@@ -114,12 +165,8 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
       recognition.continuous = true;
 
       recognition.onstart = () => {
+        retryCountRef.current = 0;
         setStatus('listening');
-        sessionTimerRef.current = setTimeout(() => {
-          onError('Max session duration reached (15 min). Mic stopped.');
-          setStatus('stopped');
-          cleanup();
-        }, maxDurationMs);
       };
 
       recognition.onresult = (event) => {
@@ -133,21 +180,37 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
 
       recognition.onerror = (event) => {
         const reason = event?.error || 'unknown';
+
+        // Non-fatal runtime errors are common with browser speech APIs.
+        if (reason === 'no-speech' || reason === 'aborted' || reason === 'network' || reason === 'audio-capture') {
+          detachRecognition();
+          retryCountRef.current += 1;
+          const backoff = Math.min(1200, 250 * retryCountRef.current);
+          scheduleRestart(backoff);
+          return;
+        }
+
+        shouldRunRef.current = false;
         setStatus('error');
         onError(`Speech recognition failed: ${reason}`);
         cleanup();
       };
 
       recognition.onend = () => {
-        if (statusRef.current !== 'stopped') {
+        detachRecognition();
+        if (!shouldRunRef.current) {
           setStatus('stopped');
+          return;
         }
-        cleanup();
+        retryCountRef.current += 1;
+        const backoff = Math.min(1200, 250 * retryCountRef.current);
+        scheduleRestart(backoff);
       };
 
       recognition.start();
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
+      shouldRunRef.current = false;
       setStatus('error');
 
       if (message.includes('Permission denied') || message.includes('NotAllowedError') || message.includes('not-allowed')) {
@@ -158,13 +221,15 @@ export function useDeepgramSync(options: UseDeepgramSyncOptions): UseDeepgramSyn
 
       cleanup();
     }
-  }, [cleanup, maxDurationMs, onError, onTranscript, setStatus]);
+  }, [cleanup, clearRestartTimer, clearSessionTimer, detachRecognition, maxDurationMs, onError, onTranscript, setStatus]);
 
   // ── Stop session ──────────────────────────────────────────────────────────
 
   const stop = useCallback((): void => {
+    shouldRunRef.current = false;
+    retryCountRef.current = 0;
     setStatus('stopped');
-    cleanup();
+    cleanup(false);
   }, [cleanup, setStatus]);
 
   // ── Unmount cleanup ───────────────────────────────────────────────────────

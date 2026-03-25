@@ -62,11 +62,11 @@ const ScriptRenderer = memo(function ScriptRenderer({
   return (
     <div
       ref={containerRef}
-      className="relative h-full overflow-y-auto px-6 pt-3 pb-24 leading-[1.9] focus:outline-none"
+      className="relative h-full overflow-y-auto px-3 pt-3 pb-28 leading-[1.9] focus:outline-none sm:px-6 sm:pb-24"
       style={{ fontSize: `${fontSize}px` }}
       tabIndex={-1}
     >
-      <div className="mx-auto max-w-5xl select-none" aria-live="off">
+      <div className="mx-auto max-w-4xl select-none sm:max-w-5xl" aria-live="off">
         {visibleTokens.map((token) => {
   return (
     <React.Fragment key={token.index}>
@@ -121,6 +121,8 @@ interface ControlsProps {
   onToggleManual:  () => void;
   onReset:         () => void;
   onSpeedChange:   (v: number) => void;
+  aiNarrationSpeed: number;
+  onAiNarrationSpeedChange: (v: number) => void;
   onFontSizeChange:(v: number) => void;
   onVoiceModeChange: (v: 'system' | 'ai') => void;
 }
@@ -136,7 +138,7 @@ function Controls({
   voiceMode,
   onStartTTS, onPauseTTS, onResumeTTS, onStopTTS,
   onStartMic, onStopMic, onToggleManual, onReset,
-  onSpeedChange, onFontSizeChange,
+  onSpeedChange, aiNarrationSpeed, onAiNarrationSpeedChange, onFontSizeChange,
   onVoiceModeChange,
 }: ControlsProps) {
 
@@ -150,25 +152,25 @@ function Controls({
   const isPresenterMode = readingMode === 'presenter';
 
   return (
-    <div className="flex flex-wrap items-center gap-2 border-t border-white/10 bg-[#0d0d18]/95 px-4 py-3 backdrop-blur-md">
+    <div className="flex items-center gap-2 overflow-x-auto whitespace-nowrap rounded-2xl border border-white/12 bg-[#0d0d18]/92 px-3 py-2.5 shadow-[0_12px_36px_rgba(0,0,0,0.45)] backdrop-blur-xl sm:px-4 sm:py-3">
 
       {!canUsePremiumAI && (
         <button
           onClick={onGoPremium}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/20"
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl border border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-300 transition-colors hover:bg-amber-500/20"
         >
           Go Premium
         </button>
       )}
 
       {!isPremium && hasNarrationTrial && (
-        <span className="inline-flex items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300">
+        <span className="hidden shrink-0 items-center gap-1 rounded-full border border-emerald-500/25 bg-emerald-500/10 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-emerald-300 sm:inline-flex">
           Trial: 1 AI blob free
         </span>
       )}
 
       {/* ── Mode toggle ───────────────────────────────────────── */}
-      <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+      <div className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
         <button
           disabled={!canUsePremiumAI}
           onClick={() => onReadingModeChange('ai')}
@@ -179,7 +181,8 @@ function Controls({
             !canUsePremiumAI && 'cursor-not-allowed opacity-50 hover:bg-transparent hover:text-white/60',
           )}
         >
-          AI Narration
+          <span className="hidden sm:inline">AI Narration</span>
+          <span className="sm:hidden">AI</span>
         </button>
         <button
           onClick={() => onReadingModeChange('presenter')}
@@ -188,14 +191,15 @@ function Controls({
             isPresenterMode ? 'bg-emerald-600 text-white' : 'text-white/60 hover:bg-white/[0.06] hover:text-white/80',
           )}
         >
-          Presenter Reading
+          <span className="hidden sm:inline">Presenter Reading</span>
+          <span className="sm:hidden">Presenter</span>
         </button>
       </div>
 
       <div className="h-5 w-px bg-white/20" />
 
       {/* ── Voice Mode ────────────────────────────────────────────── */}
-      <div className="inline-flex items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
+      <div className="inline-flex shrink-0 items-center gap-1 rounded-xl border border-white/10 bg-white/[0.03] p-1">
         <button
           onClick={() => onVoiceModeChange('system')}
           className={cn(
@@ -225,7 +229,7 @@ function Controls({
           disabled={activeMode === 'mic' || !isAIMode || !canUsePremiumAI}
           title={!canUsePremiumAI ? 'Available on Pro plan' : !isAIMode ? 'Switch to AI Narration mode' : activeMode === 'mic' ? 'Stop mic first' : 'Read aloud with Draco voice'}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all active:scale-[0.97]',
+            'inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-semibold transition-all active:scale-[0.97]',
             activeMode === 'mic' || !isAIMode || !canUsePremiumAI
               ? 'cursor-not-allowed bg-white/[0.03] text-white/20'
               : 'bg-indigo-600 text-white shadow-lg shadow-indigo-500/30 hover:bg-indigo-500',
@@ -239,7 +243,7 @@ function Controls({
       )}
 
       {activeMode === 'tts' && (
-        <div className="flex items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1.5">
           {isTTSLoading && (
             <div className="inline-flex items-center gap-1.5 rounded-xl bg-white/[0.05] px-3.5 py-2 text-sm text-white/40">
               <Loader2 className="h-3.5 w-3.5 animate-spin" /> Fetching audio…
@@ -282,7 +286,7 @@ function Controls({
           disabled={activeMode === 'manual' || !isPresenterMode}
           title={!isPresenterMode ? 'Switch to Presenter Reading mode' : activeMode === 'manual' ? 'Stop manual first' : 'Sync with your voice'}
           className={cn(
-            'inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all active:scale-[0.97]',
+            'inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all active:scale-[0.97]',
             activeMode === 'manual' || !isPresenterMode
               ? 'cursor-not-allowed text-white/30'
               : 'bg-white/[0.08] text-white/70 hover:bg-white/[0.13] hover:text-white',
@@ -295,7 +299,7 @@ function Controls({
 
       {(isMicLive || isMicConn) && (
         <button onClick={onStopMic}
-          className="inline-flex items-center gap-1.5 rounded-xl bg-red-600/80 px-3 py-2 text-sm font-medium text-white hover:bg-red-500 transition-all active:scale-[0.97]">
+          className="inline-flex shrink-0 items-center gap-1.5 rounded-xl bg-red-600/80 px-3 py-2 text-sm font-medium text-white hover:bg-red-500 transition-all active:scale-[0.97]">
           {isMicConn
             ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
             : <MicOff  className="h-3.5 w-3.5" />}
@@ -304,9 +308,29 @@ function Controls({
       )}
 
       {isMicLive && (
-        <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 ring-1 ring-emerald-500/25">
+        <div className="hidden shrink-0 items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1 ring-1 ring-emerald-500/25 sm:flex">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
           <span className="text-[11px] font-semibold text-emerald-400">Live</span>
+        </div>
+      )}
+
+      <div className="h-5 w-px bg-white/20" />
+
+      {/* ── AI Narration Speed ────────────────────────────────── */}
+      {isAIMode && (
+        <div className="flex shrink-0 items-center gap-2">
+          <SlidersHorizontal className="h-3 w-3 flex-shrink-0 text-white/50" />
+          <span className="text-[11px] text-white/60">Read</span>
+          <input
+            type="range"
+            min={0.7}
+            max={1.8}
+            step={0.1}
+            value={aiNarrationSpeed}
+            onChange={(e) => onAiNarrationSpeedChange(parseFloat(e.target.value))}
+            className="h-1 w-20 cursor-pointer appearance-none rounded-full bg-white/20 accent-indigo-400"
+          />
+          <span className="w-8 text-right text-[11px] text-white/70 tabular-nums">{aiNarrationSpeed.toFixed(1)}x</span>
         </div>
       )}
 
@@ -317,7 +341,7 @@ function Controls({
         onClick={onToggleManual}
         disabled={activeMode === 'tts' || activeMode === 'mic' || !isPresenterMode}
         className={cn(
-          'inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all active:scale-[0.97]',
+          'inline-flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-medium transition-all active:scale-[0.97]',
           activeMode === 'manual'
             ? 'bg-amber-500/15 text-amber-400 ring-1 ring-amber-500/30 hover:bg-amber-500/20'
             : (activeMode === 'tts' || activeMode === 'mic' || !isPresenterMode)
@@ -336,7 +360,7 @@ function Controls({
 
       {/* ── Speed (manual only) ─────────────────────────────────── */}
       {activeMode === 'manual' && (
-        <div className="flex items-center gap-2">
+        <div className="flex shrink-0 items-center gap-2">
           <SlidersHorizontal className="h-3 w-3 flex-shrink-0 text-white/50" />
           <input type="range" min={1} max={10} step={0.5} value={speed}
             onChange={(e) => onSpeedChange(parseFloat(e.target.value))}
@@ -346,7 +370,7 @@ function Controls({
       )}
 
       {/* ── Font size ───────────────────────────────────────────── */}
-      <div className="flex items-center gap-0.5">
+      <div className="flex shrink-0 items-center gap-0.5">
         <button onClick={() => onFontSizeChange(Math.max(18, fontSize - 4))}
           className="rounded-lg px-2 py-1.5 text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-colors">
           <ChevronDown className="h-3.5 w-3.5" />
@@ -359,7 +383,7 @@ function Controls({
       </div>
 
       {/* ── Reset ──────────────────────────────────────────────── */}
-      <div className="ml-auto">
+      <div className="ml-auto shrink-0">
         <button onClick={onReset} title="Reset to beginning"
           className="rounded-xl p-2 text-white/50 hover:bg-white/[0.08] hover:text-white/80 transition-all active:scale-[0.97]">
           <RotateCcw className="h-3.5 w-3.5" />
@@ -372,7 +396,13 @@ function Controls({
 // ─── Main Engine ──────────────────────────────────────────────────────────────
 
 export default function TeleprompterEngine({ script, documentTitle }: TeleprompterEngineProps) {
-  const { isPremium, canUseNarrationTrial, canUseTeleprompterAI, canUseTTSNarration } = useSubscription();
+  const {
+    isLoading: isSubscriptionLoading,
+    isPremium,
+    canUseNarrationTrial,
+    canUseTeleprompterAI,
+    canUseTTSNarration,
+  } = useSubscription();
   const canUsePremiumAI = canUseTeleprompterAI && canUseTTSNarration;
 
   // ── State ──────────────────────────────────────────────────────────────────
@@ -383,7 +413,13 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   const [isManualPlaying, setIsManualPlaying] = useState(false);
   const [errorMsg,        setErrorMsg]        = useState<string | null>(null);
   const [speed,           setSpeed]           = useState(3);
-  const [fontSize,        setFontSize]        = useState(26);
+  const [aiNarrationSpeed, setAiNarrationSpeed] = useState(1);
+  const [fontSize,        setFontSize]        = useState(() => {
+    if (typeof window !== 'undefined' && window.innerWidth < 640) {
+      return 18;
+    }
+    return 26;
+  });
   const [renderedCount,   setRenderedCount]   = useState(0);
   const [voiceMode, setVoiceMode] = useState<'system' | 'ai'>('system');
 
@@ -560,6 +596,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
     tokens,
     script,
     voiceMode,
+    narrationSpeed: aiNarrationSpeed,
     onPointerChange: advancePointer,
     onStatusChange: (s) => {
       setTTSStatus(s);
@@ -599,9 +636,6 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       const deltaWords = words.slice(sharedPrefixLength);
       if (deltaWords.length > 0) {
         advancePointer(processChunk(deltaWords.join(' ')));
-      } else if (!isFinal && words.length > 0) {
-        // Interim updates often rewrite earlier words; keep sync by nudging with latest token.
-        advancePointer(processChunk(words[words.length - 1]));
       }
 
       micLastInterimRef.current = isFinal ? '' : normalizedTranscript;
@@ -702,13 +736,25 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
   }, [canUsePremiumAI, micStop, readingMode, ttsStop]);
 
   useEffect(() => {
+    if (isSubscriptionLoading) return;
+
+    if (canUsePremiumAI) {
+      if (
+        errorMsg === 'AI narration trial is exhausted. Upgrade to Pro to continue.'
+        || errorMsg === 'Your free AI narration blob is used. Upgrade to Pro to continue AI narration.'
+      ) {
+        setErrorMsg(null);
+      }
+      return;
+    }
+
     if (readingMode === 'ai' && !canUsePremiumAI) {
       setReadingMode('presenter');
       setActiveMode('idle');
       setTTSStatus('idle');
       setErrorMsg('AI narration trial is exhausted. Upgrade to Pro to continue.');
     }
-  }, [canUsePremiumAI, readingMode]);
+  }, [canUsePremiumAI, errorMsg, isSubscriptionLoading, readingMode]);
 
   const handleReset = useCallback(() => {
     ttsStop();
@@ -772,7 +818,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
       </div>
 
       {/* Controls */}
-      <div className="sticky bottom-0 z-30 mt-auto">
+      <div className="sticky z-30 mt-auto mx-2 mb-1 sm:mx-4 sm:mb-2 lg:mx-6" style={{ bottom: 'max(0.25rem, env(safe-area-inset-bottom))' }}>
         <Controls
           isPremium={isPremium}
           hasNarrationTrial={canUseNarrationTrial}
@@ -785,6 +831,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
           syncStatus={syncStatus}
           isManualPlaying={isManualPlaying}
           speed={speed}
+          aiNarrationSpeed={aiNarrationSpeed}
           fontSize={fontSize}
           voiceMode={voiceMode}
           onStartTTS={handleStartTTS}
@@ -796,6 +843,7 @@ export default function TeleprompterEngine({ script, documentTitle }: Teleprompt
           onToggleManual={handleToggleManual}
           onReset={handleReset}
           onSpeedChange={setSpeed}
+          onAiNarrationSpeedChange={setAiNarrationSpeed}
           onFontSizeChange={setFontSize}
           onVoiceModeChange={setVoiceMode}
         />

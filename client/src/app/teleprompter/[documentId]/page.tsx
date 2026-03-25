@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'next/navigation';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
@@ -9,7 +9,6 @@ import { useDocument } from '@/hooks/useDocument';
 import { sanitizeContent } from '@/lib/sanitize';
 import { documentApi } from '@/lib/api';
 import type { DocumentSummary } from '@/types';
-import { importFileToHtml } from '@/components/problem-editor/utils';
 import { Loader2, AlertCircle, ChevronLeft } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -115,8 +114,7 @@ export default function TeleprompterPage() {
   const [pastedText, setPastedText] = useState('');
   const [importedScript, setImportedScript] = useState('');
   const [importedTitle, setImportedTitle] = useState('');
-  const [isImportingFile, setIsImportingFile] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [showPasteWindow, setShowPasteWindow] = useState(false);
 
   useEffect(() => {
     setSelectedDocId(routeDocumentId);
@@ -194,48 +192,42 @@ export default function TeleprompterPage() {
     toast.success('Imported pasted text');
   };
 
-  const handleLocalFileImport = async (file: File) => {
-    try {
-      setIsImportingFile(true);
-      const html = await importFileToHtml(file);
-      const next = toTeleprompterScript(html);
-      if (!next.trim()) {
-        toast.error('Could not extract readable text from this file');
-        return;
-      }
-      setImportedScript(next);
-      setImportedTitle(file.name);
-      toast.success('Imported local file');
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'Failed to import file';
-      toast.error(msg);
-    } finally {
-      setIsImportingFile(false);
-    }
-  };
-
   const clearImportedSource = () => {
     setImportedScript('');
     setImportedTitle('');
+    setPastedText('');
   };
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-[#07070f]">
-      {/* Back nav */}
-      <div className="flex flex-wrap items-center gap-2 border-b border-white/[0.06] bg-[#07070f]/95 px-3 py-2.5 backdrop-blur-sm sm:px-4">
+      {/* Top bar */}
+      <div className="relative flex items-center gap-2 overflow-x-auto whitespace-nowrap border-b border-white/[0.06] bg-[#07070f]/95 px-3 py-2.5 backdrop-blur-sm sm:px-4">
         <Link
           href="/dashboard"
-          className="inline-flex min-h-[36px] items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-white/35 transition-colors hover:bg-white/[0.06] hover:text-white/70"
+          className="inline-flex min-h-[36px] shrink-0 items-center gap-1 rounded-lg px-2.5 py-1 text-xs font-medium text-white/35 transition-colors hover:bg-white/[0.06] hover:text-white/70"
         >
           <ChevronLeft suppressHydrationWarning className="h-3 w-3" /> Dashboard
         </Link>
 
-        <div className="ml-auto flex w-full items-center gap-2 sm:w-auto">
-          <label className="hidden text-[11px] text-white/40 sm:inline">Import document</label>
+        <div className="ml-auto flex items-center gap-2">
+          <label className="hidden text-[11px] text-white/40 sm:inline">Document</label>
+          <button
+            onClick={() => setShowPasteWindow((prev) => !prev)}
+            className="min-h-[36px] shrink-0 rounded-md border border-white/15 bg-white/[0.05] px-3 py-1 text-xs font-semibold text-white/80 transition-colors hover:bg-white/[0.09]"
+          >
+            Paste text
+          </button>
           <select
             value={selectedDocId}
-            onChange={(e) => setSelectedDocId(e.target.value)}
-            className="min-h-[36px] w-full sm:w-[240px] rounded-md border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs text-white/80 focus:border-indigo-500/60 focus:outline-none"
+            onChange={(e) => {
+              const nextId = e.target.value;
+              setSelectedDocId(nextId);
+              if (nextId && nextId !== routeDocumentId) {
+                clearImportedSource();
+                router.push(`/teleprompter/${nextId}`);
+              }
+            }}
+            className="min-h-[36px] w-[170px] shrink-0 rounded-md border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs text-white/80 focus:border-indigo-500/60 focus:outline-none sm:w-[240px]"
           >
             {availableDocs.map((doc) => (
               <option key={doc._id} value={doc._id} className="bg-[#0f1020] text-white">
@@ -243,64 +235,56 @@ export default function TeleprompterPage() {
               </option>
             ))}
           </select>
-          <button
-            onClick={() => {
-              if (selectedDocId && selectedDocId !== routeDocumentId) {
-                clearImportedSource();
-                router.push(`/teleprompter/${selectedDocId}`);
-              }
-            }}
-            disabled={!selectedDocId || selectedDocId === routeDocumentId}
-            className="min-h-[36px] rounded-md border border-indigo-500/30 bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-300 transition-colors hover:bg-indigo-500/30 disabled:cursor-not-allowed disabled:opacity-50"
-          >
-            Import
-          </button>
-        </div>
-
-        <div className="flex w-full flex-wrap items-center gap-2">
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".pdf,.docx,.txt,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,text/plain"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                void handleLocalFileImport(file);
-              }
-              e.currentTarget.value = '';
-            }}
-          />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isImportingFile}
-            className="min-h-[34px] rounded-md border border-emerald-500/30 bg-emerald-500/20 px-3 py-1 text-xs font-semibold text-emerald-200 transition-colors hover:bg-emerald-500/30 disabled:cursor-not-allowed disabled:opacity-60"
-          >
-            {isImportingFile ? 'Importing file...' : 'Import local file'}
-          </button>
-          <textarea
-            value={pastedText}
-            onChange={(e) => setPastedText(e.target.value)}
-            rows={2}
-            placeholder="Paste text here and click Import pasted text"
-            className="min-h-[34px] flex-1 rounded-md border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs text-white/80 focus:border-indigo-500/60 focus:outline-none"
-          />
-          <button
-            onClick={handlePasteImport}
-            className="min-h-[34px] rounded-md border border-sky-500/30 bg-sky-500/20 px-3 py-1 text-xs font-semibold text-sky-200 transition-colors hover:bg-sky-500/30"
-          >
-            Import pasted text
-          </button>
           {importedScript && (
             <button
               onClick={clearImportedSource}
-              className="min-h-[34px] rounded-md border border-white/15 bg-white/[0.05] px-3 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/[0.09]"
+              className="min-h-[36px] shrink-0 rounded-md border border-white/15 bg-white/[0.05] px-3 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/[0.09]"
             >
-              Clear imported source
+              Use document text
             </button>
           )}
         </div>
+
       </div>
+
+      {showPasteWindow && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/45 backdrop-blur-[1px]"
+          onClick={() => setShowPasteWindow(false)}
+        >
+          <div
+            className="absolute left-2 right-2 top-14 rounded-xl border border-white/15 bg-[#0f1020] p-3 shadow-xl sm:left-auto sm:right-4 sm:w-[360px]"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <textarea
+              value={pastedText}
+              onChange={(e) => setPastedText(e.target.value)}
+              rows={5}
+              placeholder="Paste text here"
+              className="w-full rounded-md border border-white/15 bg-white/[0.05] px-2.5 py-2 text-xs text-white/80 focus:border-indigo-500/60 focus:outline-none"
+            />
+            <div className="mt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowPasteWindow(false)}
+                className="min-h-[32px] rounded-md border border-white/15 bg-white/[0.05] px-2.5 py-1 text-xs font-semibold text-white/70 transition-colors hover:bg-white/[0.09]"
+              >
+                Close
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  handlePasteImport();
+                  setShowPasteWindow(false);
+                }}
+                className="min-h-[32px] rounded-md border border-sky-500/30 bg-sky-500/20 px-2.5 py-1 text-xs font-semibold text-sky-200 transition-colors hover:bg-sky-500/30"
+              >
+                Apply text
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Engine — fills remaining height */}
       <div className="flex-1 overflow-hidden">
