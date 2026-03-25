@@ -118,8 +118,6 @@ export default function PricingPage() {
   const [billingMode, setBillingMode] = useState<BillingMode>('monthly');
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
-  const [redeeming, setRedeeming] = useState(false);
-  const [redeemCode, setRedeemCode] = useState('');
   const [promoCode, setPromoCode] = useState('');
   const [discountEmail, setDiscountEmail] = useState(user?.email || '');
   const [discountReason, setDiscountReason] = useState('');
@@ -209,27 +207,6 @@ export default function PricingPage() {
     }
   };
 
-  const handleRedeem = async () => {
-    if (!user) {
-      router.push('/login?redirect=/pricing');
-      return;
-    }
-
-    try {
-      setRedeeming(true);
-      setError('');
-      setSuccessMsg('');
-      const data = await paymentApi.redeem(redeemCode);
-      setSuccessMsg(data.message);
-      setRedeemCode('');
-      await fetchData();
-    } catch (err) {
-      setError((err as Error).message || 'Failed to redeem code');
-    } finally {
-      setRedeeming(false);
-    }
-  };
-
   const handleRequestDiscount = async () => {
     try {
       setSubmittingDiscountRequest(true);
@@ -251,7 +228,7 @@ export default function PricingPage() {
 
   if (loading) {
     return (
-      <main className="flex min-h-screen items-center justify-center">
+      <main className="relative flex min-h-screen items-center justify-center">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-indigo-500 border-t-transparent" />
       </main>
     );
@@ -296,7 +273,14 @@ export default function PricingPage() {
     .filter((plan) => plan.id === 'free' || plan.id === 'pro' || plan.id === 'advanced');
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-indigo-50 via-white to-violet-50 px-4 py-8 text-slate-900 dark:from-[#090b17] dark:via-[#0d1021] dark:to-[#130e1f] dark:text-white">
+    <main className="dark relative min-h-screen px-4 py-8 text-white">
+      <div
+        aria-hidden
+        className="pointer-events-none absolute inset-0 -z-10"
+        style={{
+          background: 'radial-gradient(ellipse 65% 45% at 50% -10%, rgba(99,102,241,0.18) 0%, transparent 70%)',
+        }}
+      />
       <div className="mx-auto max-w-6xl space-y-6">
         
 
@@ -437,7 +421,7 @@ export default function PricingPage() {
 
                 <p className="mb-3 text-xs text-slate-500 dark:text-white/35">{plan.description}</p>
 
-                {isPro && (
+                {(isPro || isAdvanced) && (
                   <div className="mb-3 space-y-1">
                     <label className="block text-[11px] font-semibold uppercase tracking-wide text-slate-500 dark:text-white/35">
                       Promo code (optional)
@@ -445,7 +429,7 @@ export default function PricingPage() {
                     <input
                       value={promoCode}
                       onChange={(e) => setPromoCode(e.target.value)}
-                      placeholder="Enter promo code for Pro"
+                      placeholder={`Enter promo code for ${isAdvanced ? 'Advanced' : 'Pro'}`}
                       className="h-9 w-full rounded-lg border border-slate-200 bg-white px-3 text-xs text-slate-700 outline-none transition-colors focus:border-indigo-400 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/80 dark:focus:border-indigo-500/50"
                     />
                   </div>
@@ -521,31 +505,6 @@ export default function PricingPage() {
                 {name}
               </span>
             ))}
-          </div>
-        </section>
-
-        <section className="mx-auto w-full max-w-3xl rounded-2xl border border-slate-200/80 bg-white/90 p-3 dark:border-white/[0.08] dark:bg-white/[0.05]">
-          <div className="mb-2.5 flex items-center justify-between gap-2">
-            <p className="text-xs font-semibold uppercase tracking-wide text-slate-500 dark:text-white/35">Have a premium redeem code?</p>
-            <span className="rounded-full border border-slate-200 bg-white px-2.5 py-0.5 text-[10px] font-semibold text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70">
-              Instant activation
-            </span>
-          </div>
-
-          <div className="flex flex-col gap-1.5 sm:flex-row">
-            <input
-              value={redeemCode}
-              onChange={(e) => setRedeemCode(e.target.value)}
-              placeholder="Enter code (e.g. FREEPRO2026)"
-              className="h-10 flex-1 rounded-xl border border-slate-200 bg-white px-3 text-sm text-slate-700 outline-none transition-colors focus:border-indigo-400 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/80 dark:focus:border-indigo-500/50"
-            />
-            <button
-              onClick={handleRedeem}
-              disabled={redeeming || !redeemCode.trim()}
-              className="h-10 rounded-xl bg-indigo-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 disabled:cursor-not-allowed disabled:opacity-60"
-            >
-              {redeeming ? 'Applying...' : 'Redeem'}
-            </button>
           </div>
         </section>
 
