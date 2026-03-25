@@ -154,13 +154,25 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
   const readability = analyzeReadability(sampledText);
   const longSentences = detectLongSentences(sampledText);
 
-  const [grammarIssues, aiOut] = await Promise.all([
+  const [grammarResult, aiResult] = await Promise.allSettled([
     checkGrammar(sampledText.slice(0, MAX_GRAMMAR_CHARS)),
     runAnalysisWithRetry(prompt),
   ]);
 
+  const grammarIssues = grammarResult.status === 'fulfilled' ? grammarResult.value : [];
+  const aiOut = aiResult.status === 'fulfilled'
+    ? aiResult.value
+    : {
+        parsed: null,
+        provider: 'fallback',
+        warning: aiResult.reason instanceof Error ? aiResult.reason.message : 'AI temporarily unavailable',
+      };
+
   const parsed = aiOut.parsed;
   const aiSuggestions = parsed?.suggestions ?? [];
+  const grammarWarning = grammarResult.status === 'rejected'
+    ? ' Grammar checks degraded due to a temporary checker issue.'
+    : '';
   const aiReasoning = parsed
     ? `AI engine (${aiOut.provider}) score generated. Readability: ${parsed.readability}`
     : `AI engine (${aiOut.provider}) fallback used. ${aiOut.warning || 'AI temporarily unavailable.'}`;
@@ -194,7 +206,7 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
 
   return {
     aiScore: finalScore,
-    aiReasoning,
+    aiReasoning: `${aiReasoning}${grammarWarning}`.trim(),
     humanizationTips,
     humanizationSuggestions,
     claimFlags: (parsed?.grammarIssues ?? []).slice(0, 10),

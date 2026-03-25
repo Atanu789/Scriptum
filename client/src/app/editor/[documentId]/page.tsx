@@ -269,7 +269,20 @@ export default function EditorPage() {
   const params = useParams<{ documentId: string }>();
   const documentId = params.documentId;
 
-  const { document: doc, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize, updateContent } =
+  const {
+    document: doc,
+    isLoading,
+    isAnalyzing,
+    analysisProgress,
+    isHumanizing,
+    humanizeProgress,
+    humanizePreviewText,
+    error,
+    analysis,
+    analyze,
+    humanize,
+    updateContent,
+  } =
     useDocument(documentId);
   const {
     canUseGrammarFix,
@@ -1559,6 +1572,8 @@ export default function EditorPage() {
               analysis={analysis}
               isAnalyzing={isAnalyzing}
               isHumanizing={isHumanizing}
+              analysisProgress={isHumanizing ? humanizeProgress : analysisProgress}
+              streamingPreviewText={humanizePreviewText}
               onAnalyze={analyze}
               onHumanize={canUseHumanizeText ? handleHumanizeAction : undefined}
               onGoPremium={goPremium}

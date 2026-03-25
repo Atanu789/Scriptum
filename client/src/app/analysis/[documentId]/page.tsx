@@ -21,6 +21,7 @@ export default function AnalysisPage() {
     document,
     isLoading,
     isAnalyzing,
+    analysisProgress,
     isHumanizing,
     humanizeProgress,
     humanizePreviewText,
@@ -197,7 +198,7 @@ export default function AnalysisPage() {
           analysis={analysis}
           isAnalyzing={isAnalyzing}
           isHumanizing={isHumanizing}
-          analysisProgress={isHumanizing ? humanizeProgress : null}
+          analysisProgress={isHumanizing ? humanizeProgress : analysisProgress}
           streamingPreviewText={humanizePreviewText}
           onAnalyze={analyze}
           onHumanize={canUseHumanizeText ? humanize : undefined}
