@@ -9,8 +9,8 @@ import toast from 'react-hot-toast';
 function normalizeAiScore(value: unknown, fallback: number | null = null): number | null {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
-  if (parsed < 0) return fallback;
-  return Math.max(0, Math.min(100, Math.round(parsed)));
+  if (parsed <= 0) return 50;
+  return Math.min(100, Math.round(parsed));
 }
 
 /** Strip HTML from text fields coming from the API (defense-in-depth). */
@@ -79,7 +79,6 @@ interface UseDocumentReturn {
   document: Document | null;
   isLoading: boolean;
   isAnalyzing: boolean;
-  analysisProgress: AnalysisProgress | null;
   isHumanizing: boolean;
   humanizeProgress: AnalysisProgress | null;
   humanizePreviewText: string;
@@ -96,7 +95,6 @@ export function useDocument(documentId: string): UseDocumentReturn {
   const [document, setDocument] = useState<Document | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [isHumanizing, setIsHumanizing] = useState(false);
   const [humanizeProgress, setHumanizeProgress] = useState<AnalysisProgress | null>(null);
   const [humanizePreviewText, setHumanizePreviewText] = useState('');
@@ -147,28 +145,9 @@ export function useDocument(documentId: string): UseDocumentReturn {
   const analyze = useCallback(async () => {
     if (!documentId) return;
     setIsAnalyzing(true);
-    setAnalysisProgress({ step: 1, total: 6, label: 'Preparing document text' });
     setError(null);
     setAiLimitedNotice(null);
     const toastId = toast.loading('Running AI analysis…');
-    const progressLabels = [
-      'Preparing document text',
-      'Running grammar checks',
-      'Running AI likelihood analysis',
-      'Computing readability metrics',
-      'Detecting tone and claim flags',
-      'Finalizing analysis',
-    ];
-    let progressStep = 1;
-    const progressTimer = window.setInterval(() => {
-      progressStep = Math.min(progressLabels.length - 1, progressStep + 1);
-      setAnalysisProgress({
-        step: progressStep,
-        total: progressLabels.length,
-        label: progressLabels[progressStep - 1],
-      });
-    }, 850);
-
     try {
       const result = await analysisApi.analyze(documentId, false);
       let normalizedResult: AnalysisResult = {
@@ -184,11 +163,27 @@ export function useDocument(documentId: string): UseDocumentReturn {
         },
       };
 
-      if (normalizedResult.aiScore === null || normalizedResult.aiScore < 0) {
-        normalizedResult.aiScore = 0;
+      if (!normalizedResult.limited && (normalizedResult.aiScore === null || normalizedResult.aiScore < 0)) {
+        setError('AI temporarily busy, retrying...');
+        const retry = await analysisApi.analyze(documentId, false);
+        normalizedResult = {
+          ...retry,
+          aiScore: normalizeAiScore(retry.aiScore, 0),
+          readabilityScore: retry.readabilityScore ?? 0,
+          toneScore: retry.toneScore ?? 50,
+          tone: retry.tone ?? {
+            dominantTone: 'neutral',
+            confidence: Math.max(0, Math.min(1, (retry.toneScore ?? 50) / 100)),
+            breakdown: { neutral: 1 },
+            biasFlags: [],
+          },
+        };
       }
 
-      setAnalysisProgress({ step: 6, total: 6, label: 'Finalizing analysis' });
+      if (!normalizedResult.limited && (normalizedResult.aiScore === null || normalizedResult.aiScore < 0)) {
+        throw new Error('AI analysis failed. Please retry.');
+      }
+
       console.log('[useDocument] Fresh analysis result. aiScore:', normalizedResult.aiScore);
       setAnalysis(sanitizeAnalysis(normalizedResult));
       if (normalizedResult.limited) {
@@ -210,8 +205,6 @@ export function useDocument(documentId: string): UseDocumentReturn {
         window.location.href = '/pricing';
       }
     } finally {
-      window.clearInterval(progressTimer);
-      setAnalysisProgress(null);
       setIsAnalyzing(false);
     }
   }, [documentId, refresh]);
@@ -315,7 +308,6 @@ export function useDocument(documentId: string): UseDocumentReturn {
     document,
     isLoading,
     isAnalyzing,
-    analysisProgress,
     isHumanizing,
     humanizeProgress,
     humanizePreviewText,

@@ -99,7 +99,7 @@ function ProgressScreen({ progress, onCancel, isDark }: { progress: AnalysisProg
   const offset = circ * (1 - pct / 100);
   const steps = [
     'Extracting document text', 'Running grammar check', 'Computing grammar score',
-    'Running AI editorial analysis', 'Computing readability', 'Detecting long sentences', 'Finalising',
+    'Running Gemini editorial analysis', 'Computing readability', 'Detecting long sentences', 'Finalising',
   ];
   return (
      <div className="card-premium p-8 flex flex-col items-center gap-8">
@@ -456,11 +456,9 @@ function AnalysisPanel({
 
   // ── Loading states ──────────────────────────────────────────────────────────
 
-  if ((isAnalyzing || isHumanizing) && analysisProgress) {
-    return (
-      <div className="space-y-3">
+  if ((isAnalyzing || isHumanizing) && analysisProgress) return <ProgressScreen progress={analysisProgress} onCancel={onCancelAnalyze} isDark={D} />;
         {isHumanizing && streamingPreviewText && (
-          <div className={cn('rounded-xl border p-3', D ? 'border-indigo-900/50 bg-indigo-950/20' : 'border-indigo-200 bg-indigo-50/70')}>
+          <div className={cn('mb-5 rounded-xl border p-3', D ? 'border-indigo-900/50 bg-indigo-950/20' : 'border-indigo-200 bg-indigo-50/70')}>
             <p className={cn('mb-1 text-[10px] font-bold uppercase tracking-wider', D ? 'text-indigo-300' : 'text-indigo-700')}>
               Live Humanize Preview
             </p>
@@ -469,10 +467,6 @@ function AnalysisPanel({
             </p>
           </div>
         )}
-        <ProgressScreen progress={analysisProgress} onCancel={onCancelAnalyze} isDark={D} />
-      </div>
-    );
-  }
 
   if (isAnalyzing) return (
     <div className={cn('rounded-2xl border overflow-hidden', D ? 'bg-[#0f0f1a] border-indigo-900/40' : 'bg-white border-indigo-100')}>

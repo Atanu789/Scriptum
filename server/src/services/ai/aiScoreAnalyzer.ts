@@ -86,7 +86,8 @@ function extractRewriteJSON(text: string): SentenceRewriteResponse {
 function clampScore(value: unknown): number {
   const score = Number(value);
   if (!Number.isFinite(score)) return 50;
-  return Math.max(0, Math.min(100, Math.round(score)));
+  const clamped = Math.max(0, Math.min(100, Math.round(score)));
+  return clamped === 0 ? 1 : clamped;
 }
 
 function normalizeString(value: unknown, fallback = ''): string {
