@@ -1,10 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import { Inter, JetBrains_Mono } from 'next/font/google';
+import { ClerkProvider } from '@clerk/nextjs';
 import './globals.css';
 import { AuthProvider } from '@/context/AuthContext';
 import { ToasterProvider } from '@/components/providers/ToasterProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
-import { GoogleAuthProvider } from '@/components/providers/GoogleAuthProvider';
 import FloatingDockNav from '@/components/FloatingDockNav';
 import BugReportFab from '@/components/BugReportFab';
 import { VortexBackground } from '@/components/ui/vortex-background';
@@ -74,24 +74,24 @@ export default function RootLayout({
         />
       </head>
       <body>
-        <ThemeProvider>
-          <GoogleAuthProvider>
-          {/* Global background stack applied to every page */}
-          <VortexBackground className="pointer-events-none fixed inset-0 z-0 opacity-75 dark:opacity-90" compact />
-          <div
-            aria-hidden
-            className="app-grid-overlay pointer-events-none fixed inset-0 z-[1] opacity-70 blur-[1.5px] dark:opacity-55"
-          />
-          <div className="relative z-10">
-            <AuthProvider>
-              <ToasterProvider />
-              <FloatingDockNav />
-              <BugReportFab />
-              {children}
-            </AuthProvider>
-          </div>
-          </GoogleAuthProvider>
-        </ThemeProvider>
+        <ClerkProvider>
+          <ThemeProvider>
+            {/* Global background stack applied to every page */}
+            <VortexBackground className="pointer-events-none fixed inset-0 z-0 opacity-75 dark:opacity-90" compact />
+            <div
+              aria-hidden
+              className="app-grid-overlay pointer-events-none fixed inset-0 z-[1] opacity-70 blur-[1.5px] dark:opacity-55"
+            />
+            <div className="relative z-10">
+              <AuthProvider>
+                <ToasterProvider />
+                <FloatingDockNav />
+                <BugReportFab />
+                {children}
+              </AuthProvider>
+            </div>
+          </ThemeProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

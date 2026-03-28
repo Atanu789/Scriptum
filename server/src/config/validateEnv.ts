@@ -14,6 +14,7 @@ const OPTIONAL_VARS = [
   { key: 'DEEPGRAM_API_KEY',        warn: 'Teleprompter mic-sync and TTS will be unavailable' },
   { key: 'DEEPGRAM_PROJECT_ID',     warn: 'Deepgram temp-key generation will fail — set project ID for production' },
   { key: 'GOOGLE_CLIENT_ID',        warn: 'Google sign-in will be unavailable' },
+  { key: 'CLERK_SECRET_KEY',        warn: 'Clerk token verification will be unavailable for API authentication' },
   { key: 'ADMIN_USERNAME',          warn: 'Admin dashboard login will be unavailable' },
   { key: 'ADMIN_PASSWORD',          warn: 'Admin dashboard login will be unavailable' },
   { key: 'RAZORPAY_KEY_ID',         warn: 'Payments will be unavailable — set Razorpay credentials' },

@@ -9,6 +9,7 @@
     "lint": "eslint src/**/*.ts"
   },
   "dependencies": {
+    "@clerk/backend": "^3.2.3",
     "@deepgram/sdk": "^4.11.3",
     "@napi-rs/canvas": "^0.1.97",
     "axios": "^1.6.2",

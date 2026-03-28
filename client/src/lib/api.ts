@@ -35,6 +35,14 @@ import {
 
 const BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
+type AuthTokenProvider = () => Promise<string | null>;
+
+let authTokenProvider: AuthTokenProvider | null = null;
+
+export function setAuthTokenProvider(provider: AuthTokenProvider | null): void {
+  authTokenProvider = provider;
+}
+
 function normalizeAssetUrl(url?: string | null): string | undefined {
   if (!url) return undefined;
   if (/^(?:[a-z]+:)?\/\//i.test(url) || url.startsWith('data:') || url.startsWith('blob:')) {
@@ -82,16 +90,34 @@ const api: AxiosInstance = axios.create({
   timeout: 15_000,
 });
 
-// Attach JWT token from localStorage
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
-  if (typeof window !== 'undefined') {
-    const token = localStorage.getItem('ultimoversio_token');
-    if (token && config.headers) {
-      config.headers.Authorization = `Bearer ${token}`;
-      // Add custom header for CSRF protection
-      config.headers['X-Requested-With'] = 'XMLHttpRequest';
+// Attach auth token (Clerk first, localStorage fallback for legacy flows)
+api.interceptors.request.use(async (config: InternalAxiosRequestConfig) => {
+  const headers = config.headers as Record<string, string | undefined> | undefined;
+  const hasAuthorization = Boolean(headers?.Authorization || headers?.authorization);
+
+  if (hasAuthorization) {
+    return config;
+  }
+
+  let token: string | null = null;
+
+  if (authTokenProvider) {
+    try {
+      token = await authTokenProvider();
+    } catch {
+      token = null;
     }
   }
+
+  if (!token && typeof window !== 'undefined') {
+    token = localStorage.getItem('ultimoversio_token');
+  }
+
+  if (token && config.headers) {
+    config.headers.Authorization = `Bearer ${token}`;
+    config.headers['X-Requested-With'] = 'XMLHttpRequest';
+  }
+
   return config;
 });
 

@@ -5,6 +5,7 @@ export type Plan = 'free' | 'pro';
 
 export interface IUser extends Document {
   _id: mongoose.Types.ObjectId;
+  clerkId?: string | null;
   email: string;
   password: string;
   name: string;
@@ -41,6 +42,13 @@ export interface IUser extends Document {
 
 const userSchema = new Schema<IUser>(
   {
+    clerkId: {
+      type: String,
+      unique: true,
+      sparse: true,
+      index: true,
+      default: null,
+    },
     email: {
       type: String,
       required: [true, 'Email is required'],

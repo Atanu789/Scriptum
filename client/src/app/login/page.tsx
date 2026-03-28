@@ -7,7 +7,6 @@ import { useAuth } from '@/context/AuthContext';
 import { Eye, EyeOff, Loader2, BookOpen, Sparkles } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { motion } from 'framer-motion';
-import { GoogleLogin, CredentialResponse } from '@react-oauth/google';
 import { AceLabel, AceInput, ShimmerButton } from '@/components/ui/ace-input';
 import { MeteorCard } from '@/components/ui/meteor-card';
 
@@ -20,7 +19,7 @@ export default function LoginPage() {
   const [form, setForm]                 = useState({ email: '', password: '' });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading]       = useState(false);
-  const googleClientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+  const clerkPublishableKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY;
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -35,17 +34,10 @@ export default function LoginPage() {
     }
   };
 
-  const handleGoogleSuccess = async (credentialResponse: CredentialResponse) => {
-    const idToken = credentialResponse.credential;
-    if (!idToken) {
-      toast.error('Google sign-in did not return a valid token');
-      return;
-    }
-
+  const handleGoogleSignIn = async () => {
     setIsLoading(true);
     try {
-      await loginWithGoogle(idToken);
-      router.replace('/dashboard');
+      await loginWithGoogle('');
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Google sign-in failed');
     } finally {
@@ -172,7 +164,7 @@ export default function LoginPage() {
                 </ShimmerButton>
               </form>
 
-              {googleClientId && (
+              {clerkPublishableKey && (
                 <>
                   <div className="relative">
                     <div className="absolute inset-0 flex items-center" aria-hidden>
@@ -183,13 +175,14 @@ export default function LoginPage() {
                     </div>
                   </div>
                   <div className="flex justify-center">
-                    <GoogleLogin
-                      onSuccess={handleGoogleSuccess}
-                      onError={() => toast.error('Google sign-in was cancelled or failed')}
-                      text="signin_with"
-                      shape="pill"
-                      width="280"
-                    />
+                    <button
+                      type="button"
+                      onClick={handleGoogleSignIn}
+                      disabled={isLoading}
+                      className="inline-flex h-11 items-center justify-center rounded-full border border-slate-300 bg-white px-5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-70 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200 dark:hover:bg-slate-800"
+                    >
+                      Continue with Google
+                    </button>
                   </div>
                 </>
               )}
