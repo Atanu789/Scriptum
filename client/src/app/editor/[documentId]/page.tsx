@@ -1572,6 +1572,7 @@ export default function EditorPage() {
               onApplySuggestion={handleApplySuggestion}
               onApplyGrammarFix={canUseGrammarFix ? handleApplyGrammarFix : undefined}
               getGrammarIssueLine={getIssueLineNumber}
+              documentText={editorRef.current?.innerText || doc?.cleanedText || ''}
             />
           ) : (
             <div className="card h-full overflow-hidden p-0">

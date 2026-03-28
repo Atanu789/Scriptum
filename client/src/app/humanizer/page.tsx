@@ -13,6 +13,8 @@ import type {
 import { Loader2, Copy, Save, RotateCcw, Sparkles, History, X, Upload, FileText } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
+import AILikelihoodCard from '@/components/AILikelihoodCard';
+import AITextHighlighter from '@/components/AITextHighlighter';
 
 function getWordCount(text: string): number {
   if (!text.trim()) return 0;
@@ -409,23 +411,61 @@ export default function HumanizerPage() {
             )}
           </div>
 
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.04]">
-            <p className="mb-2 text-sm font-semibold">Word Plans</p>
-            <div className="space-y-2 text-xs">
-              <div className="rounded-lg border border-slate-200 px-3 py-2 dark:border-white/[0.08]">Free: {loadingPlans ? '...' : plans?.free.maxWordsPerRequest ?? 1000} words</div>
-              <div className="rounded-lg border border-slate-200 px-3 py-2 dark:border-white/[0.08]">Pro: {loadingPlans ? '...' : plans?.pro.maxWordsPerRequest ?? 5000} words</div>
-              <div className="rounded-lg border border-slate-200 px-3 py-2 dark:border-white/[0.08]">Advanced: {loadingPlans ? '...' : plans?.advanced.maxWordsPerRequest ?? 12000} words</div>
+          <div className="space-y-4">
+            <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.04]">
+              <p className="mb-2 text-sm font-semibold">Word Plans</p>
+              <div className="space-y-2 text-xs">
+                <div className="rounded-lg border border-slate-200 px-3 py-2 dark:border-white/[0.08]">Free: {loadingPlans ? '...' : plans?.free.maxWordsPerRequest ?? 1000} words</div>
+                <div className="rounded-lg border border-slate-200 px-3 py-2 dark:border-white/[0.08]">Pro: {loadingPlans ? '...' : plans?.pro.maxWordsPerRequest ?? 5000} words</div>
+                <div className="rounded-lg border border-slate-200 px-3 py-2 dark:border-white/[0.08]">Advanced: {loadingPlans ? '...' : plans?.advanced.maxWordsPerRequest ?? 12000} words</div>
+              </div>
+
+              {lastResult && (
+                <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
+                  <p>Quality: <span className="font-semibold capitalize">{lastResult.quality}</span></p>
+                  <p>AI score: <span className="font-semibold">{lastResult.aiLikelihoodScore}</span></p>
+                  <p>{lastResult.cached ? 'Served from cache' : `Processed in ${lastResult.processingMs ?? 0} ms`}</p>
+                </div>
+              )}
             </div>
 
+            {/* AI Likelihood Card */}
             {lastResult && (
-              <div className="mt-3 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs text-indigo-700 dark:border-indigo-500/30 dark:bg-indigo-500/10 dark:text-indigo-300">
-                <p>Quality: <span className="font-semibold capitalize">{lastResult.quality}</span></p>
-                <p>AI score: <span className="font-semibold">{lastResult.aiLikelihoodScore}</span></p>
-                <p>{lastResult.cached ? 'Served from cache' : `Processed in ${lastResult.processingMs ?? 0} ms`}</p>
-              </div>
+              <AILikelihoodCard
+                aiScore={lastResult.aiLikelihoodScore}
+                showDetectors={true}
+              />
             )}
           </div>
         </section>
+
+        {/* AI Detection Highlighting */}
+        {(inputText.trim() || outputText.trim()) && (
+          <section className="grid gap-4 lg:grid-cols-2">
+            {inputText.trim() && (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-slate-700 dark:text-white/80">
+                  Original Text Analysis
+                </h3>
+                <AITextHighlighter
+                  text={inputText}
+                  overallAiScore={lastResult?.aiLikelihoodScore ?? 50}
+                />
+              </div>
+            )}
+            {outputText.trim() && (
+              <div>
+                <h3 className="mb-2 text-sm font-semibold text-slate-700 dark:text-white/80">
+                  Humanized Text Analysis
+                </h3>
+                <AITextHighlighter
+                  text={outputText}
+                  overallAiScore={lastResult?.aiLikelihoodScore ? Math.max(0, lastResult.aiLikelihoodScore - 25) : 25}
+                />
+              </div>
+            )}
+          </section>
+        )}
 
         <section className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.04]">
           <div className="mb-2 flex items-center gap-1.5">

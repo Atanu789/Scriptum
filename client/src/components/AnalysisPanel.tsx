@@ -12,6 +12,8 @@ import {
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '@/components/providers/ThemeProvider';
+import AILikelihoodCard from '@/components/AILikelihoodCard';
+import AITextHighlighter from '@/components/AITextHighlighter';
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -36,6 +38,7 @@ interface Props {
   documentStatus:        string;
   expanded?:             boolean;
   streamingPreviewText?: string;
+  documentText?:         string;
 }
 
 // ─── Score Ring ────────────────────────────────────────────────────────────────
@@ -400,8 +403,9 @@ type TabId = 'overview' | 'integrity' | 'language' | 'tone';
 
 function AnalysisPanel({
   analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onGoPremium, canUseGrammarFixFeature, canUseHumanizeFeature, canUseToneBiasFeature, aiUsageLabel, isAiUsageBlocked, onCancelAnalyze, onSave, documentStatus, expanded = false,
-  streamingPreviewText = '', 
+  streamingPreviewText = '',
   onApplySuggestion, onApplyGrammarFix, getGrammarIssueLine,
+  documentText = '',
 }: Props) {
   const { theme } = useTheme();
   const D = theme === 'dark';
@@ -581,6 +585,16 @@ function AnalysisPanel({
               <ScoreRing value={toneConf}     label="Tone Conf."  isDark={D} />
             </div>
           </div>
+
+          {/* AI Likelihood Breakdown */}
+          {analysis && aiScore >= 0 && (
+            <div>
+              <AILikelihoodCard
+                aiScore={aiScore}
+                showDetectors={true}
+              />
+            </div>
+          )}
 
           <Hr isDark={D} />
 
@@ -784,6 +798,17 @@ function AnalysisPanel({
               <div className={cn('rounded-xl border p-4', D ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-100')}>
                 <p className={cn('text-sm leading-relaxed', D ? 'text-slate-300' : 'text-slate-700')}>{analysis.aiReasoning}</p>
               </div>
+            </div>
+          )}
+
+          {/* AI Text Highlighting */}
+          {documentText && documentText.trim().length > 0 && (
+            <div>
+              <AITextHighlighter
+                text={documentText}
+                overallAiScore={aiScore >= 0 ? aiScore : 50}
+                isDark={D}
+              />
             </div>
           )}
 

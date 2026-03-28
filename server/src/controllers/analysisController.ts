@@ -10,6 +10,7 @@ import { runAI } from '../services/aiRouter';
 import { humanizeDocumentText } from '../services/ai/humanizerEngine';
 import { htmlToStructuredModel, plainTextToEditorHtml, structureDocument } from '../services/documentStructure';
 import { AuthenticatedRequest, HumanizeMode } from '../types';
+import { calculateAILikelihoodBreakdown } from '../utils/aiLikelihood';
 
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
 const DOC_HUMANIZE_CHUNK_SIZE = 1200;
@@ -80,17 +81,56 @@ function humanizeChunkPrompt(chunk: string, mode: HumanizeMode, styleProfile?: '
     : 'Use moderate rewrites for readability and natural tone.';
 
   return [
-    'Rewrite this passage to sound natural and human.',
+    'You are a human writing editor.',
+    'Task: remove signs of AI-generated writing while preserving exact meaning and facts.',
     intensity,
     style,
+    'Detect and fix issues like inflated significance claims, vague attributions, superficial -ing analysis, promotional wording, repetitive AI vocabulary, negative parallelism, rule-of-three padding, filler, and hedging.',
+    'Do a brief internal self-audit using this question: "What makes the below so obviously AI generated?" Then fix those tells.',
     'Rules:',
     '- Preserve meaning exactly.',
     '- Do not add new facts.',
+    '- Keep punctuation natural and use straight quotes (").',
+    '- Avoid markdown, list headers, and emojis.',
+    '- Do not include labels such as "What I changed", "Notes", or "Explanation".',
     '- Return plain text only.',
     '',
-    'Text:',
+    'Input text:',
     chunk,
   ].join('\n');
+}
+
+function sanitizeHumanizedChunk(value: string, fallback: string): string {
+  const cleaned = (value || '')
+    .replace(/^```[a-z]*\n?/i, '')
+    .replace(/```$/i, '')
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .trim();
+
+  if (!cleaned) return fallback;
+
+  const finalSection = cleaned.match(/(?:^|\n)\s*(?:final rewrite|rewritten text|humanized text)\s*:\s*([\s\S]*)$/i);
+  let candidate = finalSection?.[1]?.trim() || cleaned;
+
+  const cutAt = candidate.search(
+    /(?:^|\n)\s*(?:what\s+i\s+changed|changes\s+made|remaining\s+tells|explanation|rationale|notes?|self\s*-?audit|why\s+this\s+works)\s*:/im
+  );
+  if (cutAt >= 0) {
+    candidate = candidate.slice(0, cutAt).trim();
+  }
+
+  candidate = candidate.replace(
+    /^(?:here(?:'s| is)\s+the\s+)?(?:humanized|rewritten|improved)\s+text\s*:\s*/i,
+    ''
+  );
+
+  const normalized = candidate
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+
+  return normalized || fallback;
 }
 
 async function withTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T> {
@@ -170,7 +210,7 @@ async function processDocumentHumanizeJob(jobId: string): Promise<void> {
             DOC_HUMANIZE_CHUNK_TIMEOUT_MS
           );
 
-          const rewritten = ai.success && ai.text ? ai.text.trim() : '';
+          const rewritten = ai.success && ai.text ? sanitizeHumanizedChunk(ai.text, chunk) : '';
           return { index: absoluteIdx, text: rewritten || chunk, fallback: !rewritten };
         } catch {
           return { index: absoluteIdx, text: chunk, fallback: true };
@@ -324,9 +364,12 @@ function buildLimitedAnalysisPayload(documentId: string, sourceText: string, fal
     ? fallbackWordCount
     : sourceText.trim().split(/\s+/).filter(Boolean).length;
 
+  const aiScore = estimateFallbackAiScore(sourceText);
+  const likelihoodBreakdown = calculateAILikelihoodBreakdown(aiScore);
+
   return {
     documentId,
-    aiScore: estimateFallbackAiScore(sourceText),
+    aiScore,
     aiReasoning: limitReason || 'AI rate limit reached. Returning lightweight fallback analysis.',
     humanizationTips: [],
     humanizationSuggestions: [],
@@ -345,6 +388,7 @@ function buildLimitedAnalysisPayload(documentId: string, sourceText: string, fal
     analyzedAt: new Date().toISOString(),
     limited: true,
     limitReason: limitReason || 'AI rate limit reached. Returning lightweight fallback analysis.',
+    likelihoodBreakdown,
   };
 }
 
@@ -431,6 +475,7 @@ export const analyzeDocument = async (
       const cachedToneScore = doc.tone?.confidence != null
         ? Math.round(doc.tone.confidence * 100)
         : 50;
+      const likelihoodBreakdown = calculateAILikelihoodBreakdown(doc.aiScore ?? 50);
       res.json({
         success: true,
         cached: true,
@@ -453,6 +498,7 @@ export const analyzeDocument = async (
           longSentences: (doc as any).longSentences ?? [],
           tone: (doc as any).tone ?? null,
           analyzedAt: doc.analysisRunAt,
+          likelihoodBreakdown,
         },
         message: 'Returned from cache',
       });
@@ -520,6 +566,7 @@ export const analyzeDocument = async (
     );
 
     const responseAiScore = normalizeAiScore(updated?.aiScore, normalizeAiScore(analysis.aiScore, 0));
+    const likelihoodBreakdown = calculateAILikelihoodBreakdown(responseAiScore);
 
     res.json({
       success: true,
@@ -543,6 +590,7 @@ export const analyzeDocument = async (
         longSentences: analysis.longSentences,
         tone: analysis.tone,
         analyzedAt,
+        likelihoodBreakdown,
       },
       message: 'Analysis complete',
     });

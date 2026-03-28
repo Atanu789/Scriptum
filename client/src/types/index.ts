@@ -364,6 +364,12 @@ export interface AnalysisResult {
   tone?:               ToneResult;
   limited?:            boolean;
   limitReason?:        string;
+  likelihoodBreakdown?: {
+    humanPercentage: number;
+    aiPercentage: number;
+    mixedPercentage: number;
+    dominantType: 'human' | 'ai' | 'mixed';
+  };
 }
 
 export interface HumanizeResult {
@@ -446,6 +452,12 @@ export interface HumanizerProcessResult {
   mode: HumanizerUiMode;
   quality: 'high' | 'medium' | 'low';
   aiLikelihoodScore: number;
+  likelihoodBreakdown?: {
+    humanPercentage: number;
+    aiPercentage: number;
+    mixedPercentage: number;
+    dominantType: 'human' | 'ai' | 'mixed';
+  };
   notes: string[];
   cached: boolean;
   processingMs?: number;

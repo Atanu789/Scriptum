@@ -209,6 +209,7 @@ export default function AnalysisPage() {
           isAiUsageBlocked={aiBlocked}
           documentStatus={document.status}
           getGrammarIssueLine={getIssueLineNumber}
+          documentText={document.cleanedText}
           expanded
         />
       </main>

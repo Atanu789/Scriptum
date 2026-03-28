@@ -6,6 +6,7 @@ import User from '../models/User';
 import { AuthenticatedRequest } from '../types';
 import { runAI } from '../services/aiRouter';
 import { buildAICacheHash, getCachedAIResult, setCachedAIResult } from '../services/aiCache';
+import { calculateAILikelihoodBreakdown } from '../utils/aiLikelihood';
 
 const CACHE_WINDOW_MS = 24 * 60 * 60 * 1000;
 const PROCESS_TIMEOUT_MS = 20_000;
@@ -28,6 +29,12 @@ interface HumanizerJobResult {
   mode: HumanizerMode;
   quality: 'high' | 'medium' | 'low';
   aiLikelihoodScore: number;
+  likelihoodBreakdown?: {
+    humanPercentage: number;
+    aiPercentage: number;
+    mixedPercentage: number;
+    dominantType: 'human' | 'ai' | 'mixed';
+  };
   notes: string[];
   cached: boolean;
   processingMs?: number;
@@ -112,16 +119,142 @@ function qualityFromScore(score: number): 'high' | 'medium' | 'low' {
   return 'low';
 }
 
-function buildHumanizerPrompt(chunk: string): string {
+interface ParsedHumanizerResponse {
+  draftRewrite: string;
+  remainingTells: string[];
+  finalRewrite: string;
+}
+
+function modeRewriteInstruction(mode: HumanizerMode): string {
+  if (mode === 'advanced') {
+    return 'Rewrite intensity: strong. You may substantially rephrase syntax and rhythm while preserving meaning and key facts.';
+  }
+  if (mode === 'creative') {
+    return 'Rewrite intensity: medium-strong. Improve voice and flow while keeping core meaning unchanged.';
+  }
+  return 'Rewrite intensity: moderate. Keep wording relatively close to source while removing obvious AI-writing patterns.';
+}
+
+function buildHumanizerPrompt(chunk: string, mode: HumanizerMode): string {
   return [
-    'Rewrite this text to sound more natural and human.',
+    'You are Humanizer v2.3.0.',
+    'Task: remove signs of AI-generated writing while preserving the original meaning.',
+    modeRewriteInstruction(mode),
+    'Detect and fix patterns such as inflated significance claims, promotional language, vague attributions, repetitive -ing clauses, rule-of-three phrasing, em dash overuse, AI vocabulary clustering, formulaic conclusions, and filler/hedging.',
+    'Keep the same language as the input and maintain an appropriate tone for the content.',
+    'Use straight quotes (") and avoid emojis and markdown formatting.',
+    'Do this in two internal stages:',
+    '1) Produce a draft rewrite.',
+    '2) Ask: "What makes the below so obviously AI generated?" then list remaining tells briefly and produce a final rewrite that fixes those tells.',
+    'Return JSON only with this exact schema:',
+    '{"draftRewrite":"string","remainingTells":["string"],"finalRewrite":"string"}',
+    'If no tells remain, return an empty array for remainingTells.',
     '',
-    'Keep meaning same.',
-    'Make it simple and clear.',
-    '',
-    'TEXT:',
+    'Input text:',
     chunk,
   ].join('\n');
+}
+
+function stripCodeFences(value: string): string {
+  return value
+    .replace(/^```[a-z]*\n?/i, '')
+    .replace(/```$/i, '')
+    .trim();
+}
+
+function normalizeOutputText(value: string): string {
+  return stripCodeFences(value)
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'")
+    .replace(/\s+([,.;:!?])/g, '$1')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function sanitizeHumanizedText(value: string, fallback: string): string {
+  const text = normalizeOutputText(value || '');
+  if (!text) return normalizeOutputText(fallback);
+
+  // Prefer explicit "final rewrite" style sections when present.
+  const finalSection = text.match(/(?:^|\n)\s*(?:final rewrite|rewritten text|humanized text)\s*:\s*([\s\S]*)$/i);
+  let candidate = finalSection?.[1]?.trim() || text;
+
+  // Remove common explanatory sections that models sometimes append.
+  const cutAt = candidate.search(
+    /(?:^|\n)\s*(?:what\s+i\s+changed|changes\s+made|remaining\s+tells|explanation|rationale|notes?|self\s*-?audit|why\s+this\s+works)\s*:/im
+  );
+  if (cutAt >= 0) {
+    candidate = candidate.slice(0, cutAt).trim();
+  }
+
+  // Drop one-line lead-in labels like "Here is the humanized text:".
+  candidate = candidate.replace(
+    /^(?:here(?:'s| is)\s+the\s+)?(?:humanized|rewritten|improved)\s+text\s*:\s*/i,
+    ''
+  );
+
+  const normalized = normalizeOutputText(candidate);
+  return normalized || normalizeOutputText(fallback);
+}
+
+function parseHumanizerResponse(raw: string, originalChunk: string): ParsedHumanizerResponse {
+  const cleaned = stripCodeFences(raw);
+  const fallbackFinal = sanitizeHumanizedText(cleaned, originalChunk);
+
+  const parseJson = (input: string): ParsedHumanizerResponse | null => {
+    try {
+      const parsed = JSON.parse(input) as {
+        draftRewrite?: unknown;
+        remainingTells?: unknown;
+        finalRewrite?: unknown;
+      };
+
+      const draftRewrite = typeof parsed.draftRewrite === 'string'
+        ? sanitizeHumanizedText(parsed.draftRewrite, originalChunk)
+        : '';
+      const finalRewrite = typeof parsed.finalRewrite === 'string'
+        ? sanitizeHumanizedText(parsed.finalRewrite, originalChunk)
+        : '';
+      const remainingTells = Array.isArray(parsed.remainingTells)
+        ? parsed.remainingTells
+            .filter((item): item is string => typeof item === 'string')
+            .map((item) => item.trim())
+            .filter(Boolean)
+            .slice(0, 8)
+        : [];
+
+      if (!finalRewrite) return null;
+      return {
+        draftRewrite: draftRewrite || finalRewrite,
+        remainingTells,
+        finalRewrite,
+      };
+    } catch {
+      return null;
+    }
+  };
+
+  const direct = parseJson(cleaned);
+  if (direct) return direct;
+
+  const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+  if (jsonMatch) {
+    const fromMatch = parseJson(jsonMatch[0]);
+    if (fromMatch) return fromMatch;
+  }
+
+  return {
+    draftRewrite: fallbackFinal,
+    remainingTells: [],
+    finalRewrite: fallbackFinal,
+  };
+}
+
+function scoreFromTells(remainingTellsCount: number, mode: HumanizerMode, fallbackUsed: boolean): number {
+  if (fallbackUsed) return 50;
+  const base = mode === 'advanced' ? 18 : mode === 'creative' ? 24 : 30;
+  const score = base + remainingTellsCount * 6;
+  return Math.max(0, Math.min(100, Math.round(score)));
 }
 
 function setJobState(jobId: string, patch: Partial<HumanizerJobState>) {
@@ -215,19 +348,20 @@ async function runWithTimeout<T>(work: Promise<T>, timeoutMs: number): Promise<T
   }
 }
 
-async function runHumanizerChunkAI(userId: string, chunk: string): Promise<{
+async function runHumanizerChunkAI(userId: string, mode: HumanizerMode, chunk: string): Promise<{
   humanizedText: string;
   aiLikelihoodScore: number;
   note: string;
+  remainingTells: string[];
 }> {
   for (let attempt = 0; attempt < 2; attempt += 1) {
     try {
       const aiRes = await runWithTimeout(
         runAI({
-          prompt: buildHumanizerPrompt(chunk),
+          prompt: buildHumanizerPrompt(chunk, mode),
           userId,
-          temperature: 0.6,
-          maxTokens: 700,
+          temperature: mode === 'advanced' ? 0.72 : mode === 'creative' ? 0.65 : 0.55,
+          maxTokens: 850,
           forceFresh: attempt > 0,
         }),
         PROCESS_TIMEOUT_MS
@@ -235,10 +369,12 @@ async function runHumanizerChunkAI(userId: string, chunk: string): Promise<{
 
       const rewritten = aiRes.success && aiRes.text ? aiRes.text.trim() : '';
       if (rewritten && rewritten.length >= 20) {
+        const parsed = parseHumanizerResponse(rewritten, chunk);
         return {
-          humanizedText: rewritten,
-          aiLikelihoodScore: 35,
+          humanizedText: parsed.finalRewrite || chunk,
+          aiLikelihoodScore: scoreFromTells(parsed.remainingTells.length, mode, false),
           note: `Processed via ${aiRes.provider || 'ai-router'}${attempt > 0 ? ' (retry)' : ''}.`,
+          remainingTells: parsed.remainingTells,
         };
       }
     } catch (err) {
@@ -252,6 +388,7 @@ async function runHumanizerChunkAI(userId: string, chunk: string): Promise<{
     humanizedText: chunk,
     aiLikelihoodScore: 50,
     note: 'Chunk fallback applied due to timeout or provider failure.',
+    remainingTells: [],
   };
 }
 
@@ -314,6 +451,7 @@ async function processHumanizerJob({ jobId, userId, mode, forceFresh, sourceText
 
       if (cachedShared) {
         const usage = await getUsage(userId);
+        const likelihoodBreakdown = calculateAILikelihoodBreakdown(cachedShared.aiLikelihoodScore);
         setJobState(jobId, {
           status: 'done',
           result: {
@@ -321,6 +459,7 @@ async function processHumanizerJob({ jobId, userId, mode, forceFresh, sourceText
             cached: true,
             planTier: tier,
             limits: HUMANIZER_PLAN_LIMITS[tier],
+            likelihoodBreakdown,
             usageToday: {
               requestsUsed: usage.requestsUsed,
               wordsProcessed: usage.wordsProcessed,
@@ -345,6 +484,7 @@ async function processHumanizerJob({ jobId, userId, mode, forceFresh, sourceText
       .lean();
 
     if (cached) {
+      const likelihoodBreakdown = calculateAILikelihoodBreakdown(cached.aiLikelihoodScore);
       setJobState(jobId, {
         status: 'done',
         result: {
@@ -354,6 +494,7 @@ async function processHumanizerJob({ jobId, userId, mode, forceFresh, sourceText
           mode: cached.mode,
           quality: cached.quality,
           aiLikelihoodScore: cached.aiLikelihoodScore,
+          likelihoodBreakdown,
           notes: cached.notes,
           cached: true,
           planTier: tier,
@@ -368,12 +509,26 @@ async function processHumanizerJob({ jobId, userId, mode, forceFresh, sourceText
     const chunks = splitText(workingText, HUMANIZER_CHUNK_SIZE).slice(0, HUMANIZER_MAX_CHUNKS);
 
     const processChunks = async () => {
-      const promises = chunks.map((chunk) => runHumanizerChunkAI(userId, chunk));
+      const promises = chunks.map((chunk) => runHumanizerChunkAI(userId, mode, chunk));
 
       const results = await Promise.all(promises);
       const finalText = results.map((r) => r.humanizedText || '').join('\n\n').trim();
       const scoreAvg = results.reduce((sum, r) => sum + r.aiLikelihoodScore, 0) / Math.max(1, results.length);
       const mergedNotes = Array.from(new Set(results.map((r) => r.note))).slice(0, 12);
+      const remainingTells = Array.from(
+        new Set(
+          results
+            .flatMap((r) => r.remainingTells)
+            .map((tell) => tell.trim())
+            .filter(Boolean)
+        )
+      ).slice(0, 6);
+
+      if (remainingTells.length > 0) {
+        mergedNotes.push(`Final audit flags: ${remainingTells.join(' | ')}`);
+      } else {
+        mergedNotes.push('Final anti-AI audit found no obvious remaining tells.');
+      }
 
       if (wasTruncated) {
         mergedNotes.push(`Input capped to ${HUMANIZER_MAX_CHARS} characters for fast processing.`);
@@ -443,6 +598,7 @@ async function processHumanizerJob({ jobId, userId, mode, forceFresh, sourceText
         mode: record.mode,
         quality: record.quality,
         aiLikelihoodScore: record.aiLikelihoodScore,
+        likelihoodBreakdown: calculateAILikelihoodBreakdown(record.aiLikelihoodScore),
         notes: record.notes,
         cached: false,
         processingMs,
@@ -467,6 +623,7 @@ async function processHumanizerJob({ jobId, userId, mode, forceFresh, sourceText
         mode,
         quality: 'medium',
         aiLikelihoodScore: 50,
+        likelihoodBreakdown: calculateAILikelihoodBreakdown(50),
         notes: ['Fallback result returned after background processing failure.'],
         cached: false,
         planTier: 'free',
@@ -504,6 +661,7 @@ export const processHumanizerText = async (req: AuthenticatedRequest, res: Respo
         mode,
         quality: 'medium' as const,
         aiLikelihoodScore: 50,
+        likelihoodBreakdown: calculateAILikelihoodBreakdown(50),
         notes: ['AI rate limit reached. Returning original text.'],
         cached: false,
         planTier: 'free' as const,
