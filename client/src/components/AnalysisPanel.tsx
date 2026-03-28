@@ -387,6 +387,7 @@ function AnalysisPanel({
   );
 
   const [activeTab,    setActiveTab]    = useState<TabId>('integrity');
+  const [grammarFilter, setGrammarFilter] = useState<'all'|'error'|'warning'|'suggestion'>('all');
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
@@ -421,6 +422,10 @@ function AnalysisPanel({
       (order[a.severity ?? 'warning'] ?? 1) - (order[b.severity ?? 'warning'] ?? 1)
         || (a.message || '').localeCompare(b.message || ''));
   }, [analysis]);
+
+  const filteredIssues = useMemo(() =>
+    grammarFilter === 'all' ? sortedIssues : sortedIssues.filter((i) => (i.severity ?? 'warning') === grammarFilter),
+    [grammarFilter, sortedIssues]);
 
   const errorCount      = useMemo(() => analysis?.grammarIssues?.filter((i) => i.severity === 'error').length      ?? 0, [analysis]);
   const warningCount    = useMemo(() => analysis?.grammarIssues?.filter((i) => i.severity === 'warning').length    ?? 0, [analysis]);
@@ -501,7 +506,7 @@ function AnalysisPanel({
 
   const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; badge?: number | string; locked?: boolean }> = [
     { id: 'integrity', label: 'Humanize',           icon: Wand2 },
-    { id: 'language',  label: 'Language',            icon: AlertTriangle, badge: issueCount         },
+    { id: 'language',  label: 'Grammar',             icon: AlertTriangle, badge: issueCount         },
     { id: 'tone',      label: 'Tone & Bias',         icon: Activity,      badge: toneBiasEnabled ? biasFlags.length : 'Premium', locked: !toneBiasEnabled },
   ];
 
@@ -877,8 +882,34 @@ function AnalysisPanel({
                 <p className="text-[11px] text-slate-500">
                   Line-by-line grammar issues. Click <span className="font-semibold">Fix</span> to apply the suggested correction.
                 </p>
+                <div className="flex gap-1.5 flex-wrap">
+                  {(['all', 'error', 'warning', 'suggestion'] as const).map((f) => {
+                    const cnt = f === 'all' ? issueCount : analysis.grammarIssues.filter((i) => (i.severity ?? 'warning') === f).length;
+                    if (f !== 'all' && cnt === 0) return null;
+                    return (
+                      <button
+                        key={f}
+                        onClick={() => setGrammarFilter(f)}
+                        className={cn(
+                          'rounded-full px-3 py-1 text-xs font-semibold capitalize transition-all',
+                          grammarFilter === f
+                            ? f === 'error'
+                              ? 'bg-red-600 text-white'
+                              : f === 'warning'
+                              ? 'bg-amber-500 text-white'
+                              : f === 'suggestion'
+                              ? 'bg-blue-500 text-white'
+                              : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white'
+                            : (D ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'),
+                        )}
+                      >
+                        {f} ({cnt})
+                      </button>
+                    );
+                  })}
+                </div>
                 <div className={cn('space-y-2', expanded ? '' : 'max-h-[28rem] overflow-y-auto pr-1')}>
-                  {sortedIssues.map((issue, i) => (
+                  {filteredIssues.map((issue, i) => (
                     <GrammarIssueCard
                       key={i}
                       issue={issue}
@@ -889,6 +920,9 @@ function AnalysisPanel({
                       lineNumber={getGrammarIssueLine?.(issue) ?? null}
                     />
                   ))}
+                  {filteredIssues.length === 0 && (
+                    <p className="py-6 text-center text-xs text-slate-400">No {grammarFilter} issues.</p>
+                  )}
                 </div>
               </div>
             )}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import AnalysisPanel from '@/components/AnalysisPanel';
@@ -12,7 +12,7 @@ import {
   Save, BarChart2, Loader2, ExternalLink,
   ChevronLeft, FileText, AlertCircle,
   Image as ImageIcon, Video, Music, X, Library, AlignLeft, AlignCenter, AlignRight, WrapText, GitCompare,
-  Bold, Italic, Underline, List, ListOrdered, Link2, Table2, Upload, Download, History, Eye, EyeOff, MoreHorizontal, PanelRightClose,
+  Bold, Italic, Underline, List, ListOrdered, Link2, Table2, Upload, Download, History, Eye, EyeOff, MoreHorizontal, PanelRightClose, Lightbulb,
 } from 'lucide-react';
 import { formatWordCount, cn } from '@/lib/utils';
 import { documentApi } from '@/lib/api';
@@ -308,12 +308,75 @@ function createRangeFromOffsets(spans: EditorTextNodeSpan[], startOffset: number
   return range;
 }
 
+function resolveIssueOffsetsInText(issue: GrammarIssue, sourceText: string): { start: number; end: number } | null {
+  if (!sourceText) return null;
+
+  if (Number.isInteger(issue.offset) && Number.isInteger(issue.length)) {
+    const start = Math.max(0, Math.min(issue.offset, sourceText.length));
+    const len = Math.max(0, issue.length);
+    const end = Math.min(sourceText.length, start + len);
+    if (end > start) return { start, end };
+  }
+
+  const context = (issue.context || '').replace(/^\.\.\.|\.\.\.$/g, '').trim();
+  const issueLen = Number.isInteger(issue.length) ? Math.max(1, issue.length) : 1;
+  const words = context
+    .split(/\s+/)
+    .map((w) => w.replace(/^[^\w]+|[^\w]+$/g, ''))
+    .filter((w) => w.length >= 3)
+    .sort((a, b) => Math.abs(a.length - issueLen) - Math.abs(b.length - issueLen))
+    .slice(0, 4);
+
+  const candidates = Array.from(new Set([
+    context,
+    ...words,
+  ].filter((v): v is string => Boolean(v && v.trim()))));
+
+  for (const candidate of candidates) {
+    const raw = candidate.trim();
+    if (!raw) continue;
+
+    const idx = sourceText.toLowerCase().indexOf(raw.toLowerCase());
+    if (idx !== -1) {
+      const end = Math.min(sourceText.length, idx + Math.max(1, Math.min(issueLen, raw.length)));
+      if (end > idx) return { start: idx, end };
+    }
+
+    const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
+    const match = new RegExp(escaped, 'i').exec(sourceText);
+    if (match && typeof match.index === 'number') {
+      const start = match.index;
+      const end = Math.min(sourceText.length, start + Math.max(1, Math.min(issueLen, match[0].length)));
+      if (end > start) return { start, end };
+    }
+  }
+
+  return null;
+}
+
 function clearEditorAIHighlights(): void {
   const cssAny = (window as any).CSS;
   if (!cssAny?.highlights) return;
   cssAny.highlights.delete('editor-ai-human');
   cssAny.highlights.delete('editor-ai-mixed');
   cssAny.highlights.delete('editor-ai-flagged');
+}
+
+function clearEditorGrammarHighlights(): void {
+  const cssAny = (window as any).CSS;
+  if (!cssAny?.highlights) return;
+  cssAny.highlights.delete('editor-grammar-error');
+  cssAny.highlights.delete('editor-grammar-warning');
+  cssAny.highlights.delete('editor-grammar-suggestion');
+}
+
+function applyEditorGrammarHighlights(
+  _container: HTMLElement,
+  _issues: GrammarIssue[],
+  _hiddenIssueKeys: Set<string>,
+): void {
+  // Editor should only show gutter lightbulbs for errors; no inline grammar underlines/highlights.
+  clearEditorGrammarHighlights();
 }
 
 function applyEditorAIHighlights(container: HTMLElement, overallAiScore: number): void {
@@ -720,6 +783,24 @@ export default function EditorPage() {
       clearEditorAIHighlights();
     };
   }, [analysis, editorHtml]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    const issues = analysis?.grammarIssues ?? [];
+    if (issues.length === 0) {
+      clearEditorGrammarHighlights();
+      return;
+    }
+
+    const hidden = new Set(pendingFixedGrammarIssueKeys);
+    applyEditorGrammarHighlights(editor, issues, hidden);
+
+    return () => {
+      clearEditorGrammarHighlights();
+    };
+  }, [analysis?.grammarIssues, editorHtml, pendingFixedGrammarIssueKeys]);
 
   useEffect(() => {
     return () => {
@@ -1353,7 +1434,8 @@ export default function EditorPage() {
     const afterText = editorRef.current.innerText || '';
     setWordCount(countWords(afterText));
     recalcEditorMetrics();
-    setIsDirty(false);
+    // Humanize updates the editor locally. Keep it dirty until we sync/save.
+    setIsDirty(true);
 
     if ((result.appliedRewrites?.length ?? 0) > 0 && appliedCount === 0) {
       toast('Humanize finished, but structure-safe mapping could not apply changes. Original structure was kept.');
@@ -1372,18 +1454,93 @@ export default function EditorPage() {
     }
   }, [doc?.cleanedText, editorHtml, humanize, recalcEditorMetrics]);
 
+  const handleAnalyzeAction = useCallback(async () => {
+    const html = sanitizeAndNormalizeEditorHtml(editorHtml || editorRef.current?.innerHTML || '<p><br></p>');
+    const persistedHtml = sanitizeAndNormalizeEditorHtml(doc?.editorHtml || toEditorHtml(doc?.cleanedText || ''));
+    const hasPendingGrammarFixes = pendingFixedGrammarIssueKeys.length > 0;
+    const shouldSyncBeforeAnalyze = hasPendingGrammarFixes || html !== persistedHtml;
+
+    if (shouldSyncBeforeAnalyze) {
+      setEditorHtml(html);
+      await updateContent(html, pendingFixedGrammarIssueKeys);
+      setIsDirty(false);
+      setLastSavedAt(new Date().toLocaleTimeString());
+      setGrammarFixUndoStack([]);
+      if (hasPendingGrammarFixes) {
+        setPendingFixedGrammarIssueKeys([]);
+      }
+    }
+
+    await analyze();
+  }, [
+    analyze,
+    doc?.cleanedText,
+    doc?.editorHtml,
+    editorHtml,
+    pendingFixedGrammarIssueKeys,
+    updateContent,
+  ]);
+
   const getIssueLineNumber = useCallback((issue: GrammarIssue) => {
-    if (!Number.isInteger(issue.offset)) return null;
     const sourceText = editorRef.current?.innerText || doc?.cleanedText || '';
     if (!sourceText) return null;
 
-    const safeOffset = Math.max(0, Math.min(issue.offset, sourceText.length));
+    const resolved = resolveIssueOffsetsInText(issue, sourceText);
+    if (!resolved) return null;
+
+    const safeOffset = Math.max(0, Math.min(resolved.start, sourceText.length));
     let line = 1;
     for (let i = 0; i < safeOffset; i++) {
       if (sourceText.charCodeAt(i) === 10) line += 1;
     }
     return line;
   }, [doc?.cleanedText]);
+
+  const grammarIssuesByLine = useMemo(() => {
+    const map = new Map<number, GrammarIssue[]>();
+    const issues = analysis?.grammarIssues ?? [];
+    const hidden = new Set(pendingFixedGrammarIssueKeys);
+    const sourceText = editorRef.current?.innerText || doc?.cleanedText || '';
+
+    issues.forEach((issue) => {
+      const key = grammarIssueKey(issue);
+      if (issue.fixed || hidden.has(key)) return;
+
+      const severity = String(issue.severity ?? '').toLowerCase();
+      if (severity !== 'error') return;
+
+      const resolved = resolveIssueOffsetsInText(issue, sourceText);
+      if (!resolved) return;
+
+      let line = 1;
+      for (let i = 0; i < resolved.start; i++) {
+        if (sourceText.charCodeAt(i) === 10) line += 1;
+      }
+
+      if (!line || line < 1) return;
+
+      const existing = map.get(line) ?? [];
+      existing.push(issue);
+      map.set(line, existing);
+    });
+
+    return map;
+  }, [analysis?.grammarIssues, doc?.cleanedText, pendingFixedGrammarIssueKeys]);
+
+  const handleInlineGrammarFix = useCallback((issue: GrammarIssue) => {
+    const topReplacement = issue.replacements?.[0]?.trim();
+    if (!topReplacement) {
+      toast('No suggested replacement available for this issue.');
+      return;
+    }
+
+    if (!canUseGrammarFix) {
+      goPremium();
+      return;
+    }
+
+    handleApplyGrammarFix(issue, topReplacement);
+  }, [canUseGrammarFix, goPremium, handleApplyGrammarFix]);
 
   /* ������ Loading ������ */
   if (isLoading) {
@@ -1700,13 +1857,42 @@ export default function EditorPage() {
                       <div
                         key={`ln-${i}`}
                         className={cn(
-                          'h-7 pr-2.5 text-right font-mono tabular-nums leading-7 transition-colors',
+                          'flex h-7 items-center justify-end gap-1 pr-1.5 text-right font-mono tabular-nums leading-7 transition-colors',
                           i + 1 === activeVisualLine
                             ? 'bg-indigo-100/80 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300'
                             : 'text-slate-500 dark:text-zinc-500',
                         )}
                       >
-                        {i + 1}
+                        <span>{i + 1}</span>
+                        {(() => {
+                          const line = i + 1;
+                          const lineIssues = grammarIssuesByLine.get(line) ?? [];
+                          if (lineIssues.length === 0) return null;
+
+                          const issue = lineIssues.find((candidate) => !!candidate.replacements?.[0]?.trim()) || lineIssues[0];
+                          const count = lineIssues.length;
+                          const summary = issue.shortMessage || issue.message;
+
+                          return (
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleInlineGrammarFix(issue);
+                              }}
+                              className={cn(
+                                'inline-flex items-center gap-0.5 rounded-md px-1 py-0.5 transition-colors',
+                                'text-amber-600 hover:bg-amber-100 hover:text-amber-700',
+                                'dark:text-amber-400 dark:hover:bg-amber-500/20 dark:hover:text-amber-300',
+                              )}
+                              title={`Line ${line}: ${summary}`}
+                            >
+                              <Lightbulb className="h-3 w-3" />
+                              {count > 1 && <span className="text-[9px] font-semibold">{count}</span>}
+                            </button>
+                          );
+                        })()}
                       </div>
                     ))}
                   </div>
@@ -1785,7 +1971,7 @@ export default function EditorPage() {
               analysis={analysis}
               isAnalyzing={isAnalyzing}
               isHumanizing={isHumanizing}
-              onAnalyze={analyze}
+              onAnalyze={handleAnalyzeAction}
               onHumanize={canUseHumanizeText ? handleHumanizeAction : undefined}
               onGoPremium={goPremium}
               canUseHumanizeFeature={canUseHumanizeText}
