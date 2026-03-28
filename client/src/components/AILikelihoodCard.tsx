@@ -85,26 +85,6 @@ function calculateLikelihoodBreakdown(aiScore: number): AILikelihoodBreakdown {
 export default function AILikelihoodCard({ aiScore, className = '', showDetectors = true }: AILikelihoodCardProps) {
   const breakdown = useMemo(() => calculateLikelihoodBreakdown(aiScore), [aiScore]);
 
-  const dominantColor =
-    breakdown.dominantType === 'human' ? 'text-emerald-600 dark:text-emerald-400' :
-    breakdown.dominantType === 'ai' ? 'text-rose-600 dark:text-rose-400' :
-    'text-amber-600 dark:text-amber-400';
-
-  const dominantBgColor =
-    breakdown.dominantType === 'human' ? 'bg-emerald-500' :
-    breakdown.dominantType === 'ai' ? 'bg-rose-500' :
-    'bg-amber-500';
-
-  const dominantLabel =
-    breakdown.dominantType === 'human' ? 'Human' :
-    breakdown.dominantType === 'ai' ? 'AI' :
-    'Mixed';
-
-  const dominantPercentage =
-    breakdown.dominantType === 'human' ? breakdown.humanPercentage :
-    breakdown.dominantType === 'ai' ? breakdown.aiPercentage :
-    breakdown.mixedPercentage;
-
   const detectorNames = [
     'Turnitin',
     'GPTZero',
@@ -118,51 +98,11 @@ export default function AILikelihoodCard({ aiScore, className = '', showDetector
     <div className={`rounded-xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/[0.08] dark:bg-white/[0.04] ${className}`}>
       <div className="mb-4">
         <h3 className="text-sm font-semibold text-slate-700 dark:text-white/80">
-          AI Likelihood Check
+          Humanize Detection Snapshot
         </h3>
         <p className="text-xs text-slate-500 dark:text-white/50">
-          Content authenticity analysis
+          Human-written, mixed, and AI-generated signal breakdown
         </p>
-      </div>
-
-      {/* Circular Progress Display */}
-      <div className="mb-6 flex items-center justify-center">
-        <div className="relative">
-          {/* Background circle */}
-          <svg className="h-40 w-40 -rotate-90 transform">
-            <circle
-              cx="80"
-              cy="80"
-              r="70"
-              stroke="currentColor"
-              strokeWidth="12"
-              fill="none"
-              className="text-slate-200 dark:text-white/[0.1]"
-            />
-            {/* Progress circle */}
-            <circle
-              cx="80"
-              cy="80"
-              r="70"
-              stroke="currentColor"
-              strokeWidth="12"
-              fill="none"
-              strokeDasharray={`${(dominantPercentage / 100) * 440} 440`}
-              className={dominantBgColor}
-              strokeLinecap="round"
-            />
-          </svg>
-
-          {/* Center text */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center">
-            <div className={`text-4xl font-bold ${dominantColor}`}>
-              {dominantPercentage}%
-            </div>
-            <div className={`text-sm font-semibold ${dominantColor}`}>
-              {dominantLabel}
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Breakdown percentages */}
@@ -227,11 +167,11 @@ export default function AILikelihoodCard({ aiScore, className = '', showDetector
         </div>
       )}
 
-      {/* AI Score indicator */}
+      {/* AI-generated signal indicator */}
       <div className="mt-4 rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 dark:border-indigo-500/30 dark:bg-indigo-500/10">
         <div className="flex items-center justify-between text-xs">
           <span className="font-medium text-indigo-900 dark:text-indigo-300">
-            Overall AI Score
+            AI-generated signal
           </span>
           <span className="text-sm font-bold text-indigo-600 dark:text-indigo-400">
             {aiScore}/100

@@ -25,6 +25,7 @@ import { applyCommand as applyExecCommand } from '@/editor/commands';
 import { replaceInBlocks } from '@/editor/aiReplace';
 import { applyImageWrapperLayout, buildImageWrapperHtml, ensureImageWrappers } from '@/editor/imageHandler';
 import { ErrorBanner } from '@/components/ui/ErrorBanner';
+import { analyzeTextSegments } from '@/components/AITextHighlighter';
 
 interface LocalVersionSnapshot {
   id: string;
@@ -38,6 +39,11 @@ interface LocalTestCase {
   input: string;
   output: string;
   explanation: string;
+}
+
+interface GrammarFixUndoEntry {
+  previousHtml: string;
+  issueKey?: string;
 }
 
 function grammarIssueKey(issue: {
@@ -125,7 +131,7 @@ function replaceByOffset(
   length: number,
   replacement: string,
 ): boolean {
-  if (offset < 0 || length <= 0) return false;
+  if (offset < 0 || length < 0) return false;
 
   const walker = window.document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
   const textNodes: Text[] = [];
@@ -265,6 +271,93 @@ function getDropRangeFromPoint(x: number, y: number): Range | null {
   return null;
 }
 
+type EditorHighlightType = 'human' | 'mixed' | 'ai';
+
+interface EditorTextNodeSpan {
+  node: Text;
+  start: number;
+  end: number;
+}
+
+function collectEditorTextNodeSpans(container: HTMLElement): { text: string; spans: EditorTextNodeSpan[] } {
+  const walker = window.document.createTreeWalker(container, NodeFilter.SHOW_TEXT);
+  const spans: EditorTextNodeSpan[] = [];
+  let text = '';
+  let node = walker.nextNode();
+
+  while (node) {
+    const current = node as Text;
+    const value = current.data || '';
+    const start = text.length;
+    text += value;
+    spans.push({ node: current, start, end: start + value.length });
+    node = walker.nextNode();
+  }
+
+  return { text, spans };
+}
+
+function createRangeFromOffsets(spans: EditorTextNodeSpan[], startOffset: number, endOffset: number): Range | null {
+  const startSpan = spans.find((span) => startOffset >= span.start && startOffset <= span.end);
+  const endSpan = spans.find((span) => endOffset >= span.start && endOffset <= span.end);
+  if (!startSpan || !endSpan) return null;
+
+  const range = window.document.createRange();
+  range.setStart(startSpan.node, Math.max(0, startOffset - startSpan.start));
+  range.setEnd(endSpan.node, Math.max(0, endOffset - endSpan.start));
+  return range;
+}
+
+function clearEditorAIHighlights(): void {
+  const cssAny = (window as any).CSS;
+  if (!cssAny?.highlights) return;
+  cssAny.highlights.delete('editor-ai-human');
+  cssAny.highlights.delete('editor-ai-mixed');
+  cssAny.highlights.delete('editor-ai-flagged');
+}
+
+function applyEditorAIHighlights(container: HTMLElement, overallAiScore: number): void {
+  const cssAny = (window as any).CSS;
+  const HighlightCtor = (window as any).Highlight;
+  if (!cssAny?.highlights || !HighlightCtor) return;
+
+  clearEditorAIHighlights();
+
+  const { text, spans } = collectEditorTextNodeSpans(container);
+  if (!text.trim()) return;
+
+  const segments = analyzeTextSegments(text, overallAiScore);
+  if (segments.length === 0) return;
+
+  const offsets: Array<{ start: number; end: number; type: EditorHighlightType }> = [];
+  let cursor = 0;
+
+  for (const segment of segments) {
+    if (!segment.text) continue;
+    const idx = text.indexOf(segment.text, cursor);
+    if (idx === -1) continue;
+
+    const start = idx;
+    const end = idx + segment.text.length;
+    if (end > start) {
+      offsets.push({ start, end, type: segment.type });
+    }
+    cursor = end;
+  }
+
+  if (offsets.length === 0) return;
+
+  const byType: Record<EditorHighlightType, Range[]> = { human: [], mixed: [], ai: [] };
+  offsets.forEach((segment) => {
+    const range = createRangeFromOffsets(spans, segment.start, segment.end);
+    if (range) byType[segment.type].push(range);
+  });
+
+  if (byType.human.length > 0) cssAny.highlights.set('editor-ai-human', new HighlightCtor(...byType.human));
+  if (byType.mixed.length > 0) cssAny.highlights.set('editor-ai-mixed', new HighlightCtor(...byType.mixed));
+  if (byType.ai.length > 0) cssAny.highlights.set('editor-ai-flagged', new HighlightCtor(...byType.ai));
+}
+
 export default function EditorPage() {
   const params = useParams<{ documentId: string }>();
   const documentId = params.documentId;
@@ -318,6 +411,7 @@ export default function EditorPage() {
   const [assets, setAssets] = useState<Array<{ id: string; name: string; size: number }>>([]);
   const [bottomTab, setBottomTab] = useState<'testcases' | 'metadata' | 'editorial' | 'assets'>('testcases');
   const [pendingFixedGrammarIssueKeys, setPendingFixedGrammarIssueKeys] = useState<string[]>([]);
+  const [grammarFixUndoStack, setGrammarFixUndoStack] = useState<GrammarFixUndoEntry[]>([]);
   const [testCases, setTestCases] = useState<LocalTestCase[]>([
     { id: uid('tc'), input: '', output: '', explanation: '' },
   ]);
@@ -607,8 +701,25 @@ export default function EditorPage() {
     setEditorScrollTop(0);
     setActiveVisualLine(1);
     if (gutterRef.current) gutterRef.current.scrollTop = 0;
+    setGrammarFixUndoStack([]);
     lastLoadedSignatureRef.current = signature;
   }, [doc, isDirty, prepareEditorImages, recalcEditorMetrics]);
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    if (!editor) return;
+
+    if (!analysis || analysis.aiScore == null || analysis.aiScore < 0) {
+      clearEditorAIHighlights();
+      return;
+    }
+
+    applyEditorAIHighlights(editor, analysis.aiScore);
+
+    return () => {
+      clearEditorAIHighlights();
+    };
+  }, [analysis, editorHtml]);
 
   useEffect(() => {
     return () => {
@@ -626,10 +737,11 @@ export default function EditorPage() {
     }
     inputDebounceRef.current = window.setTimeout(() => {
       const html = editorRef.current?.innerHTML || '<p><br></p>';
-      commitEditorHtml(html);
+      // Keep native undo/redo stack intact by syncing state without rewriting DOM.
+      setEditorHtml(sanitizeAndNormalizeEditorHtml(html));
     }, 300);
     if (!isDirty) setIsDirty(true);
-  }, [commitEditorHtml, isDirty, recalcEditorMetrics, saveSelectionRange, updateActiveLineFromSelection]);
+  }, [isDirty, recalcEditorMetrics, saveSelectionRange, updateActiveLineFromSelection]);
 
   const handleEditorScroll = useCallback((e: React.UIEvent<HTMLDivElement>) => {
     if (gutterRef.current) gutterRef.current.scrollTop = e.currentTarget.scrollTop;
@@ -780,6 +892,33 @@ export default function EditorPage() {
   }, [commitEditorHtml]);
 
   const handleEditorKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+    if ((e.ctrlKey || e.metaKey) && !e.altKey) {
+      const key = e.key.toLowerCase();
+      const isUndo = key === 'z' && !e.shiftKey;
+      const isRedo = key === 'y' || (key === 'z' && e.shiftKey);
+
+      if (isUndo || isRedo) {
+        e.preventDefault();
+        if (!editorRef.current) return;
+
+        applyExecCommand({
+          container: editorRef.current,
+          command: isUndo ? 'undo' : 'redo',
+          before: saveSelectionRange,
+          after: restoreSelectionRange,
+        });
+
+        window.setTimeout(() => {
+          const html = editorRef.current?.innerHTML || '<p><br></p>';
+          setEditorHtml(sanitizeAndNormalizeEditorHtml(html));
+          recalcEditorMetrics();
+          updateActiveLineFromSelection();
+          if (!isDirty) setIsDirty(true);
+        }, 0);
+        return;
+      }
+    }
+
     if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
       e.preventDefault();
       const href = window.prompt('Paste link URL');
@@ -835,7 +974,7 @@ export default function EditorPage() {
     wrapper.style.top = `${Math.round(currentTop + dy)}px`;
     setIsDirty(true);
     commitEditorHtml(editorRef.current?.innerHTML || '<p><br></p>', { restoreSelection: true });
-  }, [commitEditorHtml, parsePxStyle, recalcEditorMetrics, restoreSelectionRange, saveSelectionRange, selectedImageEl]);
+  }, [commitEditorHtml, isDirty, parsePxStyle, recalcEditorMetrics, restoreSelectionRange, saveSelectionRange, selectedImageEl, updateActiveLineFromSelection]);
 
   useEffect(() => {
     return () => {
@@ -891,6 +1030,7 @@ export default function EditorPage() {
       await updateContent(html, pendingFixedGrammarIssueKeys);
       setIsDirty(false);
       setLastSavedAt(new Date().toLocaleTimeString());
+      setGrammarFixUndoStack([]);
       if (pendingFixedGrammarIssueKeys.length > 0) {
         setPendingFixedGrammarIssueKeys([]);
       }
@@ -898,14 +1038,6 @@ export default function EditorPage() {
       setIsSaving(false);
     }
   }, [editorHtml, pendingFixedGrammarIssueKeys, updateContent]);
-
-  useEffect(() => {
-    if (!isDirty || isSaving) return;
-    const timer = window.setTimeout(() => {
-      void handleSave();
-    }, 3000);
-    return () => window.clearTimeout(timer);
-  }, [handleSave, isDirty, isSaving]);
 
   const snapshotVersion = useCallback((label = 'Draft Snapshot') => {
     if (!editorRef.current) return;
@@ -1063,67 +1195,170 @@ export default function EditorPage() {
   // One-click grammar correction
   const handleApplyGrammarFix = useCallback((issue: GrammarIssue, replacement: string) => {
     if (!editorRef.current) return;
-    const beforeText = editorRef.current.innerText || '';
+    const editor = editorRef.current;
+    const beforeText = editor.innerText || '';
+    const beforeHtml = editor.innerHTML;
+    const key = grammarIssueKey(issue);
+    const hasOffset = Number.isInteger(issue.offset) && Number.isInteger(issue.length);
 
-    const appliedByOffset = Number.isInteger(issue.offset) && Number.isInteger(issue.length)
-      ? replaceByOffset(editorRef.current, issue.offset, issue.length, replacement)
-      : false;
+    let applied = false;
 
-    if (appliedByOffset) {
-      setIsDirty(true);
-      recalcEditorMetrics();
-      commitEditorHtml(editorRef.current.innerHTML, { restoreSelection: true });
-      const key = grammarIssueKey(issue);
-      setPendingFixedGrammarIssueKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
-      const text = editorRef.current.innerText;
-      setCompareSnapshot({
-        title: 'Grammar Fix Applied',
-        before: beforeText,
-        after: text,
-      });
-      toast.success('Grammar fix applied');
-      return;
+    if (hasOffset) {
+      const safeLength = Math.max(0, issue.length);
+      applied = replaceByOffset(editor, issue.offset, safeLength, replacement);
     }
 
-    // Fallback: try replacing the first occurrence from issue context snippet.
-    const contextText = (issue.context || '').replace(/^\.\.\.|\.\.\.$/g, '').trim();
-    if (contextText) {
-      const replaced = replaceInBlocks(editorRef.current.innerHTML, contextText, replacement);
-      if (replaced.applied) {
-        editorRef.current.innerHTML = replaced.html;
-        setIsDirty(true);
-        recalcEditorMetrics();
-        commitEditorHtml(replaced.html, { restoreSelection: true });
-        const key = grammarIssueKey(issue);
-        setPendingFixedGrammarIssueKeys((prev) => (prev.includes(key) ? prev : [...prev, key]));
-        const text = editorRef.current.innerText;
-        setCompareSnapshot({
-          title: 'Grammar Fix Applied',
-          before: beforeText,
-          after: text,
-        });
-        toast.success('Grammar fix applied');
-        return;
+    if (!applied) {
+      const currentText = editor.innerText || '';
+      const fromCurrentOffset = hasOffset && issue.length > 0
+        ? currentText.slice(issue.offset, issue.offset + issue.length).trim()
+        : '';
+      const fromSourceOffset = hasOffset && issue.length > 0
+        ? (doc?.cleanedText || '').slice(issue.offset, issue.offset + issue.length).trim()
+        : '';
+      const contextText = (issue.context || '').replace(/^\.\.\.|\.\.\.$/g, '').trim();
+
+      const contextCandidates: string[] = [];
+      if (contextText && issue.length > 0) {
+        const targetLength = Math.max(1, issue.length);
+        const words = contextText
+          .split(/\s+/)
+          .map((word) => word.replace(/^[^\w]+|[^\w]+$/g, ''))
+          .filter((word) => word.length >= 2);
+
+        words
+          .sort((a, b) => Math.abs(a.length - targetLength) - Math.abs(b.length - targetLength))
+          .slice(0, 3)
+          .forEach((word) => contextCandidates.push(word));
+      }
+
+      const candidates = Array.from(new Set([
+        fromCurrentOffset,
+        fromSourceOffset,
+        ...contextCandidates,
+      ].filter((value): value is string => value.length > 0 && value.length <= 80)));
+
+      for (const candidate of candidates) {
+        const replaced = replaceInBlocks(editor.innerHTML, candidate, replacement);
+        if (replaced.applied) {
+          editor.innerHTML = replaced.html;
+          applied = true;
+          break;
+        }
       }
     }
 
-    navigator.clipboard.writeText(replacement).then(() => {
-      toast.success('Could not auto-apply ��� replacement copied to clipboard');
+    if (!applied) {
+      navigator.clipboard.writeText(replacement).then(() => {
+        toast.success('Could not auto-apply; replacement copied to clipboard');
+      });
+      return;
+    }
+
+    const addedIssueKey = !pendingFixedGrammarIssueKeys.includes(key);
+    if (addedIssueKey) {
+      setPendingFixedGrammarIssueKeys((prev) => [...prev, key]);
+    }
+
+    setGrammarFixUndoStack((prev) => [
+      { previousHtml: beforeHtml, issueKey: addedIssueKey ? key : undefined },
+      ...prev,
+    ].slice(0, 30));
+
+    setIsDirty(true);
+    recalcEditorMetrics();
+    commitEditorHtml(editor.innerHTML, { restoreSelection: true });
+    const text = editor.innerText;
+    setCompareSnapshot({
+      title: 'Grammar Fix Applied',
+      before: beforeText,
+      after: text,
     });
-  }, [commitEditorHtml, recalcEditorMetrics]);
+    toast.success('Grammar fix applied');
+  }, [commitEditorHtml, doc?.cleanedText, pendingFixedGrammarIssueKeys, recalcEditorMetrics]);
+
+  const handleUndoGrammarFix = useCallback(() => {
+    const editor = editorRef.current;
+    if (!editor || grammarFixUndoStack.length === 0) return;
+
+    const [latest, ...rest] = grammarFixUndoStack;
+    const beforeText = editor.innerText || '';
+
+    editor.innerHTML = latest.previousHtml;
+    commitEditorHtml(latest.previousHtml, { restoreSelection: true });
+    recalcEditorMetrics();
+    setIsDirty(true);
+    setGrammarFixUndoStack(rest);
+
+    if (latest.issueKey) {
+      setPendingFixedGrammarIssueKeys((prev) => prev.filter((key) => key !== latest.issueKey));
+    }
+
+    const afterText = editor.innerText || '';
+    setCompareSnapshot({
+      title: 'Grammar Fix Undone',
+      before: beforeText,
+      after: afterText,
+    });
+    toast.success('Last grammar fix undone');
+  }, [commitEditorHtml, grammarFixUndoStack, recalcEditorMetrics]);
 
   const handleHumanizeAction = useCallback(async () => {
     const beforeText = htmlToPlainText(editorHtml || editorRef.current?.innerHTML || doc?.cleanedText || '');
     const result = await humanize();
     if (!result || !editorRef.current) return;
 
-    const nextHumanized = sanitizeAndNormalizeEditorHtml(toEditorHtml(result.cleanedText || ''));
+    const currentHtml = editorRef.current.innerHTML || '<p><br></p>';
+    let preservedHtml = currentHtml;
+    let appliedCount = 0;
+
+    for (const rewrite of result.appliedRewrites || []) {
+      const original = (rewrite.original || '').trim();
+      const replacement = (rewrite.replacement || '').trim();
+      if (!original || !replacement) continue;
+
+      const replaced = replaceInBlocks(preservedHtml, original, replacement);
+      if (replaced.applied) {
+        preservedHtml = replaced.html;
+        appliedCount += 1;
+      }
+    }
+
+    if (appliedCount === 0 && (result.cleanedText || '').trim()) {
+      const template = window.document.createElement('template');
+      template.innerHTML = currentHtml;
+      const structuralBlocks = Array.from(
+        template.content.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,blockquote')
+      );
+      const incomingBlocks = (result.cleanedText || '')
+        .split(/\n{2,}/)
+        .map((part) => part.trim())
+        .filter((part) => part.length > 0);
+
+      if (structuralBlocks.length > 0 && structuralBlocks.length === incomingBlocks.length) {
+        structuralBlocks.forEach((block, index) => {
+          block.textContent = incomingBlocks[index];
+        });
+        preservedHtml = template.innerHTML;
+        appliedCount = incomingBlocks.length;
+      }
+    }
+
+    const nextHumanized = appliedCount > 0
+      ? sanitizeAndNormalizeEditorHtml(preservedHtml)
+      : sanitizeAndNormalizeEditorHtml(currentHtml);
+
     editorRef.current.innerHTML = nextHumanized;
     setEditorHtml(nextHumanized);
     const afterText = editorRef.current.innerText || '';
     setWordCount(countWords(afterText));
     recalcEditorMetrics();
     setIsDirty(false);
+
+    if ((result.appliedRewrites?.length ?? 0) > 0 && appliedCount === 0) {
+      toast('Humanize finished, but structure-safe mapping could not apply changes. Original structure was kept.');
+    }
+
     setCompareSnapshot({
       title: 'Humanize Completed',
       before: beforeText,
@@ -1480,15 +1715,6 @@ export default function EditorPage() {
 
               <div className="relative flex-1 overflow-hidden bg-white dark:bg-zinc-900">
                 <div
-                  aria-hidden
-                  className="pointer-events-none absolute inset-x-0 z-0 border-y border-indigo-200/80 bg-indigo-100/50 dark:border-indigo-500/30 dark:bg-indigo-500/10"
-                  style={{
-                    top: `${32 + (activeVisualLine - 1) * editorLineHeight - editorScrollTop}px`,
-                    height: `${editorLineHeight}px`,
-                  }}
-                />
-
-                <div
                   ref={editorRef}
                   contentEditable
                   suppressContentEditableWarning
@@ -1571,6 +1797,8 @@ export default function EditorPage() {
               documentStatus={doc.status}
               onApplySuggestion={handleApplySuggestion}
               onApplyGrammarFix={canUseGrammarFix ? handleApplyGrammarFix : undefined}
+              onUndoGrammarFix={canUseGrammarFix ? handleUndoGrammarFix : undefined}
+              canUndoGrammarFix={grammarFixUndoStack.length > 0}
               getGrammarIssueLine={getIssueLineNumber}
               documentText={editorRef.current?.innerText || doc?.cleanedText || ''}
             />
@@ -1598,6 +1826,18 @@ export default function EditorPage() {
           <MoreHorizontal className="h-4 w-4" />
         </button>
       )}
+
+      <style jsx global>{`
+        ::highlight(editor-ai-human) {
+          background: color-mix(in srgb, #34d399 40%, transparent);
+        }
+        ::highlight(editor-ai-mixed) {
+          background: color-mix(in srgb, #f59e0b 35%, transparent);
+        }
+        ::highlight(editor-ai-flagged) {
+          background: color-mix(in srgb, #fb7185 20%, transparent);
+        }
+      `}</style>
 
       
 

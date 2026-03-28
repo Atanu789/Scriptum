@@ -4,7 +4,7 @@ import { useMemo, useState } from 'react';
 import { Bot, User, Sparkles, Eye, EyeOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
-interface TextSegment {
+export interface TextSegment {
   text: string;
   type: 'human' | 'mixed' | 'ai';
   score: number;
@@ -17,11 +17,15 @@ interface AITextHighlighterProps {
   isDark?: boolean;
 }
 
+function clamp(value: number, min: number, max: number): number {
+  return Math.max(min, Math.min(max, value));
+}
+
 /**
  * Analyze text and categorize sentences as Human/Mixed/AI
  * based on AI-detection patterns
  */
-function analyzeTextSegments(text: string, overallScore: number = 50): TextSegment[] {
+export function analyzeTextSegments(text: string, overallScore: number = 50): TextSegment[] {
   if (!text || text.trim().length === 0) {
     return [];
   }
@@ -42,58 +46,103 @@ function analyzeTextSegments(text: string, overallScore: number = 50): TextSegme
     return [{ text, type: classifyByScore(overallScore), score: overallScore }];
   }
 
-  // Analyze each sentence
-  return sentences.map((sentence, index) => {
-    // Add variance based on position and patterns
-    let score = overallScore;
+  const wordCounts = sentences.map((sentence) => sentence.trim().split(/\s+/).filter(Boolean).length);
+  const avgWordCount = wordCounts.reduce((sum, n) => sum + n, 0) / Math.max(wordCounts.length, 1);
 
-    // AI-like patterns (increase score)
-    const aiPatterns = [
-      /\b(furthermore|moreover|additionally|consequently|therefore|thus|hence)\b/i,
-      /\b(utilize|leverage|optimize|facilitate|implement|execute)\b/i,
-      /\b(comprehensive|holistic|robust|scalable|innovative|cutting-edge)\b/i,
-      /\b(it is important to note that|it should be noted|as previously mentioned)\b/i,
-      /^(In conclusion|To summarize|In summary|Overall|Ultimately)/i,
-    ];
+  const aiPatterns = [
+    /\b(furthermore|moreover|additionally|consequently|therefore|thus|hence)\b/i,
+    /\b(utilize|leverage|optimize|facilitate|implement|execute)\b/i,
+    /\b(comprehensive|holistic|robust|scalable|innovative|cutting-edge)\b/i,
+    /\b(it is important to note that|it should be noted|as previously mentioned)\b/i,
+    /^(In conclusion|To summarize|In summary|Overall|Ultimately)/i,
+  ];
 
-    // Human-like patterns (decrease score)
-    const humanPatterns = [
-      /\b(I think|I feel|I believe|in my opinion|personally)\b/i,
-      /\b(really|very|quite|pretty|absolutely|totally)\b/i,
-      /\b(gonna|wanna|kinda|sorta|yeah|nope|yep)\b/i,
-      /[!]{2,}|[?]{2,}/,
-      /\b(honestly|frankly|literally|actually|basically)\b/i,
-    ];
+  const humanPatterns = [
+    /\b(I think|I feel|I believe|in my opinion|personally)\b/i,
+    /\b(really|very|quite|pretty|absolutely|totally)\b/i,
+    /\b(gonna|wanna|kinda|sorta|yeah|nope|yep)\b/i,
+    /[!]{2,}|[?]{2,}/,
+    /\b(honestly|frankly|literally|actually|basically)\b/i,
+  ];
 
-    // Count pattern matches
-    const aiMatches = aiPatterns.filter(pattern => pattern.test(sentence)).length;
-    const humanMatches = humanPatterns.filter(pattern => pattern.test(sentence)).length;
+  // Keep overall score influential but not dominant so sentence-level cues can differ.
+  const baseline = 50 + (overallScore - 50) * 0.28;
 
-    // Adjust score based on patterns
-    score += aiMatches * 8;
-    score -= humanMatches * 10;
+  const rawScores = sentences.map((sentence, index) => {
+    let score = baseline;
+    const aiMatches = aiPatterns.filter((pattern) => pattern.test(sentence)).length;
+    const humanMatches = humanPatterns.filter((pattern) => pattern.test(sentence)).length;
 
-    // Add position-based variance (middle sentences tend to be more AI-like)
-    const positionRatio = index / Math.max(sentences.length - 1, 1);
-    if (positionRatio > 0.2 && positionRatio < 0.8) {
-      score += 3;
-    }
+    score += aiMatches * 7;
+    score -= humanMatches * 9;
 
-    // Sentence length impact (very uniform length is AI-like)
-    const wordCount = sentence.trim().split(/\s+/).length;
-    if (wordCount > 20 && wordCount < 30) {
-      score += 5;
-    }
+    const wordCount = wordCounts[index] ?? 0;
+    const lengthDelta = wordCount - avgWordCount;
 
-    // Clamp score
-    score = Math.max(0, Math.min(100, score));
+    if (lengthDelta > 8) score += 3;
+    if (lengthDelta < -6) score -= 3;
+    if (wordCount >= 16 && wordCount <= 26) score += 2;
+    if (/[;:]/.test(sentence)) score += 2;
+    if (/[!?]/.test(sentence) && !/[!?]{2,}/.test(sentence)) score -= 2;
 
-    return {
-      text: sentence,
-      type: classifyByScore(score),
-      score: Math.round(score),
-    };
+    // Small deterministic wave prevents large blocks from collapsing into one label.
+    score += ((index % 4) - 1.5) * 1.2;
+
+    return score;
   });
+
+  const minRaw = Math.min(...rawScores);
+  const maxRaw = Math.max(...rawScores);
+  const span = Math.max(1, maxRaw - minRaw);
+
+  const displayScores = rawScores.map((raw) => {
+    const normalized = 15 + ((raw - minRaw) / span) * 80;
+    return Math.round(clamp(normalized, 0, 100));
+  });
+
+  if (sentences.length < 3) {
+    return sentences.map((sentence, index) => ({
+      text: sentence,
+      type: classifyByScore(displayScores[index] ?? Math.round(clamp(baseline, 0, 100))),
+      score: displayScores[index] ?? Math.round(clamp(baseline, 0, 100)),
+    }));
+  }
+
+  const ranked = rawScores
+    .map((score, index) => ({ score, index }))
+    .sort((a, b) => a.score - b.score);
+
+  const total = sentences.length;
+  const aiTarget = clamp((overallScore - 35) / 55, 0.08, 0.82);
+  const humanTarget = clamp((65 - overallScore) / 55, 0.08, 0.72);
+
+  let aiCount = Math.round(total * aiTarget);
+  let humanCount = Math.round(total * humanTarget);
+
+  if (aiCount + humanCount > total - 1) {
+    const overflow = aiCount + humanCount - (total - 1);
+    if (aiCount >= humanCount) aiCount -= overflow;
+    else humanCount -= overflow;
+  }
+
+  aiCount = clamp(aiCount, 1, total - 1);
+  humanCount = clamp(humanCount, 1, total - aiCount - 1);
+
+  const typeByIndex = new Array<TextSegment['type']>(total).fill('mixed');
+
+  ranked.slice(0, humanCount).forEach(({ index }) => {
+    typeByIndex[index] = 'human';
+  });
+
+  ranked.slice(total - aiCount).forEach(({ index }) => {
+    typeByIndex[index] = 'ai';
+  });
+
+  return sentences.map((sentence, index) => ({
+    text: sentence,
+    type: typeByIndex[index],
+    score: displayScores[index],
+  }));
 }
 
 function classifyByScore(score: number): 'human' | 'mixed' | 'ai' {

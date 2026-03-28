@@ -26,7 +26,7 @@ export function replaceInBlocks(html: string, original: string, replacement: str
   const template = window.document.createElement('template');
   template.innerHTML = html;
 
-  const blocks = Array.from(template.content.querySelectorAll('p,h1,h2,h3,li,blockquote'));
+  const blocks = Array.from(template.content.querySelectorAll('p,h1,h2,h3,h4,h5,h6,li,blockquote'));
   for (const block of blocks) {
     const text = (block.textContent || '').trim();
     if (!text) continue;

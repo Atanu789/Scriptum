@@ -8,12 +8,11 @@ import {
   RefreshCw, Brain, Gauge, Sparkles, X, Bot, Shield,
   ScanSearch, Save, FileCheck2, Hash, Clock, BarChart3, Mic2,
   AlertOctagon, Eye, Activity, Wand2, Copy, Check, ArrowRight,
-  Crown, Lock,
+  Crown, Lock, RotateCcw,
 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '@/components/providers/ThemeProvider';
-import AILikelihoodCard from '@/components/AILikelihoodCard';
-import AITextHighlighter from '@/components/AITextHighlighter';
+import AILikelihoodCard, { calculateLikelihoodBreakdown } from '@/components/AILikelihoodCard';
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -34,6 +33,8 @@ interface Props {
   onSave?:               () => void;
   onApplySuggestion?:    (original: string, replacement: string) => void;
   onApplyGrammarFix?:    (issue: GrammarIssue, replacement: string) => void;
+  onUndoGrammarFix?:     () => void;
+  canUndoGrammarFix?:    boolean;
   getGrammarIssueLine?:  (issue: GrammarIssue) => number | null;
   documentStatus:        string;
   expanded?:             boolean;
@@ -404,16 +405,24 @@ type TabId = 'overview' | 'integrity' | 'language' | 'tone';
 function AnalysisPanel({
   analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onGoPremium, canUseGrammarFixFeature, canUseHumanizeFeature, canUseToneBiasFeature, aiUsageLabel, isAiUsageBlocked, onCancelAnalyze, onSave, documentStatus, expanded = false,
   streamingPreviewText = '',
-  onApplySuggestion, onApplyGrammarFix, getGrammarIssueLine,
+  onApplySuggestion, onApplyGrammarFix, onUndoGrammarFix, canUndoGrammarFix = false, getGrammarIssueLine,
   documentText = '',
 }: Props) {
   const { theme } = useTheme();
   const D = theme === 'dark';
 
-  const card = cn('rounded-2xl border', D ? 'bg-[#0f0f1a] border-slate-800'     : 'bg-white border-slate-100');
-  const sub  = cn('rounded-xl border p-4', D ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-100');
+  const card = cn(
+    'relative overflow-hidden rounded-3xl border backdrop-blur-xl',
+    D
+      ? 'border-white/10 bg-slate-950/70 shadow-[0_20px_45px_-25px_rgba(129,140,248,0.45)]'
+      : 'border-slate-200/80 bg-white/85 shadow-[0_20px_45px_-30px_rgba(79,70,229,0.35)]',
+  );
+  const sub  = cn(
+    'rounded-2xl border p-4 backdrop-blur-sm',
+    D ? 'border-white/10 bg-slate-900/50' : 'border-white bg-white/80',
+  );
 
-  const [activeTab,    setActiveTab]    = useState<TabId>('overview');
+  const [activeTab,    setActiveTab]    = useState<TabId>('integrity');
   const [grammarFilter, setGrammarFilter] = useState<'all'|'error'|'warning'|'suggestion'>('all');
 
   // ── Derived values ──────────────────────────────────────────────────────────
@@ -421,20 +430,20 @@ function AnalysisPanel({
   const aiScore       = analysis?.aiScore           ?? -1;
   const isQuotaError  = analysis?.aiReasoning?.includes('quota') || analysis?.aiReasoning?.includes('Quota');
   const grammarScore  = analysis?.grammarScore       ?? 0;
-  const readability   = analysis?.readabilityScore   ?? 0;
   const toneConf      = analysis?.tone?.confidence != null ? Math.round(analysis.tone.confidence * 100) : 0;
   const dominantTone  = analysis?.tone?.dominantTone ?? '—';
   const issueCount    = analysis?.grammarIssues?.length ?? 0;
-  const claimFlags            = analysis?.claimFlags            ?? [];
-  const longSentences         = analysis?.longSentences         ?? [];
   const humanizationSuggestions = analysis?.humanizationSuggestions ?? [];
   const biasFlags     = analysis?.tone?.biasFlags ?? [];
-  const lastAnalyzed  = analysis?.analyzedAt ? new Date(analysis.analyzedAt).toLocaleString() : null;
+  const likelihoodBreakdown = useMemo(() => {
+    if (aiScore < 0) return null;
+    return calculateLikelihoodBreakdown(aiScore);
+  }, [aiScore]);
 
   const aiVerdict =
-    aiScore >= 70 ? 'Higher AI-pattern likelihood'
-    : aiScore >= 40 ? 'Mixed AI/human pattern signals'
-    : aiScore >= 0  ? 'Lower AI-pattern likelihood'
+    aiScore >= 70 ? 'High AI-generated signal'
+    : aiScore >= 40 ? 'Mixed human/AI signal'
+    : aiScore >= 0  ? 'Mostly human-written signal'
     : '—';
   const humanizeEnabled = canUseHumanizeFeature ?? Boolean(onHumanize);
   const grammarFixEnabled = canUseGrammarFixFeature ?? Boolean(onApplyGrammarFix);
@@ -532,25 +541,49 @@ function AnalysisPanel({
   // ── Tabs ────────────────────────────────────────────────────────────────────
 
   const tabs: Array<{ id: TabId; label: string; icon: React.ElementType; badge?: number | string; locked?: boolean }> = [
-    { id: 'overview',  label: 'Overview',          icon: Gauge },
-    { id: 'integrity', label: 'Content Integrity',  icon: Shield,        badge: claimFlags.length  },
+    { id: 'integrity', label: 'Humanize',           icon: Wand2 },
     { id: 'language',  label: 'Language',            icon: AlertTriangle, badge: issueCount         },
     { id: 'tone',      label: 'Tone & Bias',         icon: Activity,      badge: toneBiasEnabled ? biasFlags.length : 'Premium', locked: !toneBiasEnabled },
   ];
 
   return (
-    <div className="space-y-4">
+    <div className="relative overflow-hidden rounded-3xl p-1">
+      <div
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute -left-20 -top-16 h-56 w-56 rounded-full blur-3xl',
+          D ? 'bg-indigo-500/20 animate-[auroraShift_9s_ease-in-out_infinite]' : 'bg-cyan-300/35 animate-[auroraShift_9s_ease-in-out_infinite]',
+        )}
+      />
+      <div
+        aria-hidden
+        className={cn(
+          'pointer-events-none absolute -bottom-20 -right-16 h-60 w-60 rounded-full blur-3xl',
+          D ? 'bg-fuchsia-500/20 animate-[auroraShift_11s_ease-in-out_infinite_reverse]' : 'bg-violet-300/35 animate-[auroraShift_11s_ease-in-out_infinite_reverse]',
+        )}
+      />
+      <div className="relative z-10 space-y-4">
+      {isHumanizing && streamingPreviewText && (
+        <div className={cn('rounded-2xl border px-4 py-3 backdrop-blur-sm', D ? 'border-indigo-400/30 bg-indigo-950/35' : 'border-cyan-300/70 bg-cyan-50/80')}>
+          <p className={cn('mb-1 text-[10px] font-bold uppercase tracking-wider', D ? 'text-indigo-300' : 'text-indigo-700')}>
+            Live Humanize Preview
+          </p>
+          <p className={cn('line-clamp-6 text-xs leading-relaxed', D ? 'text-slate-200' : 'text-slate-700')}>
+            {streamingPreviewText}
+          </p>
+        </div>
+      )}
 
       {/* Tab bar */}
-      <div className={cn(card, 'p-2')}>
+      <div className={cn(card, 'sticky top-2 z-20 p-2.5')}>
         <div className="flex gap-1 overflow-x-auto" style={{ scrollbarWidth: 'none' }}>
           {tabs.map((tab) => (
             <button key={tab.id} onClick={() => (tab.locked ? onGoPremium?.() : setActiveTab(tab.id))}
               type="button"
-              className={cn('flex-shrink-0 flex items-center gap-1.5 rounded-xl px-3 py-2 text-xs font-semibold transition-all whitespace-nowrap',
+              className={cn('group relative flex-shrink-0 flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-xs font-semibold transition-all whitespace-nowrap',
                 activeTab === tab.id
-                  ? 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white shadow-sm'
-                  : D ? 'text-slate-400 hover:bg-slate-800 hover:text-white' : 'text-slate-500 hover:bg-slate-100 hover:text-slate-800')}>
+                  ? 'bg-gradient-to-r from-cyan-500 to-indigo-600 text-white shadow-[0_10px_25px_-10px_rgba(14,165,233,0.9)] ring-1 ring-white/30'
+                  : D ? 'text-slate-300 hover:bg-white/10 hover:text-white' : 'text-slate-600 hover:bg-slate-100/80 hover:text-slate-900')}>
               <tab.icon className="h-3.5 w-3.5" />
               {tab.label}
               {typeof tab.badge === 'number' && tab.badge > 0 && (
@@ -565,6 +598,7 @@ function AnalysisPanel({
                   <span className="inline-flex items-center gap-1"><Lock className="h-3 w-3" />{tab.badge}</span>
                 </span>
               )}
+              <span className={cn('pointer-events-none absolute inset-0 rounded-xl opacity-0 transition-opacity', activeTab === tab.id ? 'opacity-100' : 'group-hover:opacity-100', D ? 'bg-white/5' : 'bg-indigo-50/70')} />
             </button>
           ))}
         </div>
@@ -572,106 +606,106 @@ function AnalysisPanel({
 
       {/* ───────────────────────── TAB 1: OVERVIEW ──────────────────────────── */}
       {activeTab === 'overview' && (
-        <div className={cn(card, 'p-5 space-y-6')}>
+        <div className={cn(card, 'p-5 space-y-6 animate-[panelFade_.24s_ease-out]')}>
 
-          {/* 4 Score Rings */}
           <div>
-            <SectionLabel icon={BarChart3} label="Editorial Scores" isDark={D} />
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-4">
-              <ScoreRing value={aiScore} label="AI Likelihood"
-                sublabel={aiScore >= 0 ? aiVerdict : undefined} isDark={D} inverted />
-              <ScoreRing value={grammarScore} label="Grammar"    sublabel={grammarScoreLabel(grammarScore)} isDark={D} />
-              <ScoreRing value={readability}  label="Readability" isDark={D} />
-              <ScoreRing value={toneConf}     label="Tone Conf."  isDark={D} />
-            </div>
+            <SectionLabel icon={Bot} label="Humanize Snapshot" isDark={D} />
+            {likelihoodBreakdown ? (
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+                <div className={cn('rounded-xl border p-3', D ? 'border-green-900/40 bg-green-950/20' : 'border-green-200 bg-green-50')}>
+                  <p className={cn('text-[10px] font-bold uppercase tracking-wider', D ? 'text-green-300' : 'text-green-700')}>Human-written</p>
+                  <p className={cn('mt-1 text-2xl font-black', D ? 'text-green-200' : 'text-green-800')}>{likelihoodBreakdown.humanPercentage}%</p>
+                </div>
+                <div className={cn('rounded-xl border p-3', D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')}>
+                  <p className={cn('text-[10px] font-bold uppercase tracking-wider', D ? 'text-amber-300' : 'text-amber-700')}>Mixed</p>
+                  <p className={cn('mt-1 text-2xl font-black', D ? 'text-amber-200' : 'text-amber-800')}>{likelihoodBreakdown.mixedPercentage}%</p>
+                </div>
+                <div className={cn('rounded-xl border p-3', D ? 'border-red-900/40 bg-red-950/20' : 'border-red-200 bg-red-50')}>
+                  <p className={cn('text-[10px] font-bold uppercase tracking-wider', D ? 'text-red-300' : 'text-red-700')}>AI-generated</p>
+                  <p className={cn('mt-1 text-2xl font-black', D ? 'text-red-200' : 'text-red-800')}>{likelihoodBreakdown.aiPercentage}%</p>
+                </div>
+              </div>
+            ) : (
+              <div className={cn('rounded-xl border p-3 text-xs', D ? 'border-slate-800 bg-slate-900/60 text-slate-300' : 'border-slate-200 bg-slate-50 text-slate-600')}>
+                Run analysis to view the Human-written, Mixed, and AI-generated split.
+              </div>
+            )}
           </div>
 
-          {/* AI Likelihood Breakdown */}
-          {analysis && aiScore >= 0 && (
-            <div>
-              <AILikelihoodCard
-                aiScore={aiScore}
-                showDetectors={true}
-              />
+          <div>
+            <SectionLabel icon={BarChart3} label="Editorial Scores" isDark={D} />
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-2">
+              <ScoreRing value={grammarScore} label="Grammar" sublabel={grammarScoreLabel(grammarScore)} isDark={D} />
+              <ScoreRing value={toneConf} label="Tone Confidence" isDark={D} />
             </div>
-          )}
+          </div>
 
           <Hr isDark={D} />
 
           {/* Quick Status Row */}
-          <div className="grid grid-cols-3 gap-2">
+          <div>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
             <button
               type="button"
               onClick={() => setActiveTab('integrity')}
-              className={cn('rounded-xl border p-3 text-center transition-all hover:shadow-sm active:scale-[0.99]',
+              className={cn('rounded-xl border p-3 text-left transition-all hover:shadow-sm active:scale-[0.99]',
               isQuotaError ? (D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')
               : aiScore >= 70 ? (D ? 'border-red-900/40 bg-red-950/20'    : 'border-red-200 bg-red-50')
               : aiScore >= 40 ? (D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')
               :                  (D ? 'border-green-900/40 bg-green-950/20' : 'border-green-200 bg-green-50'))}
-              title="Open Content Integrity"
+              title="Open Humanize"
             >
-              <Bot className={cn('h-4 w-4 mx-auto mb-1', isQuotaError ? 'text-amber-400' : aiScore >= 70 ? 'text-red-400' : aiScore >= 40 ? 'text-amber-400' : 'text-green-400')} />
-              <p className="text-[10px] font-bold text-slate-500 mb-0.5">AI Likelihood</p>
-              <p className={cn('text-[11px] font-semibold',
+              <div className="mb-2 flex items-center gap-2">
+                <span className={cn('inline-flex h-7 w-7 items-center justify-center rounded-lg', D ? 'bg-slate-900/60' : 'bg-white/70')}>
+                  <Bot className={cn('h-4 w-4', isQuotaError ? 'text-amber-400' : aiScore >= 70 ? 'text-red-400' : aiScore >= 40 ? 'text-amber-400' : 'text-green-400')} />
+                </span>
+                <p className="text-[11px] font-bold text-slate-500">Humanize</p>
+              </div>
+              <p className={cn('text-sm font-semibold',
                 isQuotaError ? (D ? 'text-amber-300' : 'text-amber-700')
                 : aiScore >= 70 ? (D ? 'text-red-300' : 'text-red-700') : aiScore >= 40 ? (D ? 'text-amber-300' : 'text-amber-700') : (D ? 'text-green-300' : 'text-green-700'))}>
-                {isQuotaError ? 'Unavailable' : aiScore >= 70 ? 'High' : aiScore >= 40 ? 'Medium' : 'Low'}
+                {isQuotaError ? 'Unavailable' : likelihoodBreakdown ? `AI-generated ${likelihoodBreakdown.aiPercentage}%` : aiVerdict}
               </p>
+              <p className="mt-0.5 text-[11px] text-slate-500">See Human-written/Mixed/AI-generated data and run Humanize.</p>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('language')}
-              className={cn('rounded-xl border p-3 text-center transition-all hover:shadow-sm active:scale-[0.99]',
+              className={cn('rounded-xl border p-3 text-left transition-all hover:shadow-sm active:scale-[0.99]',
               grammarScore >= 80 ? (D ? 'border-green-900/40 bg-green-950/20'  : 'border-green-200 bg-green-50')
               : grammarScore >= 55 ? (D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')
               :                       (D ? 'border-red-900/40 bg-red-950/20'    : 'border-red-200 bg-red-50'))}
               title="Open Language"
             >
-              <FileCheck2 className={cn('h-4 w-4 mx-auto mb-1', grammarScore >= 80 ? 'text-green-400' : grammarScore >= 55 ? 'text-amber-400' : 'text-red-400')} />
-              <p className="text-[10px] font-bold text-slate-500 mb-0.5">Grammar</p>
-              <p className={cn('text-[11px] font-semibold',
+              <div className="mb-2 flex items-center gap-2">
+                <span className={cn('inline-flex h-7 w-7 items-center justify-center rounded-lg', D ? 'bg-slate-900/60' : 'bg-white/70')}>
+                  <FileCheck2 className={cn('h-4 w-4', grammarScore >= 80 ? 'text-green-400' : grammarScore >= 55 ? 'text-amber-400' : 'text-red-400')} />
+                </span>
+                <p className="text-[11px] font-bold text-slate-500">Grammar</p>
+              </div>
+              <p className={cn('text-sm font-semibold',
                 grammarScore >= 80 ? (D ? 'text-green-300' : 'text-green-700') : grammarScore >= 55 ? (D ? 'text-amber-300' : 'text-amber-700') : (D ? 'text-red-300' : 'text-red-700'))}>
                 {issueCount === 0 ? 'Clean' : `${issueCount} issue${issueCount !== 1 ? 's' : ''}`}
               </p>
+              <p className="mt-0.5 text-[11px] text-slate-500">Review errors, warnings, and quick fixes.</p>
             </button>
             <button
               type="button"
               onClick={() => setActiveTab('tone')}
-              className={cn('rounded-xl border p-3 text-center transition-all hover:shadow-sm active:scale-[0.99]', D ? 'border-indigo-900/40 bg-indigo-950/20' : 'border-indigo-200 bg-indigo-50')}
+              className={cn('rounded-xl border p-3 text-left transition-all hover:shadow-sm active:scale-[0.99]', D ? 'border-indigo-900/40 bg-indigo-950/20' : 'border-indigo-200 bg-indigo-50')}
               title="Open Tone & Bias"
             >
-              <Mic2 className="h-4 w-4 mx-auto mb-1 text-indigo-400" />
-              <p className="text-[10px] font-bold text-slate-500 mb-0.5">Dominant Tone</p>
-              <p className={cn('text-[11px] font-semibold capitalize', D ? 'text-indigo-300' : 'text-indigo-700')}>{dominantTone}</p>
+              <div className="mb-2 flex items-center gap-2">
+                <span className={cn('inline-flex h-7 w-7 items-center justify-center rounded-lg', D ? 'bg-slate-900/60' : 'bg-white/70')}>
+                  <Mic2 className="h-4 w-4 text-indigo-400" />
+                </span>
+                <p className="text-[11px] font-bold text-slate-500">Dominant Tone</p>
+              </div>
+              <p className={cn('text-sm font-semibold capitalize', D ? 'text-indigo-300' : 'text-indigo-700')}>{dominantTone}</p>
+              <p className="mt-0.5 text-[11px] text-slate-500">Inspect tone balance and bias indicators.</p>
             </button>
           </div>
-
-          <Hr isDark={D} />
-
-          {/* Stats */}
-          <div>
-            <SectionLabel icon={BookOpen} label="Document Stats" isDark={D} />
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3">
-              {[
-                { label: 'Words',        value: (analysis.wordCount ?? 0).toLocaleString(),           icon: Hash,         accent: 'text-indigo-400'  },
-                { label: 'Sentences',    value: (analysis.sentenceCount ?? 0).toLocaleString(),        icon: BookOpen,     accent: 'text-blue-400'    },
-                { label: 'Reading Time', value: analysis.readingTimeMinutes != null ? `~${analysis.readingTimeMinutes.toFixed(1)} min` : '—', icon: Clock, accent: 'text-cyan-400' },
-                { label: 'Grade Level',  value: analysis.fleschGradeLevel?.split('(')[0]?.trim() ?? '—', icon: BarChart3, accent: 'text-violet-400'  },
-                { label: 'Avg Sentence', value: analysis.avgSentenceLength != null ? `${analysis.avgSentenceLength.toFixed(1)} wds` : '—', icon: Gauge, accent: 'text-amber-400' },
-                { label: 'Claim Flags',  value: String(claimFlags.length),                             icon: AlertOctagon, accent: 'text-orange-400'  },
-              ].map((s) => (
-                <div key={s.label} className={cn(sub, 'flex items-center gap-2.5')}>
-                  <s.icon className={cn('h-4 w-4 flex-shrink-0', s.accent)} />
-                  <div className="min-w-0">
-                    <p className={cn('text-sm font-bold truncate', D ? 'text-white' : 'text-slate-900')}>{s.value}</p>
-                    <p className="text-[10px] text-slate-500">{s.label}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
           </div>
-
-          {lastAnalyzed && <p className="text-[11px] text-slate-500 text-center">Analysed {lastAnalyzed}</p>}
 
           <div className="flex gap-2">
             <button
@@ -700,213 +734,136 @@ function AnalysisPanel({
         </div>
       )}
 
-      {/* ──────────────────── TAB 2: CONTENT INTEGRITY ───────────────────── */}
+      {/* ───────────────────────── TAB 2: HUMANIZE ───────────────────────── */}
       {activeTab === 'integrity' && (
-        <div className={cn(card, 'p-5 space-y-6')}>
+        <div className={cn(card, 'p-5 space-y-6 animate-[panelFade_.24s_ease-out]')}>
 
-          {/* AI Likelihood hero */}
           <div>
-            <SectionLabel icon={Bot} label="AI Likelihood" isDark={D} />
-            <div className={cn('rounded-xl border p-5 flex flex-col items-center gap-4',
-              aiScore >= 70 ? (D ? 'bg-red-950/30 border-red-900/40'    : 'bg-red-50 border-red-200')
-              : aiScore >= 40 ? (D ? 'bg-amber-950/30 border-amber-900/40' : 'bg-amber-50 border-amber-200')
-              :                  (D ? 'bg-green-950/30 border-green-900/40' : 'bg-green-50 border-green-200'))}>
-              <ScoreRing value={aiScore} label="AI Likelihood Estimate" size="lg" isDark={D} inverted />
-              <span className={cn('rounded-full px-4 py-1.5 text-xs font-bold flex items-center gap-1.5',
-                aiScore >= 70 ? (D ? 'bg-red-900/50 text-red-200'    : 'bg-red-100 text-red-700')
-                : aiScore >= 40 ? (D ? 'bg-amber-900/50 text-amber-200' : 'bg-amber-100 text-amber-700')
-                :                  (D ? 'bg-green-900/50 text-green-200' : 'bg-green-100 text-green-700'))}>
-                <Bot className="h-3.5 w-3.5" />{aiVerdict}
-              </span>
-              <div className="w-full grid grid-cols-3 gap-1.5">
-                {[
-                  { range: '0–39',   label: 'Human',       color: D ? 'text-green-400' : 'text-green-600' },
-                  { range: '40–69',  label: 'Possible AI',  color: D ? 'text-amber-400' : 'text-amber-600' },
-                  { range: '70–100', label: 'Likely AI',    color: D ? 'text-red-400'   : 'text-red-600'   },
-                ].map(({ range, label, color }) => (
-                  <div key={range} className={cn('text-center rounded-lg p-2', D ? 'bg-slate-800/60' : 'bg-white/70')}>
-                    <p className={cn('text-[10px] font-bold', color)}>{label}</p>
-                    <p className="text-[9px] text-slate-500">{range}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <p className="mt-2 text-[10px] text-slate-500 text-center leading-relaxed">
-              AI likelihood estimate (not guaranteed). Different detectors can disagree significantly, so use this as guidance rather than proof.
-            </p>
-
-            {(onHumanize || onGoPremium) && (
-              <div className="mt-3">
-                <button
-                  onClick={humanizeEnabled ? onHumanize : onGoPremium}
-                  disabled={humanizeEnabled ? !canHumanize : false}
-                  className={cn(
-                    'w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
-                    humanizeEnabled && canHumanize
-                      ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500 hover:to-teal-500 shadow-sm'
-                      : !humanizeEnabled
-                      ? 'bg-amber-500 text-white hover:bg-amber-400 shadow-sm shadow-amber-500/20'
-                      : D
-                      ? 'cursor-not-allowed bg-slate-800 text-slate-500'
-                      : 'cursor-not-allowed bg-slate-100 text-slate-400',
-                  )}
-                >
-                  {humanizeEnabled
-                    ? (isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />)
-                    : <Lock className="h-4 w-4" />}
-                  {humanizeEnabled ? (isHumanizing ? 'Humanizing (Beta)…' : 'Humanize (Beta)') : 'Humanize Text (Beta)'}
-                  <span
-                    className={cn(
-                      'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
-                      humanizeEnabled ? 'bg-white/20 text-white' : 'bg-amber-400/80 text-white',
-                    )}
-                  >
-                    Beta
-                  </span>
-                  <span
-                    className={cn(
-                      'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
-                      humanizeEnabled ? 'bg-amber-400/90 text-black' : 'bg-amber-200 text-amber-800',
-                    )}
-                  >
-                    Premium
-                  </span>
-                  {!humanizeEnabled && <Crown className="h-4 w-4" />}
-                </button>
-                {humanizeEnabled && !canHumanize && (
-                  <p className="mt-1.5 text-center text-[10px] text-slate-500">
-                    Re-run analysis first to generate AI-flagged passages.
-                  </p>
-                )}
-                {humanizeEnabled && (
-                  <p className="mt-1.5 text-center text-[10px] text-amber-500">
-                    Humanizing text is in beta and may not work properly.
-                  </p>
-                )}
-                {!humanizeEnabled && (
-                  <p className="mt-1.5 text-center text-[10px] text-amber-500">
-                    Humanize (Beta) is a Premium feature.
-                  </p>
-                )}
+            <SectionLabel icon={Wand2} label="Humanize Snapshot" isDark={D} />
+            {aiScore >= 0 ? (
+              <AILikelihoodCard
+                aiScore={aiScore}
+                showDetectors={true}
+                className={cn('shadow-none', D ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white/95')}
+              />
+            ) : (
+              <div className={cn('rounded-xl border p-4 text-xs leading-relaxed', D ? 'border-slate-800 bg-slate-900/60 text-slate-300' : 'border-slate-200 bg-slate-50 text-slate-600')}>
+                AI detection snapshot is unavailable right now. Re-run analysis to generate Human-written, Mixed, and AI-generated data.
               </div>
             )}
           </div>
 
-          {analysis.aiReasoning && (
+          {(onHumanize || onGoPremium) && (
             <div>
-              <SectionLabel icon={ScanSearch} label="Detection Analysis" isDark={D} />
-              <div className={cn('rounded-xl border p-4', D ? 'bg-slate-900/60 border-slate-800' : 'bg-white border-slate-100')}>
-                <p className={cn('text-sm leading-relaxed', D ? 'text-slate-300' : 'text-slate-700')}>{analysis.aiReasoning}</p>
-              </div>
-            </div>
-          )}
-
-          {/* AI Text Highlighting */}
-          {documentText && documentText.trim().length > 0 && (
-            <div>
-              <AITextHighlighter
-                text={documentText}
-                overallAiScore={aiScore >= 0 ? aiScore : 50}
-                isDark={D}
-              />
-            </div>
-          )}
-
-          <Hr isDark={D} />
-
-          {/* Humanization suggestions */}
-          {(humanizationSuggestions.length > 0 || (analysis.humanizationTips ?? []).length > 0) && (
-            <div>
-              <SectionLabel icon={Wand2} label="Humanization Suggestions" isDark={D} />
-              {humanizationSuggestions.length > 0 ? (
-                <div className="space-y-3">
-                  {humanizationSuggestions.map((item, i) => (
-                    <HumanizationCard
-                      key={i}
-                      index={i}
-                      original={item.original}
-                      suggestion={item.suggestion}
-                      reason={item.reason}
-                      isDark={D}
-                      onApply={onApplySuggestion}
-                    />
-                  ))}
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {(analysis.humanizationTips ?? []).map((tip, i) => (
-                    <div key={i} className={cn('flex items-start gap-3 rounded-xl border p-3', D ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-100')}>
-                      <span className={cn('flex-shrink-0 h-5 w-5 rounded-full flex items-center justify-center text-[10px] font-bold mt-0.5',
-                        D ? 'bg-indigo-900/60 text-indigo-300' : 'bg-indigo-100 text-indigo-600')}>{i + 1}</span>
-                      <p className={cn('text-xs leading-relaxed', D ? 'text-slate-300' : 'text-slate-700')}>{tip}</p>
-                    </div>
-                  ))}
-                </div>
+              <button
+                onClick={humanizeEnabled ? onHumanize : onGoPremium}
+                disabled={humanizeEnabled ? !canHumanize : false}
+                className={cn(
+                  'w-full inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all',
+                  humanizeEnabled && canHumanize
+                    ? 'bg-gradient-to-r from-emerald-600 to-teal-600 text-white hover:from-emerald-500 hover:to-teal-500 shadow-sm'
+                    : !humanizeEnabled
+                    ? 'bg-amber-500 text-white hover:bg-amber-400 shadow-sm shadow-amber-500/20'
+                    : D
+                    ? 'cursor-not-allowed bg-slate-800 text-slate-500'
+                    : 'cursor-not-allowed bg-slate-100 text-slate-400',
+                )}
+              >
+                {humanizeEnabled
+                  ? (isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />)
+                  : <Lock className="h-4 w-4" />}
+                {humanizeEnabled ? (isHumanizing ? 'Humanizing (Beta)...' : 'Humanize (Beta)') : 'Humanize Text (Beta)'}
+                <span
+                  className={cn(
+                    'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
+                    humanizeEnabled ? 'bg-white/20 text-white' : 'bg-amber-400/80 text-white',
+                  )}
+                >
+                  Beta
+                </span>
+                <span
+                  className={cn(
+                    'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
+                    humanizeEnabled ? 'bg-amber-400/90 text-black' : 'bg-amber-200 text-amber-800',
+                  )}
+                >
+                  Premium
+                </span>
+                {!humanizeEnabled && <Crown className="h-4 w-4" />}
+              </button>
+              {humanizeEnabled && !canHumanize && (
+                <p className="mt-1.5 text-center text-[10px] text-slate-500">
+                  Re-run analysis first to generate AI-flagged passages.
+                </p>
+              )}
+              {humanizeEnabled && (
+                <p className="mt-1.5 text-center text-[10px] text-amber-500">
+                  Humanizing text is in beta and may not work properly.
+                </p>
+              )}
+              {!humanizeEnabled && (
+                <p className="mt-1.5 text-center text-[10px] text-amber-500">
+                  Humanize (Beta) is a Premium feature.
+                </p>
               )}
             </div>
           )}
 
-          <Hr isDark={D} />
-
-          {/* Claim flags */}
-          <div>
-            <SectionLabel icon={AlertOctagon} label={`Claim Flags${claimFlags.length ? ` (${claimFlags.length})` : ''}`} isDark={D} />
-            {claimFlags.length === 0 ? (
-              <div className={cn('rounded-xl border p-4 flex items-center gap-3', D ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-100')}>
-                <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
-                <p className={cn('text-xs', D ? 'text-slate-400' : 'text-slate-600')}>No flagged claims detected.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-[11px] text-slate-500 mb-2 leading-relaxed">
-                  Sentences containing statistics, numbers or strong factual claims that may require source verification.
-                </p>
-                {claimFlags.map((claim, i) => (
-                  <div key={i} className={cn('rounded-xl border p-3', D ? 'bg-amber-950/20 border-amber-900/40' : 'bg-amber-50/60 border-amber-200')}>
-                    <div className="flex items-start gap-2.5">
-                      <AlertOctagon className="h-3.5 w-3.5 text-amber-500 flex-shrink-0 mt-0.5" />
-                      <div className="flex-1 min-w-0">
-                        <p className={cn('text-xs leading-relaxed', D ? 'text-slate-300' : 'text-slate-700')}>{claim}</p>
-                        <span className={cn('mt-1.5 inline-block rounded-full px-2 py-0.5 text-[9px] font-bold',
-                          D ? 'bg-amber-900/50 text-amber-300' : 'bg-amber-100 text-amber-700')}>
-                          May require source verification
-                        </span>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
       {/* ───────────────────── TAB 3: LANGUAGE QUALITY ───────────────────── */}
       {activeTab === 'language' && (
-        <div className={cn(card, 'p-5 space-y-6')}>
+        <div className={cn(card, 'p-5 space-y-6 animate-[panelFade_.24s_ease-out]')}>
 
           {/* Grammar panel */}
           <div>
             <SectionLabel icon={AlertTriangle} label="Grammar" isDark={D} />
-            <div className={cn('rounded-xl border p-4 flex items-center gap-5',
+            <div className={cn('rounded-xl border p-4',
               grammarScore >= 80 ? (D ? 'border-green-900/40 bg-green-950/20'  : 'border-green-200 bg-green-50')
               : grammarScore >= 55 ? (D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')
               :                       (D ? 'border-red-900/40 bg-red-950/20'    : 'border-red-200 bg-red-50'))}>
-              <ScoreRing value={grammarScore} label="Grammar" sublabel={grammarScoreLabel(grammarScore)} isDark={D} />
-              <div className="flex-1 space-y-2">
+              <div className="mb-3 flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500">Grammar Score</p>
+                  <p className={cn('text-3xl font-black leading-none mt-1',
+                    grammarScore >= 80 ? (D ? 'text-green-300' : 'text-green-700')
+                    : grammarScore >= 55 ? (D ? 'text-amber-300' : 'text-amber-700')
+                    : (D ? 'text-red-300' : 'text-red-700'))}>
+                    {Math.round(grammarScore)}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">{grammarScoreLabel(grammarScore)}</p>
+                </div>
+                <div className="grid grid-cols-3 gap-1.5">
+                  {[
+                    { label: 'Errors', count: errorCount, cls: D ? 'border-red-900/50 bg-red-950/20 text-red-300' : 'border-red-200 bg-red-50 text-red-700' },
+                    { label: 'Warnings', count: warningCount, cls: D ? 'border-amber-900/50 bg-amber-950/20 text-amber-300' : 'border-amber-200 bg-amber-50 text-amber-700' },
+                    { label: 'Tips', count: suggestionCount, cls: D ? 'border-blue-900/50 bg-blue-950/20 text-blue-300' : 'border-blue-200 bg-blue-50 text-blue-700' },
+                  ].map((item) => (
+                    <div key={item.label} className={cn('min-w-[68px] rounded-lg border px-2 py-1 text-center', item.cls)}>
+                      <p className="text-[10px] font-semibold">{item.label}</p>
+                      <p className="text-sm font-bold leading-none mt-1">{item.count}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-2">
                 {[
                   { Icon: XCircle,     col: 'red',   label: 'Errors',      count: errorCount      },
-                  { Icon: AlertCircle, col: 'amber',  label: 'Warnings',    count: warningCount    },
-                  { Icon: Info,        col: 'blue',   label: 'Suggestions', count: suggestionCount },
+                  { Icon: AlertCircle, col: 'amber', label: 'Warnings',    count: warningCount    },
+                  { Icon: Info,        col: 'blue',  label: 'Suggestions', count: suggestionCount },
                 ].map((s) => (
                   <div key={s.label} className="flex items-center gap-2">
                     <s.Icon className={cn('h-3.5 w-3.5 flex-shrink-0', `text-${s.col}-500`)} />
+                    <span className={cn('w-20 text-[11px] font-medium', D ? 'text-slate-300' : 'text-slate-700')}>{s.label}</span>
                     <div className={cn('flex-1 h-1.5 rounded-full overflow-hidden', D ? 'bg-slate-800' : 'bg-slate-200')}>
-                      <div className={cn('h-full rounded-full transition-all duration-700', `bg-${s.col}-500`)}
-                        style={{ width: `${Math.min(100, (s.count / Math.max(issueCount, 1)) * 100)}%` }} />
+                      <div
+                        className={cn('h-full rounded-full transition-all duration-700', `bg-${s.col}-500`)}
+                        style={{ width: `${Math.min(100, (s.count / Math.max(issueCount, 1)) * 100)}%` }}
+                      />
                     </div>
                     <span className={cn('text-xs font-bold w-5 text-right', D ? 'text-slate-300' : 'text-slate-700')}>{s.count}</span>
-                    <span className="text-[10px] text-slate-500 w-16">{s.label}</span>
                   </div>
                 ))}
               </div>
@@ -928,6 +885,25 @@ function AnalysisPanel({
                 <p className="mt-1.5 text-center text-[10px] text-amber-500">
                   Grammar Fix is a Premium feature.
                 </p>
+              </div>
+            )}
+
+            {grammarFixEnabled && onUndoGrammarFix && (
+              <div className="mt-3 flex justify-end">
+                <button
+                  type="button"
+                  onClick={onUndoGrammarFix}
+                  disabled={!canUndoGrammarFix}
+                  className={cn(
+                    'inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all',
+                    canUndoGrammarFix
+                      ? (D ? 'bg-slate-800 text-slate-200 hover:bg-slate-700' : 'bg-slate-100 text-slate-700 hover:bg-slate-200')
+                      : (D ? 'cursor-not-allowed bg-slate-900 text-slate-500' : 'cursor-not-allowed bg-slate-100 text-slate-400'),
+                  )}
+                  title="Undo last grammar fix"
+                >
+                  <RotateCcw className="h-3.5 w-3.5" /> Undo Last Fix
+                </button>
               </div>
             )}
 
@@ -971,65 +947,12 @@ function AnalysisPanel({
               </div>
             )}
           </div>
-
-          <Hr isDark={D} />
-
-          {/* Readability panel */}
-          <div>
-            <SectionLabel icon={Eye} label="Readability" isDark={D} />
-            <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4">
-              {[
-                { label: 'Flesch Score',  value: String(Math.round(readability)),                           accent: readability >= 60 ? 'text-green-500' : readability >= 40 ? 'text-amber-500' : 'text-red-500' },
-                { label: 'Grade',         value: analysis.fleschGradeLevel?.split('(')[0]?.trim() ?? '—',   accent: D ? 'text-slate-200' : 'text-slate-900' },
-                { label: 'Reading Time',  value: analysis.readingTimeMinutes != null ? `~${analysis.readingTimeMinutes.toFixed(1)} min` : '—', accent: 'text-cyan-500' },
-                { label: 'Avg Sentence',  value: analysis.avgSentenceLength != null ? `${analysis.avgSentenceLength.toFixed(1)} wds` : '—',   accent: 'text-violet-500' },
-              ].map((s) => (
-                <div key={s.label} className={cn(sub, 'text-center')}>
-                  <p className={cn('text-xl font-black', s.accent)}>{s.value}</p>
-                  <p className="text-[10px] text-slate-500 mt-0.5">{s.label}</p>
-                </div>
-              ))}
-            </div>
-            {analysis.fleschGradeLevel && (
-              <p className={cn('mt-2 text-xs text-center', D ? 'text-slate-400' : 'text-slate-500')}>{analysis.fleschGradeLevel}</p>
-            )}
-          </div>
-
-          <Hr isDark={D} />
-
-          {/* Long sentences */}
-          <div>
-            <SectionLabel icon={AlertTriangle} label={`Long Sentences${longSentences.length ? ` (${longSentences.length})` : ''}`} isDark={D} />
-            {longSentences.length === 0 ? (
-              <div className={cn('rounded-xl border p-4 flex items-center gap-3', D ? 'bg-slate-900/60 border-slate-800' : 'bg-slate-50 border-slate-100')}>
-                <CheckCircle2 className="h-4 w-4 text-green-500 flex-shrink-0" />
-                <p className={cn('text-xs', D ? 'text-slate-400' : 'text-slate-600')}>No sentences over 30 words.</p>
-              </div>
-            ) : (
-              <div className="space-y-2">
-                <p className="text-[11px] text-slate-500 mb-2">Sentences over 30 words may reduce clarity. Consider splitting them.</p>
-                {longSentences.map((sent, i) => {
-                  const wc = sent.trim().split(/\s+/).length;
-                  return (
-                    <div key={i} className={cn('rounded-xl border p-3', D ? 'bg-slate-900/60 border-slate-700' : 'bg-slate-50 border-slate-200')}>
-                      <p className={cn('text-xs leading-relaxed mb-1.5', D ? 'text-slate-300' : 'text-slate-700')}>{sent.trim()}</p>
-                      <span className={cn('inline-flex items-center gap-1 text-[9px] font-bold rounded-full px-2 py-0.5',
-                        wc > 45 ? (D ? 'bg-red-900/40 text-red-400' : 'bg-red-100 text-red-700')
-                                : (D ? 'bg-amber-900/40 text-amber-400' : 'bg-amber-100 text-amber-700'))}>
-                        <AlertTriangle className="h-2.5 w-2.5" /> {wc} words
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
         </div>
       )}
 
       {/* ────────────────────── TAB 4: TONE & BIAS ───────────────────────── */}
       {activeTab === 'tone' && (
-        <div className={cn(card, 'p-5 space-y-6')}>
+        <div className={cn(card, 'p-5 space-y-6 animate-[panelFade_.24s_ease-out]')}>
           {!toneBiasEnabled ? (
             <div className={cn('rounded-xl border p-6 text-center', D ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-200 bg-amber-50')}>
               <p className={cn('text-sm font-bold mb-1', D ? 'text-amber-300' : 'text-amber-700')}>Tone &amp; Bias is Premium</p>
@@ -1046,13 +969,22 @@ function AnalysisPanel({
             </div>
           ) : analysis.tone ? (
             <>
-              {/* Tone hero */}
-              <div className={cn('rounded-xl border p-5 flex items-center gap-5', D ? 'bg-indigo-950/30 border-indigo-800/40' : 'bg-indigo-50 border-indigo-200')}>
-                <ScoreRing value={toneConf} label="Confidence" size="lg" isDark={D} />
-                <div className="flex-1 min-w-0">
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500 mb-0.5">Dominant Tone</p>
-                  <p className={cn('text-2xl font-black capitalize', D ? 'text-white' : 'text-slate-900')}>{analysis.tone.dominantTone}</p>
-                  <p className="text-xs text-slate-500 mt-1">{toneConf}% confidence across all dimensions</p>
+              {/* Tone summary */}
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className={cn('rounded-xl border p-4 sm:col-span-2', D ? 'border-indigo-800/40 bg-indigo-950/30' : 'border-indigo-200 bg-indigo-50')}>
+                  <p className="text-[10px] font-bold uppercase tracking-widest text-slate-500">Dominant Tone</p>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                    <span className={cn('inline-flex items-center rounded-full px-3 py-1 text-xs font-bold capitalize', D ? 'bg-indigo-900/50 text-indigo-200' : 'bg-indigo-100 text-indigo-700')}>
+                      {analysis.tone.dominantTone}
+                    </span>
+                    <span className={cn('text-xs font-semibold', D ? 'text-indigo-200' : 'text-indigo-700')}>
+                      {toneConf}% confidence
+                    </span>
+                  </div>
+                  <p className="mt-2 text-xs text-slate-500">Tone profile estimates how your writing sounds to readers across multiple styles.</p>
+                </div>
+                <div className={cn('rounded-xl border p-4 flex items-center justify-center', D ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white')}>
+                  <ScoreRing value={toneConf} label="Confidence" size="lg" isDark={D} />
                 </div>
               </div>
 
@@ -1077,20 +1009,20 @@ function AnalysisPanel({
                     instructional:  'Step-based, directive',
                   };
                   return (
-                    <div className="space-y-3">
+                    <div className="space-y-2.5">
                       {Object.entries(analysis.tone!.breakdown).sort(([,a],[,b]) => b-a).map(([name, score]) => {
                         const pct = Math.round(score * 100);
                         return (
-                          <div key={name} className="space-y-1">
-                            <div className="flex items-center justify-between">
-                              <span className={cn('text-xs capitalize font-semibold', D ? 'text-slate-300' : 'text-slate-700')}>{name}</span>
+                          <div key={name} className={cn('rounded-xl border p-3', D ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-slate-50/70')}>
+                            <div className="mb-1.5 flex items-center justify-between">
+                              <span className={cn('text-xs capitalize font-semibold', D ? 'text-slate-200' : 'text-slate-800')}>{name}</span>
                               <span className="text-xs font-bold text-slate-500">{pct}%</span>
                             </div>
                             <div className={cn('h-2 w-full rounded-full overflow-hidden', D ? 'bg-slate-800' : 'bg-slate-200')}>
                               <div className={cn('h-full rounded-full transition-all duration-700', colors[name] ?? 'bg-slate-500')}
                                 style={{ width: `${pct}%` }} />
                             </div>
-                            <p className="text-[10px] text-slate-500">{descs[name] ?? ''}</p>
+                            <p className="mt-1.5 text-[10px] text-slate-500">{descs[name] ?? ''}</p>
                           </div>
                         );
                       })}
@@ -1135,6 +1067,10 @@ function AnalysisPanel({
           )}
         </div>
       )}
+
+      </div>
+
+      <style>{`@keyframes panelFade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}@keyframes auroraShift{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(10px,-8px,0) scale(1.08)}}`}</style>
     </div>
   );
 }
