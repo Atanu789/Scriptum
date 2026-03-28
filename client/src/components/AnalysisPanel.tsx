@@ -4,7 +4,7 @@ import { AnalysisResult, GrammarIssue, AnalysisProgress } from '@/types';
 import { cn, grammarScoreLabel } from '@/lib/utils';
 import {
   Loader2, AlertTriangle, CheckCircle2, Lightbulb, BookOpen,
-  ChevronDown, ChevronRight, XCircle, AlertCircle, Info,
+  XCircle, AlertCircle, Info,
   RefreshCw, Brain, Gauge, Sparkles, X, Bot, Shield,
   ScanSearch, Save, FileCheck2, Hash, Clock, BarChart3, Mic2,
   AlertOctagon, Eye, Activity, Wand2, Copy, Check, ArrowRight,
@@ -268,42 +268,46 @@ function GrammarIssueCard({
   canUseGrammarFix?: boolean;
   lineNumber?: number | null;
 }) {
-  const [open, setOpen] = useState(false);
   const sev = (issue.severity ?? 'warning') as keyof typeof sevCfg;
   const { label, Icon: SevIcon, cls } = sevCfg[sev] ?? sevCfg.warning;
   const topReplacement = issue.replacements?.[0]?.trim();
   const grammarFixEnabled = canUseGrammarFix ?? Boolean(onApplyGrammarFix);
   const canQuickFix = grammarFixEnabled && !!onApplyGrammarFix && !!topReplacement && !issue.fixed;
   const showPremiumFix = !grammarFixEnabled && !!onGoPremium && !issue.fixed;
+  const lineTag = lineNumber && lineNumber > 0 ? `Line ${lineNumber}` : 'Line ?';
+
   return (
     <div className={cn('rounded-xl border p-3',
       sev === 'error'      ? (isDark ? 'border-red-900/40 bg-red-950/20'    : 'border-red-100 bg-red-50/40')
       : sev === 'suggestion' ? (isDark ? 'border-blue-900/40 bg-blue-950/20'  : 'border-blue-100 bg-blue-50/40')
       :                         (isDark ? 'border-amber-900/40 bg-amber-950/20' : 'border-amber-100 bg-amber-50/40'))}>
-      <div className="flex w-full items-start justify-between gap-2">
-        <button onClick={() => setOpen((o) => !o)} className="flex flex-1 items-start justify-between gap-2 text-left">
-          <div className="flex-1 min-w-0">
-            <div className="flex flex-wrap items-center gap-1.5 mb-1">
-              <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium', cls)}>
-                <SevIcon className="h-3 w-3" /> {label}
+      <div className="flex w-full items-start justify-between gap-3">
+        <div className="min-w-0 flex-1">
+          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
+            <span className={cn('inline-flex items-center rounded-full px-2 py-0.5 text-xs font-semibold', isDark ? 'bg-indigo-950/60 text-indigo-300' : 'bg-indigo-50 text-indigo-700')}>
+              {lineTag}
+            </span>
+            <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium', cls)}>
+              <SevIcon className="h-3 w-3" /> {label}
+            </span>
+            <span className={cn('text-xs px-1.5 py-0.5 rounded-full', isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')}>
+              {issue.rule.category}
+            </span>
+            {issue.fixed && (
+              <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium', isDark ? 'bg-emerald-900/30 text-emerald-300 border border-emerald-800' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')}>
+                <CheckCircle2 className="h-3 w-3" /> Fixed
               </span>
-              {issue.fixed && (
-                <span className={cn('inline-flex items-center gap-0.5 rounded-full px-2 py-0.5 text-xs font-medium', isDark ? 'bg-emerald-900/30 text-emerald-300 border border-emerald-800' : 'bg-emerald-50 text-emerald-700 border border-emerald-200')}>
-                  <CheckCircle2 className="h-3 w-3" /> Fixed
-                </span>
-              )}
-              <span className={cn('text-xs px-1.5 py-0.5 rounded-full', isDark ? 'bg-slate-800 text-slate-400' : 'bg-slate-100 text-slate-500')}>{issue.rule.category}</span>
-              {lineNumber && lineNumber > 0 && (
-                <span className={cn('text-xs px-1.5 py-0.5 rounded-full', isDark ? 'bg-indigo-950/60 text-indigo-300' : 'bg-indigo-50 text-indigo-700')}>
-                  Line {lineNumber}
-                </span>
-              )}
-            </div>
-            <p className={cn('text-sm font-medium leading-snug', isDark ? 'text-slate-100' : 'text-slate-800')}>{issue.shortMessage || issue.message}</p>
+            )}
           </div>
-          {open ? <ChevronDown className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" /> : <ChevronRight className="h-4 w-4 mt-0.5 flex-shrink-0 text-slate-400" />}
-        </button>
-
+          <p className={cn('text-sm font-medium leading-snug', isDark ? 'text-slate-100' : 'text-slate-800')}>
+            {issue.shortMessage || issue.message}
+          </p>
+          {topReplacement && !issue.fixed && (
+            <p className={cn('mt-1 text-xs', isDark ? 'text-slate-300' : 'text-slate-600')}>
+              <span className={cn('font-semibold', isDark ? 'text-slate-200' : 'text-slate-700')}>Fix:</span> {topReplacement}
+            </p>
+          )}
+        </div>
         {canQuickFix && (
           <button
             type="button"
@@ -337,46 +341,6 @@ function GrammarIssueCard({
           </button>
         )}
       </div>
-      {open && (
-        <div className={cn('mt-2.5 space-y-2 border-t pt-2.5', isDark ? 'border-slate-700' : 'border-slate-200')}>
-          {issue.shortMessage && issue.shortMessage !== issue.message && (
-            <p className={cn('text-xs', isDark ? 'text-slate-300' : 'text-slate-600')}>{issue.message}</p>
-          )}
-          <p className={cn('text-xs', isDark ? 'text-slate-400' : 'text-slate-500')}>
-            <span className={cn('font-medium', isDark ? 'text-slate-300' : 'text-slate-600')}>Rule: </span>
-            {issue.rule.description || issue.rule.id}
-          </p>
-          {issue.context && (
-            <div className={cn('rounded-lg px-2.5 py-1.5 text-xs font-mono leading-relaxed', isDark ? 'bg-slate-800 text-slate-300' : 'bg-slate-100 text-slate-600')}>
-              ...{issue.context}...
-            </div>
-          )}
-          {issue.replacements.length > 0 && (
-            <div>
-              <p className="mb-1 text-xs text-slate-400 font-medium">
-                Suggested fixes{onApplyGrammarFix ? ' (click to apply)' : ''}:
-              </p>
-              <div className="flex flex-wrap gap-1">
-                {issue.replacements.slice(0, 5).map((r, i) => (
-                  onApplyGrammarFix ? (
-                    <button
-                      key={i}
-                      onClick={() => onApplyGrammarFix(issue, r)}
-                      className="inline-flex items-center gap-0.5 rounded bg-green-50 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800 hover:bg-green-100 dark:hover:bg-green-900/50 transition-colors"
-                    >
-                      {r}
-                    </button>
-                  ) : (
-                    <span key={i} className="inline-flex items-center gap-0.5 rounded bg-green-50 dark:bg-green-900/30 px-2 py-0.5 text-xs text-green-700 dark:text-green-400 border border-green-200 dark:border-green-800">
-                      {r}
-                    </span>
-                  )
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }
@@ -423,7 +387,6 @@ function AnalysisPanel({
   );
 
   const [activeTab,    setActiveTab]    = useState<TabId>('integrity');
-  const [grammarFilter, setGrammarFilter] = useState<'all'|'error'|'warning'|'suggestion'>('all');
 
   // ── Derived values ──────────────────────────────────────────────────────────
 
@@ -458,10 +421,6 @@ function AnalysisPanel({
       (order[a.severity ?? 'warning'] ?? 1) - (order[b.severity ?? 'warning'] ?? 1)
         || (a.message || '').localeCompare(b.message || ''));
   }, [analysis]);
-
-  const filteredIssues  = useMemo(() =>
-    grammarFilter === 'all' ? sortedIssues : sortedIssues.filter((i) => (i.severity ?? 'warning') === grammarFilter),
-    [sortedIssues, grammarFilter]);
 
   const errorCount      = useMemo(() => analysis?.grammarIssues?.filter((i) => i.severity === 'error').length      ?? 0, [analysis]);
   const warningCount    = useMemo(() => analysis?.grammarIssues?.filter((i) => i.severity === 'warning').length    ?? 0, [analysis]);
@@ -915,23 +874,11 @@ function AnalysisPanel({
               </div>
             ) : (
               <div className="mt-4 space-y-3">
-                <div className="flex gap-1.5 flex-wrap">
-                  {(['all', 'error', 'warning', 'suggestion'] as const).map((f) => {
-                    const cnt = f === 'all' ? issueCount : analysis.grammarIssues.filter((i) => (i.severity ?? 'warning') === f).length;
-                    if (f !== 'all' && cnt === 0) return null;
-                    return (
-                      <button key={f} onClick={() => setGrammarFilter(f)}
-                        className={cn('rounded-full px-3 py-1 text-xs font-semibold capitalize transition-all',
-                          grammarFilter === f
-                            ? f === 'error' ? 'bg-red-600 text-white' : f === 'warning' ? 'bg-amber-500 text-white' : f === 'suggestion' ? 'bg-blue-500 text-white' : 'bg-gradient-to-r from-indigo-600 to-violet-600 text-white'
-                            : (D ? 'bg-slate-800 text-slate-400 hover:bg-slate-700' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'))}>
-                        {f} ({cnt})
-                      </button>
-                    );
-                  })}
-                </div>
+                <p className="text-[11px] text-slate-500">
+                  Line-by-line grammar issues. Click <span className="font-semibold">Fix</span> to apply the suggested correction.
+                </p>
                 <div className={cn('space-y-2', expanded ? '' : 'max-h-[28rem] overflow-y-auto pr-1')}>
-                  {filteredIssues.map((issue, i) => (
+                  {sortedIssues.map((issue, i) => (
                     <GrammarIssueCard
                       key={i}
                       issue={issue}
@@ -942,7 +889,6 @@ function AnalysisPanel({
                       lineNumber={getGrammarIssueLine?.(issue) ?? null}
                     />
                   ))}
-                  {filteredIssues.length === 0 && <p className="py-6 text-center text-xs text-slate-400">No {grammarFilter} issues.</p>}
                 </div>
               </div>
             )}

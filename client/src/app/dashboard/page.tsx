@@ -16,7 +16,7 @@ import {
   FileType, File, Loader2, BookOpen,
   Pencil, CheckCircle2, Clock,
   AlertTriangle, TrendingUp, Sparkles,
-  Search, SlidersHorizontal, ArrowUpRight,
+  Search, SlidersHorizontal,
   Zap, Globe, Crown, LogOut,
   Shield,
   Image as ImageIcon, Video, Music,
@@ -28,6 +28,15 @@ import { CardSpotlight }  from '@/components/ui/card-spotlight';
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const MEDIA_TYPES = new Set(['image', 'audio', 'video']);
+
+const PRO_FEATURES = [
+  '50 AI analyses per month',
+  'Advanced grammar and tone checks',
+  'Plagiarism detection',
+  'PDF, DOCX and PPTX export',
+  'AI + TTS teleprompter',
+  'Priority support',
+];
 
 const sourceIcon = (type: string) => {
   switch (type) {
@@ -195,14 +204,7 @@ function DocRow({ doc, isLast, deletingId, onDelete }: DocRowProps) {
             <CheckCircle2 className="h-4 w-4 text-emerald-500 dark:text-emerald-500/60 flex-shrink-0" />
           )}
         </div>
-      ) : (
-        <button
-          onClick={(e) => { e.stopPropagation(); router.push(`/analysis/${doc._id}`); }}
-          className="relative z-10 hidden sm:block flex-shrink-0 text-xs font-medium text-indigo-500 dark:text-indigo-400/60 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
-        >
-          Run analysis →
-        </button>
-      )}
+      ) : null}
 
       {/* Actions — visible on hover */}
       <div
@@ -215,13 +217,6 @@ function DocRow({ doc, isLast, deletingId, onDelete }: DocRowProps) {
           className="rounded-lg p-2 text-slate-600 dark:text-white/70 hover:text-slate-800 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-white/[0.08] transition-colors"
         >
           <Pencil className="h-3.5 w-3.5" />
-        </button>
-        <button
-          onClick={(e) => { e.stopPropagation(); router.push(`/analysis/${doc._id}`); }}
-          title="Analysis"
-          className="rounded-lg p-2 text-slate-600 dark:text-white/70 hover:text-indigo-600 dark:hover:text-indigo-400 hover:bg-indigo-50 dark:hover:bg-indigo-500/10 transition-colors"
-        >
-          <ArrowUpRight className="h-3.5 w-3.5" />
         </button>
         <button
           onClick={(e) => onDelete(e, doc._id, doc.originalFileName)}
@@ -555,7 +550,7 @@ export default function DashboardPage() {
         {/* ── Premium section ─────────────────────────────────────── */}
         <div className="mb-8 rounded-2xl border border-amber-200/70 bg-gradient-to-r from-amber-50 via-white to-indigo-50 p-4 sm:p-5 dark:border-amber-500/20 dark:from-amber-500/10 dark:via-[#0d0d1a] dark:to-indigo-500/10">
           <div className="flex flex-wrap items-start justify-between gap-4">
-            <div className="space-y-2">
+            <div className="space-y-3">
               <p className="inline-flex items-center gap-1.5 rounded-full border border-amber-300/70 bg-amber-100/70 px-3 py-0.5 text-[11px] font-bold uppercase tracking-widest text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300">
                 <Crown className="h-3.5 w-3.5" /> Premium Access
               </p>
@@ -564,16 +559,17 @@ export default function DashboardPage() {
               </h2>
               <p className="text-sm text-slate-600 dark:text-white/45">
                 {isPremium
-                  ? 'All premium features are active, including AI narration and PPT export.'
-                  : 'Free plan excludes AI narration, TTS narration, grammar fix, humanize, and PowerPoint export.'}
+                  ? 'Your Pro features are active for this account.'
+                  : 'Upgrade to Pro to unlock these features:'}
               </p>
-              <div className="flex flex-wrap gap-2 text-xs">
-                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">AI Teleprompter</span>
-                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">TTS Narration</span>
-                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">Export PPT</span>
-                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">Grammar Fix</span>
-                <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">Humanize</span>
-              </div>
+              <ul className="grid gap-1.5 text-xs sm:grid-cols-2">
+                {PRO_FEATURES.map((feature) => (
+                  <li key={feature} className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-slate-600 dark:border-white/[0.1] dark:bg-white/[0.03] dark:text-white/60">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-emerald-500" />
+                    {feature}
+                  </li>
+                ))}
+              </ul>
             </div>
             <Link
               href="/pricing"
