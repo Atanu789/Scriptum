@@ -28,28 +28,7 @@ export const metadata: Metadata = {
     template: '%s | Ultimoversio',
   },
   description:
-    'AI-powered content processing and publishing studio. Upload, analyse, edit, and export documents — with teleprompter mode, text-to-speech, and PowerPoint export.',
-  keywords: ['AI writing', 'content studio', 'teleprompter', 'grammar check', 'document editor'],
-  authors: [{ name: 'Ultimoversio' }],
-  alternates: {
-    canonical: '/',
-  },
-  icons: {
-    icon: '/favicon.svg',
-    shortcut: '/favicon.svg',
-    apple: '/favicon.svg',
-  },
-  robots: {
-    index: true,
-    follow: true,
-    googleBot: {
-      index: true,
-      follow: true,
-      'max-image-preview': 'large',
-      'max-snippet': -1,
-      'max-video-preview': -1,
-    },
-  },
+    'AI-powered content processing and publishing studio.',
 };
 
 export const viewport: Viewport = {
@@ -64,24 +43,30 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`} suppressHydrationWarning>
-      <head>
-        <script
-          suppressHydrationWarning
-          dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`,
-          }}
-        />
-      </head>
-      <body>
-        <ClerkProvider>
+    <ClerkProvider>
+      <html
+        lang="en"
+        className={`${inter.variable} ${jetbrainsMono.variable}`}
+        suppressHydrationWarning
+      >
+        <head>
+          <script
+            suppressHydrationWarning
+            dangerouslySetInnerHTML={{
+              __html: `(function(){try{var t=localStorage.getItem('theme');if(t==='dark'||(t!=='light'&&window.matchMedia('(prefers-color-scheme: dark)').matches)){document.documentElement.classList.add('dark');}else{document.documentElement.classList.remove('dark');}}catch(e){}})();`,
+            }}
+          />
+        </head>
+
+        <body>
           <ThemeProvider>
-            {/* Global background stack applied to every page */}
             <VortexBackground className="pointer-events-none fixed inset-0 z-0 opacity-75 dark:opacity-90" compact />
+
             <div
               aria-hidden
               className="app-grid-overlay pointer-events-none fixed inset-0 z-[1] opacity-70 blur-[1.5px] dark:opacity-55"
             />
+
             <div className="relative z-10">
               <AuthProvider>
                 <ToasterProvider />
@@ -91,8 +76,8 @@ export default function RootLayout({
               </AuthProvider>
             </div>
           </ThemeProvider>
-        </ClerkProvider>
-      </body>
-    </html>
+        </body>
+      </html>
+    </ClerkProvider>
   );
 }
