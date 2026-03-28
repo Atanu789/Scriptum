@@ -42,6 +42,43 @@ export async function generatePdf(
       const pageWidth = doc.page.width - doc.page.margins.left - doc.page.margins.right;
       const minBottomY = doc.page.height - doc.page.margins.bottom;
 
+      const renderInlineParagraph = (inlines: Array<{ type: string; value?: string; text?: string; url?: string }>) => {
+        const chunks = inlines
+          .map((node) => {
+            if (node.type === 'text') {
+              return [{ text: node.value || '', isLink: false, url: '' }];
+            }
+
+            const label = (node.text || '').trim();
+            const url = (node.url || '').trim();
+            if (!label && !url) return [];
+
+            const visible = label || url;
+            return [{ text: visible, isLink: true, url }];
+          })
+          .flat()
+          .filter((chunk) => chunk.text.trim().length > 0);
+
+        if (chunks.length === 0) return false;
+
+        chunks.forEach((chunk, idx) => {
+          doc.font('Helvetica').fontSize(12).fillColor(chunk.isLink ? '#1D4ED8' : '#1F2937').text(chunk.text, {
+            width: pageWidth,
+            lineGap: 4,
+            link: chunk.isLink && chunk.url ? chunk.url : undefined,
+            underline: chunk.isLink,
+            continued: idx !== chunks.length - 1,
+          });
+          if (idx !== chunks.length - 1) {
+            doc.text(' ', { continued: true });
+          }
+        });
+
+        doc.fillColor('#1F2937');
+        doc.text('', { continued: false });
+        return true;
+      };
+
       const ensureRoom = (height: number) => {
         if (doc.y + height > minBottomY) {
           doc.addPage();
@@ -69,8 +106,15 @@ export async function generatePdf(
 
         if (block.type === 'paragraph') {
           ensureRoom(32);
-          doc.font('Helvetica').fontSize(12).fillColor('#1F2937')
-            .text(block.text, { width: pageWidth, align: 'left', lineGap: 4 });
+          const rendered = Array.isArray(block.inlines) && block.inlines.length > 0
+            ? renderInlineParagraph(block.inlines as Array<{ type: string; value?: string; text?: string; url?: string }>)
+            : false;
+
+          if (!rendered) {
+            doc.font('Helvetica').fontSize(12).fillColor('#1F2937')
+              .text(block.text, { width: pageWidth, align: 'left', lineGap: 4 });
+          }
+
           doc.moveDown(0.45);
           continue;
         }
@@ -99,10 +143,29 @@ export async function generatePdf(
 
         if (block.type === 'table') {
           ensureRoom(28);
-          for (const row of block.rows) {
+          const colCount = Math.max(1, ...block.rows.map((row) => row.length));
+          const colWidth = pageWidth / colCount;
+
+          for (const [rowIndex, row] of block.rows.entries()) {
             ensureRoom(20);
-            doc.font('Helvetica').fontSize(11).fillColor('#334155')
-              .text(row.join(' | '), { width: pageWidth, lineGap: 3 });
+            const rowY = doc.y;
+            for (let col = 0; col < colCount; col += 1) {
+              const cellText = row[col] || '';
+              const cellX = doc.page.margins.left + col * colWidth;
+
+              if (rowIndex === 0) {
+                doc.rect(cellX, rowY, colWidth, 18).fill('#E2E8F0');
+                doc.fillColor('#1E293B').font('Helvetica-Bold').fontSize(10)
+                  .text(cellText || ' ', cellX + 4, rowY + 4, { width: colWidth - 8, lineGap: 1 });
+              } else {
+                doc.rect(cellX, rowY, colWidth, 18).stroke('#CBD5E1');
+                doc.fillColor('#334155').font('Helvetica').fontSize(10)
+                  .text(cellText || ' ', cellX + 4, rowY + 4, { width: colWidth - 8, lineGap: 1 });
+              }
+            }
+
+            doc.fillColor('#334155');
+            doc.y = rowY + 18;
           }
           doc.moveDown(0.45);
           continue;

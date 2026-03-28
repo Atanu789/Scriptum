@@ -99,10 +99,27 @@ export async function generatePowerPoint(
         align: 'center',
       });
     } else {
-      let slide = pptx.addSlide();
-      slide.background = { color: theme.background };
+      let slide: pptxgen.Slide | null = null;
       let currentTitle = options.title || 'Content';
       let y = 1.2;
+      let hasBodyContent = false;
+
+      const paragraphTextFromInlines = (inlines?: Array<{ type: string; value?: string; text?: string; url?: string }>): string => {
+        if (!Array.isArray(inlines) || inlines.length === 0) return '';
+
+        return inlines
+          .map((node) => {
+            if (node.type === 'text') return (node.value || '').trim();
+            const label = (node.text || '').trim();
+            const url = (node.url || '').trim();
+            if (label && url) return `${label} (${url})`;
+            return label || url;
+          })
+          .filter(Boolean)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+      };
 
       const addSlideWithTitle = (title: string) => {
         slide = pptx.addSlide();
@@ -119,22 +136,58 @@ export async function generatePowerPoint(
           fontFace: theme.fontFamily,
         });
         y = 1.2;
+        hasBodyContent = false;
       };
-
-      addSlideWithTitle(currentTitle);
 
       for (const block of blocks) {
         if (block.type === 'heading') {
+          if (!slide) {
+            addSlideWithTitle(block.text);
+            continue;
+          }
+
+          // Avoid producing empty slides when headings appear back-to-back.
+          if (!hasBodyContent) {
+            currentTitle = block.text;
+            const writableSlide = slide as unknown as {
+              addShape: (shapeName: unknown, options: Record<string, unknown>) => void;
+              addText: (text: string, options: Record<string, unknown>) => void;
+            };
+            writableSlide.addShape(pptx.ShapeType.rect, {
+              x: 0.45,
+              y: 0.35,
+              w: 12.4,
+              h: 0.7,
+              line: { color: theme.background, pt: 0 },
+              fill: { color: theme.background },
+            });
+            writableSlide.addText(currentTitle, {
+              x: 0.5,
+              y: 0.4,
+              w: 12.33,
+              h: 0.6,
+              fontSize: 26,
+              bold: true,
+              color: theme.accentColor,
+              fontFace: theme.fontFamily,
+            });
+            continue;
+          }
+
           addSlideWithTitle(block.text);
           continue;
         }
 
         if (block.type === 'paragraph' || block.type === 'blockquote') {
-          const text = block.type === 'blockquote' ? `"${block.text}"` : block.text;
+          if (!slide) addSlideWithTitle(currentTitle);
+
+          const text = block.type === 'blockquote'
+            ? `"${block.text}"`
+            : (paragraphTextFromInlines(block.inlines as Array<{ type: string; value?: string; text?: string; url?: string }>) || block.text);
           const estimatedHeight = Math.max(0.5, Math.ceil(text.length / 90) * 0.34 + 0.12);
           if (y + estimatedHeight > 6.8) addSlideWithTitle(currentTitle);
 
-          slide.addText(text, {
+          slide!.addText(text, {
             x: 0.7,
             y,
             w: 11.9,
@@ -147,16 +200,18 @@ export async function generatePowerPoint(
             valign: 'top',
           });
           y += estimatedHeight + 0.14;
+          hasBodyContent = true;
           continue;
         }
 
         if (block.type === 'list') {
+          if (!slide) addSlideWithTitle(currentTitle);
           for (let idx = 0; idx < block.items.length; idx++) {
             const item = `${block.ordered ? `${idx + 1}.` : '•'} ${block.items[idx]}`;
             const estimatedHeight = Math.max(0.35, Math.ceil(item.length / 95) * 0.3 + 0.08);
             if (y + estimatedHeight > 6.8) addSlideWithTitle(currentTitle);
 
-            slide.addText(item, {
+            slide!.addText(item, {
               x: 0.9,
               y,
               w: 11.4,
@@ -168,17 +223,19 @@ export async function generatePowerPoint(
               valign: 'top',
             });
             y += estimatedHeight + 0.08;
+            hasBodyContent = true;
           }
           y += 0.08;
           continue;
         }
 
         if (block.type === 'table') {
+          if (!slide) addSlideWithTitle(currentTitle);
           for (const row of block.rows) {
             const rowText = row.join(' | ');
             const estimatedHeight = Math.max(0.3, Math.ceil(rowText.length / 96) * 0.3 + 0.08);
             if (y + estimatedHeight > 6.8) addSlideWithTitle(currentTitle);
-            slide.addText(rowText, {
+            slide!.addText(rowText, {
               x: 0.7,
               y,
               w: 11.9,
@@ -188,18 +245,20 @@ export async function generatePowerPoint(
               fontFace: theme.fontFamily,
             });
             y += estimatedHeight + 0.05;
+            hasBodyContent = true;
           }
           y += 0.08;
           continue;
         }
 
         if (block.type === 'image') {
+          if (!slide) addSlideWithTitle(currentTitle);
           const image = await resolveImage(block.src);
           if (!image) continue;
           const imageHeight = 2.2;
           if (y + imageHeight > 6.8) addSlideWithTitle(currentTitle);
 
-          slide.addImage({
+          slide!.addImage({
             data: imageToDataUri(image),
             x: 1.0,
             y,
@@ -207,25 +266,25 @@ export async function generatePowerPoint(
             h: imageHeight,
           });
           y += imageHeight + 0.16;
+          hasBodyContent = true;
         }
       }
+
+      // Ensure at least one content slide exists.
+      if (!slide) {
+        addSlideWithTitle(currentTitle);
+        slide!.addText('No content available', {
+          x: 0.8,
+          y: 2.9,
+          w: 11.7,
+          h: 0.8,
+          fontSize: 22,
+          color: theme.subTextColor,
+          fontFace: theme.fontFamily,
+          align: 'center',
+        });
+      }
     }
-
-    // ─── Thank You Slide ──────────────────────────────────────────────────────
-    const endSlide = pptx.addSlide();
-    endSlide.background = { color: theme.accentColor };
-
-    endSlide.addText('Thank You', {
-      x: 0,
-      y: 3,
-      w: 13.33,
-      h: 1.5,
-      fontSize: 48,
-      bold: true,
-      color: 'FFFFFF',
-      fontFace: theme.fontFamily,
-      align: 'center',
-    });
 
     // Write to buffer
     console.log('[PPTX] Writing to buffer...');

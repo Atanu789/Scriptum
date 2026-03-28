@@ -13,6 +13,7 @@ import {
 import { useState, useEffect, useMemo } from 'react';
 import { useTheme } from '@/components/providers/ThemeProvider';
 import AILikelihoodCard, { calculateLikelihoodBreakdown } from '@/components/AILikelihoodCard';
+import { analyzeTextSegments } from '@/components/AITextHighlighter';
 
 // ─── Props ─────────────────────────────────────────────────────────────────────
 
@@ -272,7 +273,7 @@ function GrammarIssueCard({
   const { label, Icon: SevIcon, cls } = sevCfg[sev] ?? sevCfg.warning;
   const topReplacement = issue.replacements?.[0]?.trim();
   const grammarFixEnabled = canUseGrammarFix ?? Boolean(onApplyGrammarFix);
-  const canQuickFix = grammarFixEnabled && !!onApplyGrammarFix && !!topReplacement && !issue.fixed;
+  const canQuickFix = sev === 'error' && grammarFixEnabled && !!onApplyGrammarFix && !!topReplacement && !issue.fixed;
   const showPremiumFix = !grammarFixEnabled && !!onGoPremium && !issue.fixed;
   const lineTag = lineNumber && lineNumber > 0 ? `Line ${lineNumber}` : 'Line ?';
 
@@ -401,8 +402,37 @@ function AnalysisPanel({
   const biasFlags     = analysis?.tone?.biasFlags ?? [];
   const likelihoodBreakdown = useMemo(() => {
     if (aiScore < 0) return null;
+
+    const text = (documentText || '').trim();
+    if (text) {
+      const segments = analyzeTextSegments(text, aiScore);
+      if (segments.length > 0) {
+        const humanCount = segments.filter((s) => s.type === 'human').length;
+        const mixedCount = segments.filter((s) => s.type === 'mixed').length;
+        const aiCount = segments.filter((s) => s.type === 'ai').length;
+        const total = segments.length;
+
+        const humanPercentage = Math.round((humanCount / total) * 100);
+        const aiPercentage = Math.round((aiCount / total) * 100);
+        const mixedPercentage = Math.max(0, 100 - humanPercentage - aiPercentage);
+
+        const dominantType: 'human' | 'mixed' | 'ai' = aiPercentage >= humanPercentage && aiPercentage >= mixedPercentage
+          ? 'ai'
+          : humanPercentage >= mixedPercentage
+          ? 'human'
+          : 'mixed';
+
+        return {
+          humanPercentage,
+          aiPercentage,
+          mixedPercentage,
+          dominantType,
+        };
+      }
+    }
+
     return calculateLikelihoodBreakdown(aiScore);
-  }, [aiScore]);
+  }, [aiScore, documentText]);
 
   const aiVerdict =
     aiScore >= 70 ? 'High AI-generated signal'
@@ -707,6 +737,7 @@ function AnalysisPanel({
             {aiScore >= 0 ? (
               <AILikelihoodCard
                 aiScore={aiScore}
+                breakdown={likelihoodBreakdown ?? undefined}
                 showDetectors={true}
                 className={cn('shadow-none', D ? 'border-slate-800 bg-slate-900/60' : 'border-slate-200 bg-white/95')}
               />
@@ -736,7 +767,7 @@ function AnalysisPanel({
                 {humanizeEnabled
                   ? (isHumanizing ? <Loader2 className="h-4 w-4 animate-spin" /> : <Wand2 className="h-4 w-4" />)
                   : <Lock className="h-4 w-4" />}
-                {humanizeEnabled ? (isHumanizing ? 'Humanizing (Beta)...' : 'Humanize (Beta)') : 'Humanize Text (Beta)'}
+                {humanizeEnabled ? (isHumanizing ? 'Humanizing...' : 'Humanize') : 'Humanize Text'}
                 <span
                   className={cn(
                     'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
@@ -767,7 +798,7 @@ function AnalysisPanel({
               )}
               {!humanizeEnabled && (
                 <p className="mt-1.5 text-center text-[10px] text-amber-500">
-                  Humanize (Beta) is a Premium feature.
+                  Humanize is a Premium feature.
                 </p>
               )}
             </div>

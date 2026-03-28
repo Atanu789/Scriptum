@@ -149,13 +149,15 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
   }
 
   const sampledText = buildRepresentativeSample(text);
+  // Grammar offsets must map to the real document text used in editor fixes.
+  const grammarSourceText = text.slice(0, MAX_GRAMMAR_CHARS);
   const cleanText = text.trim().slice(0, 4000);
   const prompt = buildUnifiedPrompt(cleanText);
   const readability = analyzeReadability(sampledText);
   const longSentences = detectLongSentences(sampledText);
 
   const [grammarIssues, aiOut] = await Promise.all([
-    checkGrammar(sampledText.slice(0, MAX_GRAMMAR_CHARS)),
+    checkGrammar(grammarSourceText),
     runAnalysisWithRetry(prompt),
   ]);
 
@@ -185,7 +187,7 @@ export async function analyzeDocument(text: string, userId?: string): Promise<An
     reason: 'Unified AI suggestion',
   }));
 
-  const wordCount = sampledText.trim().split(/\s+/).filter(Boolean).length;
+  const wordCount = text.trim().split(/\s+/).filter(Boolean).length;
   const readabilityScore = readability.score;
   const tone = detectTone(text);
   const grammarScore = computeGrammarScore(wordCount, grammarIssues);

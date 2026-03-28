@@ -33,7 +33,11 @@ function flattenInline(nodes: StructuredInlineNode[] = []): string {
   return nodes
     .map((node) => {
       if (node.type === 'text') return node.value;
-      return node.text;
+      const text = normalizeText(node.text || '');
+      const url = normalizeText(node.url || '');
+      if (!text) return url;
+      if (!url) return text;
+      return `${text} (${url})`;
     })
     .join(' ')
     .replace(/\s+/g, ' ')
@@ -76,8 +80,8 @@ function fromEditorBlocks(content: StructuredBlockNode[]): ExportBlock[] {
 
     if (node.type === 'table') {
       const rows = (node.rows || [])
-        .map((row) => row.map((cell) => normalizeText(cell)).filter(Boolean))
-        .filter((row) => row.length > 0);
+        .map((row) => row.map((cell) => normalizeText(cell)))
+        .filter((row) => row.some((cell) => cell.length > 0));
       if (rows.length > 0) blocks.push({ type: 'table', rows });
       continue;
     }
@@ -142,15 +146,21 @@ function absolutePathFromSrc(src: string): string {
   if (path.isAbsolute(src)) return src;
 
   const normalized = src.replace(/\\/g, '/');
-  if (normalized.startsWith('/uploads/')) {
-    return path.join(process.cwd(), normalized.replace(/^\//, ''));
+  const cwd = process.cwd();
+  const workspaceRoot = path.resolve(cwd, '..');
+  const relative = normalized.replace(/^\//, '');
+
+  const candidates = [
+    path.join(cwd, relative),
+    path.join(workspaceRoot, relative),
+    path.join(workspaceRoot, 'uploads', relative.replace(/^uploads\//, '')),
+  ];
+
+  for (const candidate of candidates) {
+    if (fs.existsSync(candidate)) return candidate;
   }
 
-  if (normalized.startsWith('uploads/')) {
-    return path.join(process.cwd(), normalized);
-  }
-
-  return path.join(process.cwd(), normalized);
+  return candidates[0];
 }
 
 export async function resolveImage(src: string): Promise<ResolvedImage | null> {

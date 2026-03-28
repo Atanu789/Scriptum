@@ -118,15 +118,26 @@ export function analyzeTextSegments(text: string, overallScore: number = 50): Te
 
   let aiCount = Math.round(total * aiTarget);
   let humanCount = Math.round(total * humanTarget);
+  const aiMin = overallScore <= 30 ? 0 : 1;
+  const humanMin = overallScore >= 70 ? 0 : 1;
 
-  if (aiCount + humanCount > total - 1) {
-    const overflow = aiCount + humanCount - (total - 1);
+  if (aiCount + humanCount > total) {
+    const overflow = aiCount + humanCount - total;
     if (aiCount >= humanCount) aiCount -= overflow;
     else humanCount -= overflow;
   }
 
-  aiCount = clamp(aiCount, 1, total - 1);
-  humanCount = clamp(humanCount, 1, total - aiCount - 1);
+  aiCount = clamp(aiCount, aiMin, Math.max(aiMin, total - humanMin));
+  humanCount = clamp(humanCount, humanMin, Math.max(humanMin, total - aiCount));
+
+  if (aiCount + humanCount > total) {
+    const overflow = aiCount + humanCount - total;
+    if (aiCount >= humanCount) {
+      aiCount = Math.max(aiMin, aiCount - overflow);
+    } else {
+      humanCount = Math.max(humanMin, humanCount - overflow);
+    }
+  }
 
   const typeByIndex = new Array<TextSegment['type']>(total).fill('mixed');
 

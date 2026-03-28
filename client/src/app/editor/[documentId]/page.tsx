@@ -308,46 +308,42 @@ function createRangeFromOffsets(spans: EditorTextNodeSpan[], startOffset: number
   return range;
 }
 
+function normalizeMatchText(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+function compactMatchText(value: string): string {
+  return normalizeMatchText(value).replace(/[^a-z0-9]+/g, '');
+}
+
+function isIssueSegmentAligned(segment: string, context: string): boolean {
+  const normalizedSegment = normalizeMatchText(segment);
+  if (!normalizedSegment) return false;
+
+  const normalizedContext = normalizeMatchText(context);
+  if (!normalizedContext) return true;
+
+  if (normalizedContext.includes(normalizedSegment)) return true;
+
+  const compactSegment = compactMatchText(segment);
+  const compactContext = compactMatchText(context);
+  return compactSegment.length >= 3 && compactContext.includes(compactSegment);
+}
+
 function resolveIssueOffsetsInText(issue: GrammarIssue, sourceText: string): { start: number; end: number } | null {
   if (!sourceText) return null;
+
+  const context = (issue.context || '').replace(/^\.\.\.|\.\.\.$/g, '').trim();
 
   if (Number.isInteger(issue.offset) && Number.isInteger(issue.length)) {
     const start = Math.max(0, Math.min(issue.offset, sourceText.length));
     const len = Math.max(0, issue.length);
     const end = Math.min(sourceText.length, start + len);
-    if (end > start) return { start, end };
-  }
-
-  const context = (issue.context || '').replace(/^\.\.\.|\.\.\.$/g, '').trim();
-  const issueLen = Number.isInteger(issue.length) ? Math.max(1, issue.length) : 1;
-  const words = context
-    .split(/\s+/)
-    .map((w) => w.replace(/^[^\w]+|[^\w]+$/g, ''))
-    .filter((w) => w.length >= 3)
-    .sort((a, b) => Math.abs(a.length - issueLen) - Math.abs(b.length - issueLen))
-    .slice(0, 4);
-
-  const candidates = Array.from(new Set([
-    context,
-    ...words,
-  ].filter((v): v is string => Boolean(v && v.trim()))));
-
-  for (const candidate of candidates) {
-    const raw = candidate.trim();
-    if (!raw) continue;
-
-    const idx = sourceText.toLowerCase().indexOf(raw.toLowerCase());
-    if (idx !== -1) {
-      const end = Math.min(sourceText.length, idx + Math.max(1, Math.min(issueLen, raw.length)));
-      if (end > idx) return { start: idx, end };
-    }
-
-    const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+');
-    const match = new RegExp(escaped, 'i').exec(sourceText);
-    if (match && typeof match.index === 'number') {
-      const start = match.index;
-      const end = Math.min(sourceText.length, start + Math.max(1, Math.min(issueLen, match[0].length)));
-      if (end > start) return { start, end };
+    if (end > start) {
+      const segment = sourceText.slice(start, end);
+      if (segment.trim() && isIssueSegmentAligned(segment, context)) {
+        return { start, end };
+      }
     }
   }
 
@@ -1280,59 +1276,30 @@ export default function EditorPage() {
     const beforeText = editor.innerText || '';
     const beforeHtml = editor.innerHTML;
     const key = grammarIssueKey(issue);
-    const hasOffset = Number.isInteger(issue.offset) && Number.isInteger(issue.length);
+    const sourceText = editor.innerText || doc?.cleanedText || '';
+    const resolved = resolveIssueOffsetsInText(issue, sourceText);
 
-    let applied = false;
-
-    if (hasOffset) {
-      const safeLength = Math.max(0, issue.length);
-      applied = replaceByOffset(editor, issue.offset, safeLength, replacement);
+    if (!resolved) {
+      toast('This issue location changed. Re-run analysis and try again.');
+      return;
     }
 
-    if (!applied) {
-      const currentText = editor.innerText || '';
-      const fromCurrentOffset = hasOffset && issue.length > 0
-        ? currentText.slice(issue.offset, issue.offset + issue.length).trim()
-        : '';
-      const fromSourceOffset = hasOffset && issue.length > 0
-        ? (doc?.cleanedText || '').slice(issue.offset, issue.offset + issue.length).trim()
-        : '';
-      const contextText = (issue.context || '').replace(/^\.\.\.|\.\.\.$/g, '').trim();
-
-      const contextCandidates: string[] = [];
-      if (contextText && issue.length > 0) {
-        const targetLength = Math.max(1, issue.length);
-        const words = contextText
-          .split(/\s+/)
-          .map((word) => word.replace(/^[^\w]+|[^\w]+$/g, ''))
-          .filter((word) => word.length >= 2);
-
-        words
-          .sort((a, b) => Math.abs(a.length - targetLength) - Math.abs(b.length - targetLength))
-          .slice(0, 3)
-          .forEach((word) => contextCandidates.push(word));
-      }
-
-      const candidates = Array.from(new Set([
-        fromCurrentOffset,
-        fromSourceOffset,
-        ...contextCandidates,
-      ].filter((value): value is string => value.length > 0 && value.length <= 80)));
-
-      for (const candidate of candidates) {
-        const replaced = replaceInBlocks(editor.innerHTML, candidate, replacement);
-        if (replaced.applied) {
-          editor.innerHTML = replaced.html;
-          applied = true;
-          break;
-        }
-      }
+    const matchedText = sourceText.slice(resolved.start, resolved.end).trim();
+    if (!matchedText) {
+      toast('Could not identify the exact grammar span. Re-run analysis and try again.');
+      return;
     }
 
+    if (matchedText.toLowerCase() === replacement.trim().toLowerCase()) {
+      toast('This correction is already applied.');
+      return;
+    }
+
+    const safeLength = Math.max(0, resolved.end - resolved.start);
+    const applied = safeLength > 0 && replaceByOffset(editor, resolved.start, safeLength, replacement);
+
     if (!applied) {
-      navigator.clipboard.writeText(replacement).then(() => {
-        toast.success('Could not auto-apply; replacement copied to clipboard');
-      });
+      toast('Could not apply this fix safely. Re-run analysis and try again.');
       return;
     }
 

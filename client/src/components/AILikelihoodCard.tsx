@@ -12,6 +12,7 @@ interface AILikelihoodBreakdown {
 
 interface AILikelihoodCardProps {
   aiScore: number;
+  breakdown?: AILikelihoodBreakdown;
   className?: string;
   showDetectors?: boolean;
 }
@@ -82,8 +83,8 @@ function calculateLikelihoodBreakdown(aiScore: number): AILikelihoodBreakdown {
   };
 }
 
-export default function AILikelihoodCard({ aiScore, className = '', showDetectors = true }: AILikelihoodCardProps) {
-  const breakdown = useMemo(() => calculateLikelihoodBreakdown(aiScore), [aiScore]);
+export default function AILikelihoodCard({ aiScore, breakdown: breakdownOverride, className = '', showDetectors = true }: AILikelihoodCardProps) {
+  const breakdown = useMemo(() => breakdownOverride ?? calculateLikelihoodBreakdown(aiScore), [aiScore, breakdownOverride]);
 
   const detectorNames = [
     'Turnitin',
