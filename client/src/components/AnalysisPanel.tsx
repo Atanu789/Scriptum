@@ -41,6 +41,7 @@ interface Props {
   expanded?:             boolean;
   streamingPreviewText?: string;
   documentText?:         string;
+  showAnalyzeAction?:    boolean;
 }
 
 // ─── Score Ring ────────────────────────────────────────────────────────────────
@@ -370,6 +371,7 @@ type TabId = 'overview' | 'integrity' | 'language' | 'tone';
 function AnalysisPanel({
   analysis, isAnalyzing, isHumanizing = false, analysisProgress, onAnalyze, onHumanize, onGoPremium, canUseGrammarFixFeature, canUseHumanizeFeature, canUseToneBiasFeature, aiUsageLabel, isAiUsageBlocked, onCancelAnalyze, onSave, documentStatus, expanded = false,
   streamingPreviewText = '',
+  showAnalyzeAction = true,
   onApplySuggestion, onApplyGrammarFix, onUndoGrammarFix, canUndoGrammarFix = false, getGrammarIssueLine,
   documentText = '',
 }: Props) {
@@ -701,21 +703,23 @@ function AnalysisPanel({
           </div>
           </div>
 
-          <div className="flex gap-2">
-            <button
-              onClick={analyzeBlocked ? onGoPremium : onAnalyze}
-              className={cn('flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all border',
-                analyzeBlocked
-                  ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
-                  : D
-                  ? 'border-indigo-800/50 text-indigo-400 hover:bg-indigo-950/50'
-                  : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50')}
-            >
-              {analyzeBlocked ? <Lock className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
-              {analyzeBlocked ? 'AI Limit Reached - Go Premium' : 'Re-run'}
-            </button>
+          <div className={cn('grid gap-2', showAnalyzeAction && onSave ? 'grid-cols-2' : 'grid-cols-1')}>
+            {showAnalyzeAction && (
+              <button
+                onClick={analyzeBlocked ? onGoPremium : onAnalyze}
+                className={cn('flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold transition-all border',
+                  analyzeBlocked
+                    ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
+                    : D
+                    ? 'border-indigo-800/50 text-indigo-400 hover:bg-indigo-950/50'
+                    : 'border-indigo-200 text-indigo-600 hover:bg-indigo-50')}
+              >
+                {analyzeBlocked ? <Lock className="h-4 w-4" /> : <RefreshCw className="h-4 w-4" />}
+                {analyzeBlocked ? 'AI Limit Reached - Go Premium' : 'Re-run'}
+              </button>
+            )}
             {onSave && (
-              <button onClick={onSave} className="flex-1 flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-500 hover:to-violet-500 shadow-sm transition-all">
+              <button onClick={onSave} className="flex items-center justify-center gap-2 rounded-xl py-2.5 text-sm font-semibold bg-gradient-to-r from-indigo-600 to-violet-600 text-white hover:from-indigo-500 hover:to-violet-500 shadow-sm transition-all">
                 <Save className="h-4 w-4" /> Save
               </button>
             )}
@@ -771,14 +775,6 @@ function AnalysisPanel({
                 <span
                   className={cn(
                     'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
-                    humanizeEnabled ? 'bg-white/20 text-white' : 'bg-amber-400/80 text-white',
-                  )}
-                >
-                  Beta
-                </span>
-                <span
-                  className={cn(
-                    'rounded px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide',
                     humanizeEnabled ? 'bg-amber-400/90 text-black' : 'bg-amber-200 text-amber-800',
                   )}
                 >
@@ -789,11 +785,6 @@ function AnalysisPanel({
               {humanizeEnabled && !canHumanize && (
                 <p className="mt-1.5 text-center text-[10px] text-slate-500">
                   Re-run analysis first to generate AI-flagged passages.
-                </p>
-              )}
-              {humanizeEnabled && (
-                <p className="mt-1.5 text-center text-[10px] text-amber-500">
-                  Humanizing text is in beta and may not work properly.
                 </p>
               )}
               {!humanizeEnabled && (

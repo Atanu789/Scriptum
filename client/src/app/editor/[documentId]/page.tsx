@@ -423,6 +423,7 @@ export default function EditorPage() {
 
   const { document: doc, isLoading, isAnalyzing, isHumanizing, error, analysis, analyze, humanize, updateContent } =
     useDocument(documentId);
+  const hasHumanizedDocument = Boolean(doc?.lastHumanizeOriginalText?.trim());
   const {
     canUseGrammarFix,
     canUseHumanizeText,
@@ -1665,16 +1666,18 @@ export default function EditorPage() {
                 Save
               </button>
             )}
-            <button
-              onClick={analyze}
-              disabled={isAnalyzing}
-              className="btn-secondary py-1.5 px-3 text-xs"
-            >
-              {isAnalyzing
-                ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                : <BarChart2 className="h-3.5 w-3.5" />}
-              {isAnalyzing ? 'Analysing�Ǫ' : 'Analyse'}
-            </button>
+            {!hasHumanizedDocument && (
+              <button
+                onClick={analyze}
+                disabled={isAnalyzing}
+                className="btn-secondary py-1.5 px-3 text-xs"
+              >
+                {isAnalyzing
+                  ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                  : <BarChart2 className="h-3.5 w-3.5" />}
+                {isAnalyzing ? 'Analysing�Ǫ' : 'Analyse'}
+              </button>
+            )}
             <button
               onClick={() => setRightPanelMode((prev) => prev === 'analysis' ? 'preview' : 'analysis')}
               className="btn-secondary py-1.5 px-3 text-xs"
@@ -1948,6 +1951,7 @@ export default function EditorPage() {
               isAiUsageBlocked={aiBlocked}
               onSave={isDirty ? handleSave : undefined}
               documentStatus={doc.status}
+              showAnalyzeAction={!hasHumanizedDocument}
               onApplySuggestion={handleApplySuggestion}
               onApplyGrammarFix={canUseGrammarFix ? handleApplyGrammarFix : undefined}
               onUndoGrammarFix={canUseGrammarFix ? handleUndoGrammarFix : undefined}

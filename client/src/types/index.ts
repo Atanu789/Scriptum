@@ -310,6 +310,8 @@ export interface Document {
   fleschGradeLevel: string | null;
   avgSentenceLength: number | null;
   analysisRunAt: string | null;
+  lastHumanizeOriginalText: string | null;
+  lastHumanizeMode: 'conservative' | 'balanced' | 'aggressive' | null;
   status: 'pending' | 'processing' | 'analyzed' | 'ready';
   createdAt: string;
   updatedAt: string;
