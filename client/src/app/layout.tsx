@@ -6,7 +6,6 @@ import { AuthProvider } from '@/context/AuthContext';
 import { ToasterProvider } from '@/components/providers/ToasterProvider';
 import { ThemeProvider } from '@/components/providers/ThemeProvider';
 import FloatingDockNav from '@/components/FloatingDockNav';
-import BugReportFab from '@/components/BugReportFab';
 import { VortexBackground } from '@/components/ui/vortex-background';
 
 const inter = Inter({
@@ -71,7 +70,6 @@ export default function RootLayout({
               <AuthProvider>
                 <ToasterProvider />
                 <FloatingDockNav />
-                <BugReportFab />
                 {children}
               </AuthProvider>
             </div>

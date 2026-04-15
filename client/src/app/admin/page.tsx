@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { adminApi } from '@/lib/api';
+import { useAuth } from '@/context/AuthContext';
 import { cn } from '@/lib/utils';
 import type {
   AdminAuditLogItem,
@@ -32,6 +33,7 @@ type SectionKey = 'dashboard' | 'users' | 'revenue' | 'logs' | 'settings';
 
 const ADMIN_TOKEN_KEY = 'ultimoversio_admin_token';
 const ADMIN_USERNAME_KEY = 'ultimoversio_admin_username';
+const MANAGEMENT_EMAIL_ALLOWLIST = new Set(['gdnvision360@gmail.com', 'atanugm8@gmail.com']);
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-IN', {
@@ -64,10 +66,16 @@ function TrendPill({ value }: { value: number }) {
 }
 
 export default function AdminPage() {
+  const { user, token: clerkToken } = useAuth();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [adminName, setAdminName] = useState('admin');
   const [token, setToken] = useState<string | null>(null);
+  const [showChangePasswordForm, setShowChangePasswordForm] = useState(false);
+  const [currentAdminPassword, setCurrentAdminPassword] = useState('');
+  const [newAdminPassword, setNewAdminPassword] = useState('');
+  const [confirmNewAdminPassword, setConfirmNewAdminPassword] = useState('');
+  const [isChangingAdminPassword, setIsChangingAdminPassword] = useState(false);
 
   const [section, setSection] = useState<SectionKey>('dashboard');
   const [searchInput, setSearchInput] = useState('');
@@ -113,6 +121,11 @@ export default function AdminPage() {
   const [confirmAction, setConfirmAction] = useState<((reason?: string) => Promise<void>) | null>(null);
 
   const [isBootstrapping, setIsBootstrapping] = useState(false);
+
+  const canManageAdminPassword = useMemo(() => {
+    const email = (user?.email || '').trim().toLowerCase();
+    return MANAGEMENT_EMAIL_ALLOWLIST.has(email);
+  }, [user?.email]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -291,6 +304,42 @@ export default function AdminPage() {
       toast.error(err instanceof Error ? err.message : 'Admin login failed');
     } finally {
       setIsBootstrapping(false);
+    }
+  };
+
+  const handleAdminPasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!canManageAdminPassword) {
+      toast.error('Only management accounts can change admin password');
+      return;
+    }
+
+    if (!clerkToken) {
+      toast.error('Sign in with your management Clerk account first');
+      return;
+    }
+
+    if (newAdminPassword !== confirmNewAdminPassword) {
+      toast.error('New password and confirm password do not match');
+      return;
+    }
+
+    setIsChangingAdminPassword(true);
+    try {
+      await adminApi.changePassword(clerkToken, {
+        currentPassword: currentAdminPassword,
+        newPassword: newAdminPassword,
+      });
+      toast.success('Admin password changed successfully');
+      setCurrentAdminPassword('');
+      setNewAdminPassword('');
+      setConfirmNewAdminPassword('');
+      setShowChangePasswordForm(false);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Failed to change admin password');
+    } finally {
+      setIsChangingAdminPassword(false);
     }
   };
 
@@ -473,6 +522,7 @@ export default function AdminPage() {
   if (!token) {
     return (
       <div className="mx-auto flex min-h-screen max-w-md items-center px-4 py-12">
+        <div className="w-full space-y-4">
         <form onSubmit={handleLogin} className="w-full space-y-4 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm dark:border-white/10 dark:bg-[#0f1020]">
           <div className="flex items-center gap-2">
             <Shield className="h-5 w-5 text-indigo-500" />
@@ -510,6 +560,71 @@ export default function AdminPage() {
             Login
           </button>
         </form>
+
+        {canManageAdminPassword && (
+          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0f1020]">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Management Controls</h2>
+                <p className="text-xs text-slate-500">Only app owner can update admin login password.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowChangePasswordForm((prev) => !prev)}
+                className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-white/20 dark:text-slate-200 dark:hover:bg-white/10"
+              >
+                {showChangePasswordForm ? 'Hide' : 'Change Password'}
+              </button>
+            </div>
+
+            {showChangePasswordForm && (
+              <form onSubmit={handleAdminPasswordChange} className="mt-3 space-y-3">
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Current Admin Password</label>
+                  <input
+                    type="password"
+                    value={currentAdminPassword}
+                    onChange={(e) => setCurrentAdminPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-white/20 dark:bg-black/20"
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">New Admin Password</label>
+                  <input
+                    type="password"
+                    value={newAdminPassword}
+                    onChange={(e) => setNewAdminPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-white/20 dark:bg-black/20"
+                    required
+                    minLength={8}
+                  />
+                </div>
+                <div>
+                  <label className="mb-1 block text-xs font-medium text-slate-600 dark:text-slate-300">Confirm New Password</label>
+                  <input
+                    type="password"
+                    value={confirmNewAdminPassword}
+                    onChange={(e) => setConfirmNewAdminPassword(e.target.value)}
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm dark:border-white/20 dark:bg-black/20"
+                    required
+                    minLength={8}
+                  />
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isChangingAdminPassword}
+                  className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800 disabled:opacity-60 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-slate-200"
+                >
+                  {isChangingAdminPassword ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  Update Admin Password
+                </button>
+              </form>
+            )}
+          </div>
+        )}
+        </div>
       </div>
     );
   }

@@ -5,6 +5,10 @@ import { usePathname } from 'next/navigation';
 import { AlertCircle, X } from 'lucide-react';
 import { supportApi } from '@/lib/api';
 
+interface BugReportFabProps {
+  embedded?: boolean;
+}
+
 function fileToDataUrl(file: File): Promise<string> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
@@ -14,7 +18,7 @@ function fileToDataUrl(file: File): Promise<string> {
   });
 }
 
-export default function BugReportFab() {
+export default function BugReportFab({ embedded = false }: BugReportFabProps) {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const [description, setDescription] = useState('');
@@ -72,10 +76,14 @@ export default function BugReportFab() {
     <>
       <button
         onClick={() => setOpen(true)}
-        className="fixed bottom-24 right-4 z-40 inline-flex h-11 items-center gap-2 rounded-full bg-red-700 px-4 text-sm font-semibold text-white shadow-lg shadow-red-600/30 transition hover:bg-red-800 sm:bottom-7"
+        className={
+          embedded
+            ? 'inline-flex h-8 items-center gap-1.5 rounded-lg border border-slate-200 px-3 text-[11px] font-semibold text-slate-600 transition hover:border-slate-300 hover:bg-slate-50 dark:border-white/[0.08] dark:text-white/45 dark:hover:bg-white/[0.06] dark:hover:text-white/75'
+            : 'fixed bottom-24 right-4 z-40 inline-flex h-11 items-center gap-2 rounded-full bg-red-700 px-4 text-sm font-semibold text-white shadow-lg shadow-red-600/30 transition hover:bg-red-800 sm:bottom-7'
+        }
       >
         <AlertCircle className="h-4 w-4" />
-        
+        Report Bug
       </button>
 
       {open && (

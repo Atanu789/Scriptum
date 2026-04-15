@@ -2,6 +2,7 @@
 
 import Link from 'next/link';
 import { BookOpen, Github, Twitter, Mail } from 'lucide-react';
+import BugReportFab from '@/components/BugReportFab';
 
 const LINKS = {
   Product: [
@@ -109,6 +110,7 @@ export function Footer() {
             © {new Date().getFullYear()} Ultimoversio. All rights reserved.
           </p>
           <div className="flex items-center gap-4">
+            <BugReportFab embedded />
             {['Privacy Policy', 'Terms of Service'].map((t) => (
               <a
                 key={t}

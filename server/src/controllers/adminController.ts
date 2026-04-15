@@ -1,16 +1,22 @@
 import { Request, Response } from 'express';
 import { body, param, query, validationResult } from 'express-validator';
 import jwt from 'jsonwebtoken';
+import bcrypt from 'bcryptjs';
+import { createClerkClient, verifyToken } from '@clerk/backend';
 import User from '../models/User';
 import DocumentModel from '../models/Document';
 import UsageModel from '../models/Usage';
 import Payment from '../models/Payment';
 import AdminAuditLog from '../models/AdminAuditLog';
+import AdminCredential from '../models/AdminCredential';
 import PricingConfig from '../models/PricingConfig';
 import DiscountRequest from '../models/DiscountRequest';
+import { AuthenticatedRequest } from '../types';
 
 const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
+const MANAGEMENT_EMAIL_ALLOWLIST = new Set(['gdnvision360@gmail.com', 'atanugm8@gmail.com']);
+let clerkClientCache: ReturnType<typeof createClerkClient> | null = null;
 
 function deriveYearlyPrice(monthlyPriceINR: number): number {
   return Math.max(0, Math.round(monthlyPriceINR * 12));
@@ -19,6 +25,11 @@ function deriveYearlyPrice(monthlyPriceINR: number): number {
 interface AdminLoginBody {
   username: string;
   password: string;
+}
+
+interface AdminChangePasswordBody {
+  currentPassword: string;
+  newPassword: string;
 }
 
 interface AdminUserPatchBody {
@@ -39,6 +50,19 @@ interface AdminDeleteBody {
 export const adminLoginValidation = [
   body('username').trim().notEmpty().withMessage('Username is required'),
   body('password').notEmpty().withMessage('Password is required'),
+];
+
+export const changeAdminPasswordValidation = [
+  body('currentPassword').notEmpty().withMessage('Current password is required'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('New password must be at least 8 characters')
+    .matches(/[A-Z]/)
+    .withMessage('New password must include at least one uppercase letter')
+    .matches(/[a-z]/)
+    .withMessage('New password must include at least one lowercase letter')
+    .matches(/[0-9]/)
+    .withMessage('New password must include at least one number'),
 ];
 
 export const listUsersValidation = [
@@ -189,6 +213,83 @@ function mapOverride(value?: number | null): number | null | undefined {
   return value;
 }
 
+function isManagementEmail(email?: string | null): boolean {
+  const normalized = (email || '').trim().toLowerCase();
+  return MANAGEMENT_EMAIL_ALLOWLIST.has(normalized);
+}
+
+function getClerkClient() {
+  const secretKey = process.env.CLERK_SECRET_KEY;
+  if (!secretKey) return null;
+
+  if (!clerkClientCache) {
+    clerkClientCache = createClerkClient({ secretKey });
+  }
+
+  return clerkClientCache;
+}
+
+async function resolveClerkEmailFromAuthorizationHeader(authHeader?: string): Promise<string | null> {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+
+  const secretKey = process.env.CLERK_SECRET_KEY;
+  const clerkClient = getClerkClient();
+  if (!secretKey || !clerkClient) {
+    return null;
+  }
+
+  const token = authHeader.split(' ')[1];
+  const verified = await verifyToken(token, { secretKey });
+  const clerkUserId = (verified as { sub?: string }).sub?.trim();
+  if (!clerkUserId) {
+    return null;
+  }
+
+  const clerkUser = await clerkClient.users.getUser(clerkUserId);
+  const primaryId = clerkUser.primaryEmailAddressId;
+  const primary = (clerkUser.emailAddresses || []).find((entry) => entry.id === primaryId) || clerkUser.emailAddresses?.[0];
+  const email = primary?.emailAddress?.trim().toLowerCase() || null;
+  return email;
+}
+
+async function verifyAdminPassword(adminPasswordInput: string): Promise<{ valid: boolean; credentialBacked: boolean }> {
+  const normalizedUsername = (ADMIN_USERNAME || '').trim().toLowerCase();
+  const existingCredential = normalizedUsername
+    ? await AdminCredential.findOne({ username: normalizedUsername }).select('+passwordHash')
+    : null;
+
+  if (existingCredential?.passwordHash) {
+    const valid = await bcrypt.compare(adminPasswordInput, existingCredential.passwordHash);
+    return { valid, credentialBacked: true };
+  }
+
+  if (!ADMIN_PASSWORD) {
+    return { valid: false, credentialBacked: false };
+  }
+
+  return { valid: adminPasswordInput === ADMIN_PASSWORD, credentialBacked: false };
+}
+
+async function ensureCredentialBackedPassword(password: string, updatedByEmail?: string): Promise<void> {
+  if (!ADMIN_USERNAME) return;
+  const normalizedUsername = ADMIN_USERNAME.trim().toLowerCase();
+  const passwordHash = await bcrypt.hash(password, 12);
+
+  await AdminCredential.findOneAndUpdate(
+    { username: normalizedUsername },
+    {
+      $set: {
+        username: normalizedUsername,
+        passwordHash,
+        updatedByEmail: updatedByEmail?.trim().toLowerCase() || null,
+      },
+    },
+    { upsert: true, new: true, setDefaultsOnInsert: true },
+  );
+}
+
 export const adminLogin = async (req: Request, res: Response): Promise<void> => {
   const errors = validationResult(req);
   if (!errors.isEmpty()) {
@@ -198,14 +299,24 @@ export const adminLogin = async (req: Request, res: Response): Promise<void> => 
 
   const { username, password } = req.body as AdminLoginBody;
 
-  if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
-    res.status(500).json({ success: false, error: 'Server misconfigured: ADMIN_USERNAME / ADMIN_PASSWORD missing' });
+  if (!ADMIN_USERNAME) {
+    res.status(500).json({ success: false, error: 'Server misconfigured: ADMIN_USERNAME missing' });
     return;
   }
 
-  if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+  if (username !== ADMIN_USERNAME) {
     res.status(401).json({ success: false, error: 'Invalid admin credentials' });
     return;
+  }
+
+  const { valid, credentialBacked } = await verifyAdminPassword(password);
+  if (!valid) {
+    res.status(401).json({ success: false, error: 'Invalid admin credentials' });
+    return;
+  }
+
+  if (!credentialBacked) {
+    await ensureCredentialBackedPassword(password);
   }
 
   const secret = process.env.JWT_SECRET;
@@ -232,6 +343,57 @@ export const adminLogin = async (req: Request, res: Response): Promise<void> => 
       username,
     },
     message: 'Admin login successful',
+  });
+};
+
+export const changeAdminPassword = async (req: AuthenticatedRequest, res: Response): Promise<void> => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    res.status(422).json({ success: false, error: errors.array()[0].msg });
+    return;
+  }
+
+  if (!ADMIN_USERNAME) {
+    res.status(500).json({ success: false, error: 'Server misconfigured: ADMIN_USERNAME missing' });
+    return;
+  }
+
+  let requesterEmail: string | null = null;
+  try {
+    requesterEmail = await resolveClerkEmailFromAuthorizationHeader(req.headers.authorization);
+  } catch {
+    requesterEmail = null;
+  }
+
+  if (!isManagementEmail(requesterEmail)) {
+    res.status(403).json({ success: false, error: 'Only management accounts can change admin password' });
+    return;
+  }
+
+  const { currentPassword, newPassword } = req.body as AdminChangePasswordBody;
+  const verification = await verifyAdminPassword(currentPassword);
+  if (!verification.valid) {
+    res.status(401).json({ success: false, error: 'Current password is incorrect' });
+    return;
+  }
+
+  await ensureCredentialBackedPassword(newPassword, requesterEmail ?? undefined);
+
+  try {
+    await AdminAuditLog.create({
+      adminUsername: requesterEmail,
+      action: 'change_admin_password',
+      targetUserId: 'admin',
+      targetUserEmail: `admin:${ADMIN_USERNAME}`,
+      reason: 'Admin dashboard password changed by management account',
+    });
+  } catch (auditErr) {
+    console.error('Failed to log admin password change:', auditErr);
+  }
+
+  res.json({
+    success: true,
+    message: 'Admin password updated successfully',
   });
 };
 

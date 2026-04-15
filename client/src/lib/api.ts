@@ -559,6 +559,17 @@ export const adminApi = {
     });
   },
 
+  changePassword: async (
+    clerkToken: string,
+    payload: { currentPassword: string; newPassword: string },
+  ): Promise<void> => {
+    await adminRequest<unknown>('/change-password', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${clerkToken}` },
+      body: JSON.stringify(payload),
+    });
+  },
+
   overview: async (token: string): Promise<AdminOverview> => {
     return adminRequest<AdminOverview>('/overview', { method: 'GET' }, token);
   },

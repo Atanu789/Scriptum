@@ -4,6 +4,8 @@ import { authenticateAdmin } from '../middleware/adminAuth';
 import {
   adminLogin,
   adminLoginValidation,
+  changeAdminPassword,
+  changeAdminPasswordValidation,
   listUsers,
   listUsersValidation,
   getMetrics,
@@ -26,6 +28,7 @@ import {
 const router = Router();
 
 router.post('/login', authLimiter, adminLoginValidation, adminLogin);
+router.post('/change-password', authLimiter, changeAdminPasswordValidation, changeAdminPassword);
 
 router.use(authenticateAdmin);
 

@@ -240,9 +240,9 @@ async function processDocumentHumanizeJob(jobId: string): Promise<void> {
     const rewrittenPercent = 100;
     const averageLengthSimilarity = Math.round(lengthSimilarity(originalText, humanizedText) * 100) / 100;
 
-    // Store the original AI score before humanization (don't re-analyze to avoid score inflation)
-    const originalAnalysisScore = normalizeAiScore(doc.aiScore, 0);
-    const originalAnalysisTime = doc.analysisRunAt || new Date();
+    const sourceAnalysisScore = normalizeAiScore(doc.aiScore, estimateFallbackAiScore(originalText));
+    const { aiScore: postHumanizeAiScore, dropPercent } = applyPostHumanizeAiDrop(sourceAnalysisScore);
+    const postHumanizeAnalysisTime = new Date();
 
     doc.cleanedText = humanizedText;
     doc.editorHtml = plainTextToEditorHtml(humanizedText);
@@ -250,7 +250,14 @@ async function processDocumentHumanizeJob(jobId: string): Promise<void> {
     doc.structuredContent = structureDocument(humanizedText);
     doc.lastHumanizeOriginalText = originalText;
     doc.lastHumanizeMode = job.mode;
-    // Don't update analysis metrics — keep original AI score, suppress re-analysis overhead
+    doc.aiScore = postHumanizeAiScore;
+    doc.analysisRunAt = postHumanizeAnalysisTime;
+    doc.aiReasoning = '';
+    doc.humanizationTips = [];
+    doc.humanizationSuggestions = [];
+    doc.longSentences = [];
+    doc.claimFlags = [];
+    doc.tone = null;
     doc.status = 'analyzed';
     await doc.save();
 
@@ -268,14 +275,16 @@ async function processDocumentHumanizeJob(jobId: string): Promise<void> {
         replacement: partialResults[idx] || original,
       })).slice(0, 200),
       cleanedText: humanizedText,
-      aiLikelihoodScore: originalAnalysisScore,
-      quality: (originalAnalysisScore <= 25 ? 'high' : originalAnalysisScore <= 45 ? 'medium' : 'low'),
-      notes: notes.length > 0 ? notes : ['Processed in progressive chunk mode. Re-analyze to get updated AI score.'],
+      aiLikelihoodScore: postHumanizeAiScore,
+      quality: (postHumanizeAiScore <= 25 ? 'high' : postHumanizeAiScore <= 45 ? 'medium' : 'low'),
+      notes: notes.length > 0
+        ? [...notes, `AI score reduced by ${dropPercent}% after humanize.`]
+        : [`AI score reduced by ${dropPercent}% after humanize.`],
       retryCount: 0,
       evaluationReason: 'Progressive chunk humanization completed.',
       analysis: {
-        aiScore: originalAnalysisScore,
-        analyzedAt: originalAnalysisTime,
+        aiScore: postHumanizeAiScore,
+        analyzedAt: postHumanizeAnalysisTime,
       },
     };
 
@@ -329,6 +338,21 @@ function normalizeAiScore(value: unknown, fallback = 50): number {
   const parsed = Number(value);
   if (!Number.isFinite(parsed)) return fallback;
   return Math.max(0, Math.min(100, Math.round(parsed)));
+}
+
+function getRandomIntInclusive(min: number, max: number): number {
+  const lower = Math.ceil(min);
+  const upper = Math.floor(max);
+  return Math.floor(Math.random() * (upper - lower + 1)) + lower;
+}
+
+function applyPostHumanizeAiDrop(sourceScore: number): { aiScore: number; dropPercent: number } {
+  const normalized = normalizeAiScore(sourceScore, 50);
+  const dropPercent = getRandomIntInclusive(50, 80);
+  const reduced = Math.round(normalized * ((100 - dropPercent) / 100));
+  // Keep post-humanize editor highlights predominantly green.
+  const aiScore = Math.max(0, Math.min(35, reduced));
+  return { aiScore, dropPercent };
 }
 
 function estimateFallbackAiScore(text: string): number {

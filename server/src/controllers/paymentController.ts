@@ -17,7 +17,7 @@ import { sendEmail } from '../utils/email';
 
 const PREMIUM_REDEEM_CODE = 'GOFREEULTI';
 const BILLING_CYCLES: BillingCycle[] = ['monthly', 'yearly'];
-const PAYMENT_RECEIPT_RECIPIENTS = ['atanugm8@gmail.com', 'gdnvision360@gmail.com'];
+const PAYMENT_INTERNAL_RECIPIENTS = ['atanugm8@gmail.com', 'gdnvision360@gmail.com'];
 
 const DEFAULT_DYNAMIC_PRICING: Record<PricingPlanId, {
   name: string;
@@ -88,6 +88,32 @@ async function loadPricingConfigMap(): Promise<Record<PricingPlanId, {
 
 function getCycleMonths(cycle: BillingCycle): number {
   return cycle === 'yearly' ? 12 : 1;
+}
+
+function buildCustomerReceiptText(params: {
+  email: string;
+  amountPaise: number;
+  pricingTier: 'pro' | 'advanced';
+  billingCycle: BillingCycle;
+  paymentId: string;
+  orderId: string;
+  paidAt: Date;
+  planExpiryDate: Date;
+}): string {
+  const amountInr = (params.amountPaise / 100).toFixed(2);
+  return [
+    'Payment Receipt',
+    '',
+    `Email: ${params.email}`,
+    `Plan: ${params.pricingTier.toUpperCase()} (${params.billingCycle})`,
+    `Amount Paid: INR ${amountInr}`,
+    `Order ID: ${params.orderId}`,
+    `Payment ID: ${params.paymentId}`,
+    `Paid At: ${params.paidAt.toISOString()}`,
+    `Plan Valid Till: ${params.planExpiryDate.toISOString()}`,
+    '',
+    'Thank you for choosing Scriptum premium.',
+  ].join('\n');
 }
 
 // ─── GET /api/payment/plans ───────────────────────────────────────────────────
@@ -354,14 +380,43 @@ export async function verifyPayment(req: AuthenticatedRequest, res: Response): P
       '',
       `User: ${user?.email || 'unknown'}`,
       `Amount: \u20b9${(payment.amount / 100).toFixed(2)}`,
-      `Plan: ${payment.plan}`,
+      `Plan: ${pricingTier}`,
+      `Billing Cycle: ${payment.billingCycle ?? 'monthly'}`,
       `Date: ${now.toISOString()}`,
       `Payment ID: ${razorpay_payment_id}`,
+      `Order ID: ${razorpay_order_id}`,
     ].join('\n');
 
+    if (user?.email) {
+      const customerReceiptText = buildCustomerReceiptText({
+        email: user.email,
+        amountPaise: payment.amount,
+        pricingTier,
+        billingCycle: payment.billingCycle ?? 'monthly',
+        paymentId: razorpay_payment_id,
+        orderId: razorpay_order_id,
+        paidAt: now,
+        planExpiryDate: expiry,
+      });
+
+      const customerReceiptResult = await sendEmail({
+        to: user.email,
+        subject: `Your Scriptum ${pricingTier.toUpperCase()} Payment Receipt`,
+        text: customerReceiptText,
+        html: `<pre style="white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif">${customerReceiptText
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')}</pre>`,
+      });
+
+      if (!customerReceiptResult.sent) {
+        console.warn('Customer payment receipt email failed:', customerReceiptResult.reason || 'unknown');
+      }
+    }
+
     const receiptEmailResult = await sendEmail({
-      to: PAYMENT_RECEIPT_RECIPIENTS,
-      subject: `New Payment Received - ${payment.plan.toUpperCase()}`,
+      to: PAYMENT_INTERNAL_RECIPIENTS,
+      subject: `New Payment Received - ${pricingTier.toUpperCase()}`,
       text: receiptText,
       html: `<pre style="white-space:pre-wrap;font-family:Arial,Helvetica,sans-serif">${receiptText
         .replace(/&/g, '&amp;')

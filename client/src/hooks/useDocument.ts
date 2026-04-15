@@ -255,7 +255,10 @@ export function useDocument(documentId: string): UseDocumentReturn {
       }
 
       await refresh();
-      const score = result.analysis?.aiScore;
+
+      const score = typeof result.analysis?.aiScore === 'number'
+        ? Math.round(result.analysis.aiScore)
+        : (typeof result.aiLikelihoodScore === 'number' ? Math.round(result.aiLikelihoodScore) : null);
       const scoreSuffix = typeof score === 'number' ? ` · AI likelihood now ${Math.round(score)}%` : '';
       toast.success(`Humanized ${result.appliedCount} section${result.appliedCount === 1 ? '' : 's'}${scoreSuffix}`, { id: toastId });
       setHumanizeProgress(null);
