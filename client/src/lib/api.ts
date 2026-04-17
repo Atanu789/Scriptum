@@ -7,6 +7,7 @@ import {
   ApiResponse,
   AdminAuditLogItem,
   AdminAuthResult,
+  AdminManagementAccessResult,
   AdminMetrics,
   AdminOverview,
   AdminRevenue,
@@ -567,6 +568,13 @@ export const adminApi = {
       method: 'POST',
       headers: { Authorization: `Bearer ${clerkToken}` },
       body: JSON.stringify(payload),
+    });
+  },
+
+  verifyManagementAccess: async (clerkToken: string): Promise<AdminManagementAccessResult> => {
+    return adminRequest<AdminManagementAccessResult>('/verify-management-access', {
+      method: 'GET',
+      headers: { Authorization: `Bearer ${clerkToken}` },
     });
   },
 

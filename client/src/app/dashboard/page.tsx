@@ -18,7 +18,6 @@ import {
   AlertTriangle, TrendingUp, Sparkles,
   Search, SlidersHorizontal,
   Zap, Globe, Crown, LogOut,
-  Shield,
   Image as ImageIcon, Video, Music,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
@@ -479,13 +478,6 @@ export default function DashboardPage() {
                 <LogOut className="h-3.5 w-3.5" />
                 Logout
               </button>
-              <Link
-                href="/admin"
-                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-[11px] font-medium text-slate-600 transition-colors hover:bg-slate-50 dark:border-white/[0.1] dark:bg-white/[0.04] dark:text-white/70 dark:hover:bg-white/[0.07]"
-              >
-                <Shield className="h-3.5 w-3.5" />
-                Admin
-              </Link>
             </div>
             <Link
               href={uploadBlocked ? '/pricing' : '/upload'}

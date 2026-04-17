@@ -240,7 +240,6 @@ export default function PricingPage() {
   const effectivePlan = expired ? 'free' : activePlan;
   const isAdvancedActive =
     effectivePlan === 'pro' &&
-    ((sub?.limits.aiUsagePerMonth ?? 0) >= 150 || (sub?.limits.uploadsPerMonth ?? 0) >= 200);
     ((sub?.limits.aiUsagePerMonth ?? 0) >= 180 || (sub?.limits.uploadsPerMonth ?? 0) >= 350);
   const activePaidTier = effectivePlan === 'free' ? null : (isAdvancedActive ? 'advanced' : 'pro');
   const activePaidRecord = activePaidTier
@@ -273,7 +272,7 @@ export default function PricingPage() {
     .filter((plan) => plan.id === 'free' || plan.id === 'pro' || plan.id === 'advanced');
 
   return (
-    <main className="dark relative min-h-screen px-4 py-8 text-white">
+    <main className="relative min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-100 px-4 py-8 text-slate-900 dark:from-[#070812] dark:via-[#0b0d1a] dark:to-[#111426] dark:text-white">
       <div
         aria-hidden
         className="pointer-events-none absolute inset-0 -z-10"
@@ -295,7 +294,7 @@ export default function PricingPage() {
             onClick={() => setBillingMode('yearly')}
             className={cn('rounded-full px-4 py-1.5 font-semibold transition', billingMode === 'yearly' ? 'bg-indigo-600 text-white' : 'text-slate-600 dark:text-white/65')}
           >
-            Yearly <span className="ml-1 text-[10px] text-emerald-300">12 × monthly</span>
+            Yearly <span className="ml-1 text-[10px] text-emerald-700 dark:text-emerald-300">12 × monthly</span>
           </button>
         </div>
 
@@ -370,10 +369,12 @@ export default function PricingPage() {
               <article
                 key={plan.id}
                 className={cn(
-                  'relative flex h-full flex-col rounded-2xl border bg-white p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl dark:bg-[#0f1018]',
+                  'relative flex h-full flex-col rounded-2xl border p-5 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl',
                   isPro
-                    ? 'border-2 border-indigo-500 shadow-xl shadow-indigo-500/20 md:scale-105 dark:shadow-indigo-500/20'
-                    : 'border-slate-200 dark:border-white/[0.08]',
+                    ? 'border-2 border-indigo-500 bg-gradient-to-b from-indigo-50 via-white to-indigo-100/70 shadow-xl shadow-indigo-500/20 md:scale-105 dark:border-indigo-400/70 dark:bg-gradient-to-b dark:from-indigo-500/15 dark:via-[#0f1018] dark:to-indigo-500/10 dark:shadow-indigo-500/20'
+                    : isAdvanced
+                    ? 'border-cyan-200 bg-gradient-to-b from-cyan-50 via-white to-teal-50/80 dark:border-cyan-500/30 dark:bg-gradient-to-b dark:from-cyan-500/12 dark:via-[#0f1018] dark:to-teal-500/10'
+                    : 'border-slate-200 bg-gradient-to-b from-slate-50 via-white to-slate-100/80 dark:border-white/[0.08] dark:bg-gradient-to-b dark:from-white/[0.03] dark:via-[#0f1018] dark:to-white/[0.02]',
                 )}
               >
                 {isPro && (
@@ -390,7 +391,11 @@ export default function PricingPage() {
                   <div
                     className={cn(
                       'inline-flex h-8 w-8 items-center justify-center rounded-lg',
-                      isPro ? 'bg-indigo-600 text-white' : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-white/50',
+                      isPro
+                        ? 'bg-indigo-600 text-white'
+                        : isAdvanced
+                        ? 'bg-cyan-100 text-cyan-700 dark:bg-cyan-500/15 dark:text-cyan-300'
+                        : 'bg-slate-100 text-slate-500 dark:bg-white/[0.06] dark:text-white/50',
                     )}
                   >
                     {icon}
@@ -598,7 +603,7 @@ export default function PricingPage() {
           <section className="overflow-hidden rounded-xl border border-slate-200/80 bg-white/90 dark:border-white/[0.08] dark:bg-white/[0.05]">
             <button
               onClick={() => setHistoryOpen((o) => !o)}
-              className="flex w-full items-center justify-between px-5 py-3 text-sm font-medium transition-colors hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+              className="flex w-full items-center justify-between px-5 py-3 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-50 dark:text-white/80 dark:hover:bg-white/[0.04]"
             >
               <span>Payment history ({history.length})</span>
               <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${historyOpen ? 'rotate-180' : ''}`} />

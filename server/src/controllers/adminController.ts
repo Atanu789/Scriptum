@@ -32,6 +32,11 @@ interface AdminChangePasswordBody {
   newPassword: string;
 }
 
+interface ManagementAccessVerificationResult {
+  email: string | null;
+  isAllowed: boolean;
+}
+
 interface AdminUserPatchBody {
   plan?: 'free' | 'pro';
   planDays?: number;
@@ -394,6 +399,35 @@ export const changeAdminPassword = async (req: AuthenticatedRequest, res: Respon
   res.json({
     success: true,
     message: 'Admin password updated successfully',
+  });
+};
+
+export const verifyManagementAccess = async (req: Request, res: Response): Promise<void> => {
+  let requesterEmail: string | null = null;
+  try {
+    requesterEmail = await resolveClerkEmailFromAuthorizationHeader(req.headers.authorization);
+  } catch {
+    requesterEmail = null;
+  }
+
+  const data: ManagementAccessVerificationResult = {
+    email: requesterEmail,
+    isAllowed: isManagementEmail(requesterEmail),
+  };
+
+  if (!requesterEmail) {
+    res.status(401).json({
+      success: false,
+      error: 'Unable to verify Clerk session email',
+      data,
+    });
+    return;
+  }
+
+  res.json({
+    success: true,
+    data,
+    message: data.isAllowed ? 'Management access verified' : 'Management access denied',
   });
 };
 

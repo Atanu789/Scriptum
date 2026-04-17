@@ -77,6 +77,12 @@ function LandingNav() {
           >
             Get started
           </Link>
+          <Link
+            href="/admin"
+            className="rounded-lg border border-slate-200/80 px-3 py-1.5 text-sm font-medium text-slate-600 transition-colors hover:bg-slate-100 hover:text-slate-900 dark:border-white/[0.08] dark:text-white/60 dark:hover:bg-white/[0.05] dark:hover:text-white"
+          >
+            Admin
+          </Link>
         </div>
       </div>
     </header>

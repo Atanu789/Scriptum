@@ -6,6 +6,7 @@ import {
   adminLoginValidation,
   changeAdminPassword,
   changeAdminPasswordValidation,
+  verifyManagementAccess,
   listUsers,
   listUsersValidation,
   getMetrics,
@@ -29,6 +30,7 @@ const router = Router();
 
 router.post('/login', authLimiter, adminLoginValidation, adminLogin);
 router.post('/change-password', authLimiter, changeAdminPasswordValidation, changeAdminPassword);
+router.get('/verify-management-access', authLimiter, verifyManagementAccess);
 
 router.use(authenticateAdmin);
 

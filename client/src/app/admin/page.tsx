@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAuth as useClerkAuth, useClerk } from '@clerk/nextjs';
 import {
   Activity,
   BarChart3,
@@ -33,7 +34,6 @@ type SectionKey = 'dashboard' | 'users' | 'revenue' | 'logs' | 'settings';
 
 const ADMIN_TOKEN_KEY = 'ultimoversio_admin_token';
 const ADMIN_USERNAME_KEY = 'ultimoversio_admin_username';
-const MANAGEMENT_EMAIL_ALLOWLIST = new Set(['gdnvision360@gmail.com', 'atanugm8@gmail.com']);
 
 function formatCurrency(value: number): string {
   return new Intl.NumberFormat('en-IN', {
@@ -66,7 +66,9 @@ function TrendPill({ value }: { value: number }) {
 }
 
 export default function AdminPage() {
-  const { user, token: clerkToken } = useAuth();
+  const { user } = useAuth();
+  const { getToken, isLoaded: clerkAuthLoaded } = useClerkAuth();
+  const { openSignIn } = useClerk();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [adminName, setAdminName] = useState('admin');
@@ -76,6 +78,8 @@ export default function AdminPage() {
   const [newAdminPassword, setNewAdminPassword] = useState('');
   const [confirmNewAdminPassword, setConfirmNewAdminPassword] = useState('');
   const [isChangingAdminPassword, setIsChangingAdminPassword] = useState(false);
+  const [isVerifyingManagementAccess, setIsVerifyingManagementAccess] = useState(false);
+  const [managementVerification, setManagementVerification] = useState<{ email: string | null; isAllowed: boolean } | null>(null);
 
   const [section, setSection] = useState<SectionKey>('dashboard');
   const [searchInput, setSearchInput] = useState('');
@@ -122,10 +126,45 @@ export default function AdminPage() {
 
   const [isBootstrapping, setIsBootstrapping] = useState(false);
 
-  const canManageAdminPassword = useMemo(() => {
-    const email = (user?.email || '').trim().toLowerCase();
-    return MANAGEMENT_EMAIL_ALLOWLIST.has(email);
-  }, [user?.email]);
+  const managementEmail = (user?.email || '').trim().toLowerCase();
+  const canOpenChangePasswordForm = !isVerifyingManagementAccess;
+
+  const verifyManagementWithClerk = useCallback(async (): Promise<string | null> => {
+    if (!clerkAuthLoaded) {
+      toast.error('Clerk authentication is still loading. Please try again.');
+      return null;
+    }
+
+    const liveClerkToken = await getToken();
+    if (!liveClerkToken) {
+      openSignIn({
+        afterSignInUrl: '/admin',
+        afterSignUpUrl: '/admin',
+      });
+      toast('Sign in with Clerk to continue password change');
+      return null;
+    }
+
+    setIsVerifyingManagementAccess(true);
+    try {
+      const result = await adminApi.verifyManagementAccess(liveClerkToken);
+      setManagementVerification(result);
+
+      if (!result.isAllowed) {
+        setShowChangePasswordForm(false);
+        toast.error('Only Head Admin can change admin password');
+        return null;
+      }
+
+      return liveClerkToken;
+    } catch (err) {
+      setManagementVerification({ email: managementEmail || null, isAllowed: false });
+      toast.error(err instanceof Error ? err.message : 'Clerk verification failed');
+      return null;
+    } finally {
+      setIsVerifyingManagementAccess(false);
+    }
+  }, [clerkAuthLoaded, getToken, managementEmail, openSignIn]);
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
@@ -310,13 +349,8 @@ export default function AdminPage() {
   const handleAdminPasswordChange = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!canManageAdminPassword) {
-      toast.error('Only management accounts can change admin password');
-      return;
-    }
-
-    if (!clerkToken) {
-      toast.error('Sign in with your management Clerk account first');
+    const verifiedClerkToken = await verifyManagementWithClerk();
+    if (!verifiedClerkToken) {
       return;
     }
 
@@ -327,7 +361,7 @@ export default function AdminPage() {
 
     setIsChangingAdminPassword(true);
     try {
-      await adminApi.changePassword(clerkToken, {
+      await adminApi.changePassword(verifiedClerkToken, {
         currentPassword: currentAdminPassword,
         newPassword: newAdminPassword,
       });
@@ -561,19 +595,44 @@ export default function AdminPage() {
           </button>
         </form>
 
-        {canManageAdminPassword && (
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0f1020]">
+        <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-white/10 dark:bg-[#0f1020]">
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-sm font-semibold text-slate-900 dark:text-slate-100">Management Controls</h2>
-                <p className="text-xs text-slate-500">Only app owner can update admin login password.</p>
+                <p className="text-xs text-slate-500">Only Head Admin can update admin login password.</p>
+                <p className="mt-1 text-[11px] text-slate-500">
+                  Verification: {
+                    isVerifyingManagementAccess
+                      ? 'Checking with Clerk...'
+                      : managementVerification
+                      ? managementVerification.isAllowed
+                        ? 'Approved'
+                        : 'Not approved'
+                      : 'Not verified yet'
+                  }
+                  {(managementVerification?.email || managementEmail)
+                    ? ` (${managementVerification?.email || managementEmail})`
+                    : ''}
+                </p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowChangePasswordForm((prev) => !prev)}
-                className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 dark:border-white/20 dark:text-slate-200 dark:hover:bg-white/10"
+                onClick={async () => {
+                  if (showChangePasswordForm) {
+                    setShowChangePasswordForm(false);
+                    return;
+                  }
+
+                  const verifiedClerkToken = await verifyManagementWithClerk();
+                  if (!verifiedClerkToken) return;
+                  setShowChangePasswordForm(true);
+                }}
+                disabled={!canOpenChangePasswordForm}
+                className="inline-flex items-center rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60 dark:border-white/20 dark:text-slate-200 dark:hover:bg-white/10"
               >
-                {showChangePasswordForm ? 'Hide' : 'Change Password'}
+                {isVerifyingManagementAccess
+                  ? <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> Verifying</>
+                  : showChangePasswordForm ? 'Hide' : 'Change Password'}
               </button>
             </div>
 
@@ -623,7 +682,6 @@ export default function AdminPage() {
               </form>
             )}
           </div>
-        )}
         </div>
       </div>
     );

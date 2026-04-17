@@ -70,6 +70,11 @@ export interface AdminAuthResult {
   username: string;
 }
 
+export interface AdminManagementAccessResult {
+  email: string | null;
+  isAllowed: boolean;
+}
+
 export interface AdminUserSummary {
   id: string;
   name: string;
